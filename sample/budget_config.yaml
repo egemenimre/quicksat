@@ -1,0 +1,15 @@
+# quicksat mass budget configuration
+#
+# Everything is keyed on location: it carries both the system margin and the
+# harness parameters. `Launcher` is a reserved location name and needs no entry --
+# it defaults to no margins, no harness, and being dropped at separation.
+
+locations:
+  Platform:
+    system_margin: 20     # percent, applied to the location subtotal
+    harness_fraction: 5   # percent of this location's equipment CBE
+    harness_margin: 10    # percent, the harness's own contingency
+  Payload:
+    system_margin: 15
+    harness_fraction: 3
+    harness_margin: 10

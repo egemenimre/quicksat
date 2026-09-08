@@ -1,0 +1,22 @@
+name: quicksat
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python >=3.11
+  - pandas
+  - pint
+  - pydantic >=2.0
+  - pyyaml
+  # packages needed for testing and automation
+  - pytest
+  - pytest-xdist
+  - coverage
+  # packages needed for the sample notebooks
+  - jupyterlab
+  - ipykernel
+  - matplotlib
+  - pip
+  - pip:
+      - tox
+      - tox-conda
