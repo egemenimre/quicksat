@@ -9,9 +9,9 @@ sizing, and basic delta-V. Greenfield — nothing exists yet. It will live at
 The tool deliberately follows the conventions already established in
 `/home/egemen/Projects/opticks`, since the same author maintains both.
 
-**Status: incomplete.** The mass budget is specified below and ready to build. The
-power/battery and delta-V modules are still awaiting spec and will be added to this plan
-before implementation starts.
+**Status.** The mass budget is specified below and **implemented** — 27 tests passing, the
+sample notebook runs end to end. The power/battery and delta-V modules are still awaiting
+spec and will be added to this plan before implementation starts.
 
 ## Project scaffolding
 
