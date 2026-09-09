@@ -1,8 +1,6 @@
 # quicksat
 
-Basic satellite sizing tool: mass budget, power subsystem and battery sizing, and
-basic delta-V. Deliberately spartan — the aim is a first-pass sizing you can run and
-argue with, not a full systems engineering environment.
+Basic satellite sizing tool: mass budget, power subsystem and battery sizing, and basic delta-V. Deliberately spartan — the aim is a first-pass sizing, not a full systems engineering environment.
 
 ## Status
 
@@ -12,9 +10,7 @@ argue with, not a full systems engineering environment.
 
 ## Mass budget
 
-The satellite is described by a flat equipment CSV plus a config YAML. Nothing is
-nested: `location`, `responsibility` and `subsystem` are cross-cutting axes, so any
-of them can be summed over independently.
+The satellite is described by a flat equipment CSV plus a config YAML. Nothing is nested: `location`, `responsibility` and `subsystem` are cross-cutting axes, so any of them can be summed over independently.
 
 ### Equipment CSV
 
@@ -31,9 +27,7 @@ of them can be summed over independently.
 | `mass_class` | `equipment` or `propellant`; blank means `equipment` |
 | `comments` | free text |
 
-Masses are parsed with [pint](https://pint.readthedocs.io/), so a dimensionally
-wrong entry such as `100 W` in the mass column is rejected on load rather than
-quietly becoming a number.
+Masses are parsed with [pint](https://pint.readthedocs.io/), so a dimensionally wrong entry such as `100 W` in the mass column is rejected on load rather than quietly becoming a number.
 
 ### Config YAML
 
@@ -51,17 +45,11 @@ locations:
     harness_margin: 10
 ```
 
-`Launcher` is a reserved location name and needs no entry: it defaults to no
-margins, no harness, and being dropped at separation. Any *other* location used in
-the CSV but missing from the config is an error rather than a silent zero.
+`Launcher` is a reserved location name and needs no entry: it defaults to no margins, no harness, and being dropped at separation. Any *other* location used in the CSV but missing from the config is an error rather than a silent zero.
 
 ### Harness
 
-Harness is not entered by hand. One row per location is derived as
-`harness_fraction` of that location's equipment CBE, given its own
-`harness_margin`, and injected before aggregation. The base excludes propellant,
-and uses CBE rather than margined mass so the estimate does not compound the
-equipment margins.
+Harness is not entered by hand. One row per location is derived as `harness_fraction` of that location's equipment CBE, given its own `harness_margin`, and injected before aggregation. The base excludes propellant, and uses CBE rather than margined mass so the estimate does not compound the equipment margins.
 
 ### Mass cases
 
@@ -72,10 +60,7 @@ Two switches give the four standard reporting masses:
 | `ON_GROUND` | launch mass | dry mass at launch |
 | `IN_ORBIT` | separated wet mass | in-orbit dry mass |
 
-The separation interface is entered as two ordinary equipment rows — the
-satellite-side half at `location: Platform`, the launcher-side half at
-`location: Launcher` — with their real masses. There is no split factor to
-configure, and an asymmetric interface costs nothing extra.
+The separation interface is entered as two ordinary equipment rows — the satellite-side half at `location: Platform`, the launcher-side half at `location: Launcher` — with their real masses. There is no split factor to configure, and an asymmetric interface costs nothing extra.
 
 ## Usage
 
