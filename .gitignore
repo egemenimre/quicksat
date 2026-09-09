@@ -149,6 +149,5 @@ opticks/temp
 opticks.code-workspace
 
 # AI helpers
-.claude/*
-!.claude/plan.md
+.claude/
 .kimi/
