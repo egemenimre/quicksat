@@ -7,7 +7,7 @@
 locations:
   Platform:
     system_margin: 20     # percent, applied to the location subtotal
-    harness_fraction: 5   # percent of this location's equipment CBE
+    harness_fraction: 5   # percent of this location's equipment mass, before margin
     harness_margin: 10    # percent, the harness's own contingency
   Payload:
     system_margin: 15

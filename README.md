@@ -37,7 +37,7 @@ Margins and harness are keyed on location:
 locations:
   Platform:
     system_margin: 20     # percent, applied to the location subtotal
-    harness_fraction: 5   # percent of this location's equipment CBE
+    harness_fraction: 5   # percent of this location's equipment mass, before margin
     harness_margin: 10    # percent, the harness's own contingency
   Payload:
     system_margin: 15
@@ -49,29 +49,83 @@ locations:
 
 ### Harness
 
-Harness is not entered by hand. One row per location is derived as `harness_fraction` of that location's equipment CBE, given its own `harness_margin`, and injected before aggregation. The base excludes propellant, and uses CBE rather than margined mass so the estimate does not compound the equipment margins.
+Harness is not entered by hand. One row per location is derived as `harness_fraction` of that location's equipment mass, given its own `harness_margin`, and injected before aggregation. The base excludes propellant, and uses the mass before margin rather than after, so the estimate does not compound the equipment margins.
+
+The derived row takes its location's name as its `responsibility`, so it is counted whichever axis you sum on, while keeping `Harness` as its `subsystem` so it stays a visible line of its own.
 
 ### Mass cases
 
-Two switches give the four standard reporting masses:
+Two of the query flags give the four standard reporting masses:
 
-| | `with_propellant=True` | `with_propellant=False` |
+| | `wet=True` | `wet=False` |
 |---|---|---|
-| `ON_GROUND` | launch mass | dry mass at launch |
-| `IN_ORBIT` | separated wet mass | in-orbit dry mass |
+| `in_orbit=False` | launch mass | dry mass at launch |
+| `in_orbit=True` | separated wet mass | in-orbit dry mass |
 
 The separation interface is entered as two ordinary equipment rows — the satellite-side half at `location: Platform`, the launcher-side half at `location: Launcher` — with their real masses. There is no split factor to configure, and an asymmetric interface costs nothing extra.
 
 ## Usage
 
+Every query takes the same four flags, all defaulting to `True`, so the common question is a bare call and each deviation is one explicit switch:
+
+| flag | when `True` |
+|---|---|
+| `wet` | propellant is counted |
+| `sys_margin` | the location's system margin is applied |
+| `eqpt_margin` | the per-item equipment margin is applied |
+| `in_orbit` | hardware at locations that do not survive separation is dropped |
+
 ```python
-from quicksat.mass.budget import MassBudget, MassCase
+from quicksat.mass.budget import MassBudget
 
-budget = MassBudget.from_csv("sample/equipment.csv", "sample/budget_config.yaml")
+budget = MassBudget.from_csv("sample/data/equipment.csv", "sample/data/budget_config.yaml")
 
-budget.total(case=MassCase.ON_GROUND, with_propellant=True)   # launch mass
-budget.by_subsystem(case=MassCase.IN_ORBIT, with_propellant=False)
+budget.in_orbit_mass()                      # separated wet mass
+budget.on_ground_mass(wet=False)            # dry mass at launch
+budget.total_mass(sys_margin=False)         # everything, before system margin
+budget.platform_mass()                      # the bus
+budget.payload_mass(by_location=False)      # payload, summed on responsibility
+budget.subsystem_mass("ADCS")               # one subsystem, no system margin
+budget.propellant_mass()                    # propellant, at face value
 ```
+
+All of these return a pint `Quantity` in kg. `total_mass` is the generic query; the rest are presets over it with a filter applied.
+
+`platform_mass` and `payload_mass` take a `by_location` switch because Platform and Payload name both a location and a responsibility — an item can sit physically on the payload while belonging to the platform team, and the two axes then disagree. `subsystem_mass` carries no system margin, since margins of that kind are held at the platform and payload level and cannot be attributed to a subsystem.
+
+### Aggregation
+
+The same rows can be summed over any of the three cross-cutting axes. Each view takes the same flags and returns a DataFrame indexed by the axis value with a single `mass` column, and all three reconcile to the same total.
+
+```python
+budget.by_location()                        # per location
+budget.by_responsibility()                  # per responsibility
+budget.by_subsystem(wet=False)              # per subsystem, dry
+```
+
+Because the margin flags apply here too, the three margin layers are the same call three times:
+
+```python
+pd.DataFrame({
+    "eqpt_total_mass":  budget.by_subsystem(eqpt_margin=False, sys_margin=False)["mass"],
+    "with_margin":      budget.by_subsystem(sys_margin=False)["mass"],
+    "with_sys_margin":  budget.by_subsystem()["mass"],
+})
+```
+
+`location` also drives the computation — system margin, harness and separation — while `responsibility` and `subsystem` are reporting axes, so the per-responsibility and per-location views are two cuts of the identical total.
+
+### The budget as a document
+
+`tabulated_mass()` returns the whole budget as a table rather than a single figure: every item, grouped into subsystem blocks within each location, subtotalled, then the location subtotal before and after its system margin, and finally the dry mass, the propellant, and the wet mass.
+
+```python
+budget.tabulated_mass(in_orbit=True)
+```
+
+Propellant appears once, at the bottom, and is left out of the blocks above it, so every subtotal on the way down is a dry mass and the column adds up as it reads. One consequence worth knowing: the Propulsion subsystem subtotal in this table is dry, while `subsystem_mass("Propulsion")` is wet — they answer different questions.
+
+Every row carries a `row_type` — `equipment`, `subsystem_subtotal`, `location_subtotal`, `system_margin`, `location_total`, `dry_total`, `propellant`, `wet_total` — so the frame can be styled, filtered or exported.
 
 `sample/mass_budget.ipynb` works through the whole thing against the sample data.
 

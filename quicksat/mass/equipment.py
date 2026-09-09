@@ -81,6 +81,6 @@ class Equipment(BaseModel):
     """Free text notes."""
 
     @property
-    def cbe(self):
-        """Current best estimate for the line: unit mass times the number of units."""
+    def total_mass(self):
+        """Mass of the whole line: unit mass times the number of units."""
         return self.unit_mass * self.number_of_units
