@@ -24,11 +24,23 @@ class MassClass(str, Enum):
 
     PROPELLANT = "propellant"
     """Consumable. Counted only when `with_propellant` is set, and never margined —
-    propellant uncertainty is carried as a delta-V reserve, not as mass contingency."""
+    propellant uncertainty is defined as a delta-V reserve, not as mass contingency."""
 
 
 def _default_mass_class(v):
-    """Pydantic BeforeValidator: a blank mass class means ordinary equipment."""
+    """
+    Pydantic BeforeValidator: a blank mass class means ordinary equipment.
+
+    Parameters
+    ----------
+    v : str or MassClass or None
+        The raw CSV cell, which may be empty
+
+    Returns
+    -------
+    mass_class : str or MassClass
+        The value to validate, with a blank standing in for `equipment`
+    """
     if v is None:
         return MassClass.EQUIPMENT
     if isinstance(v, str):
@@ -66,7 +78,7 @@ class Equipment(BaseModel):
     unit_mass: MassQty
     """Mass of a single unit, entered with its unit (e.g. "100 kg")."""
 
-    equipment_margin: Annotated[float, Field(ge=0)]
+    eqpt_margin: Annotated[float, Field(ge=0)]
     """Per-item mass contingency, as a percentage (`20` means 20%)."""
 
     number_of_units: Annotated[int, Field(ge=0)]
@@ -79,8 +91,3 @@ class Equipment(BaseModel):
 
     comments: str = ""
     """Free text notes."""
-
-    @property
-    def total_mass(self):
-        """Mass of the whole line: unit mass times the number of units."""
-        return self.unit_mass * self.number_of_units

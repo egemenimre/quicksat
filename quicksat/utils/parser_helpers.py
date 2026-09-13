@@ -15,54 +15,61 @@ from pydantic import AfterValidator, BeforeValidator, PlainSerializer, StringCon
 from quicksat import Q_, u
 
 
-def is_quantity(quantity_text: str) -> bool:
+def _parse_quantity(v):
     """
-    Checks whether the `quantity_text` can be parsed as a valid `Quantity` object.
+    Pydantic BeforeValidator for Quantity objects.
 
     Parameters
     ----------
-    quantity_text : str
-        Text that will be parsed as a `Quantity` object
+    v : str or Quantity
+        Text such as "100 kg", or an already-parsed Quantity
 
     Returns
     -------
-    is_quantity : bool
-        `True` if text can be parsed, `False` otherwise
+    quantity : Quantity
+        The parsed quantity, bound to the shared registry
     """
-    try:
-        Q_(quantity_text)
-    except Exception:
-        return False
-    else:
-        return True
-
-
-def _parse_quantity(v):
-    """Pydantic BeforeValidator for Quantity objects."""
     if isinstance(v, u.Quantity):
         return v
     return Q_(str(v).replace("_", ""))
 
 
 def _serialize_quantity(v) -> str:
-    """Pydantic PlainSerializer for Quantity objects."""
+    """
+    Pydantic PlainSerializer for Quantity objects.
+
+    Parameters
+    ----------
+    v : Quantity
+        The quantity to serialise
+
+    Returns
+    -------
+    text : str
+        The quantity as text, magnitude and unit
+    """
     return str(v)
 
 
-PydanticQty = Annotated[
-    u.Quantity,
-    BeforeValidator(_parse_quantity),
-    PlainSerializer(_serialize_quantity, return_type=str),
-]
-"""Annotated Quantity type for use in Pydantic models.
-
-Parses strings like '100 kg' into pint Quantity objects, and serializes them
-back to strings.
-"""
-
-
 def _validate_mass(v):
-    """Pydantic AfterValidator that requires a non-negative mass Quantity."""
+    """
+    Pydantic AfterValidator that requires a non-negative mass Quantity.
+
+    Parameters
+    ----------
+    v : Quantity
+        The parsed quantity to check
+
+    Returns
+    -------
+    quantity : Quantity
+        The same quantity, unchanged
+
+    Raises
+    ------
+    ValueError
+        If the quantity is not a mass, or is negative
+    """
     if not v.check("[mass]"):
         raise ValueError(f"Value must have mass dimensions, got '{v}'")
     if v.magnitude < 0:

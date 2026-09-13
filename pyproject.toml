@@ -5,12 +5,7 @@ build-backend = "flit_core.buildapi"
 [project]
 name = "quicksat"
 version = "0.1.0"
-dependencies = [
-    "pandas",
-    "pint",
-    "pydantic>=2.0",
-    "pyyaml",
-]
+dependencies = ["pandas", "pint", "pydantic>=2.0", "pyyaml"]
 
 requires-python = ">=3.11"
 
@@ -18,7 +13,7 @@ authors = [{ name = "Egemen Imre" }]
 
 description = "Basic satellite sizing tool: mass budget, power and battery sizing, delta-V"
 readme = "README.md"
-license = {text = "GPL-3.0-or-later"}
+license = { text = "GPL-3.0-or-later" }
 
 keywords = [
     "satellite",
@@ -50,7 +45,7 @@ test = ["pytest", "coverage", "pytest-xdist"]
 
 [tool.ruff]
 line-length = 88
-target-version = "py313"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "C", "I"]

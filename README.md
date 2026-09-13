@@ -22,7 +22,7 @@ The satellite is described by a flat equipment CSV plus a config YAML. Nothing i
 | `responsibility` | who owns it — reporting only |
 | `subsystem` | `ADCS`, `EPS`, ... — reporting only |
 | `unit_mass` | mass of one unit, with its unit (`100 kg`, `750 g`) |
-| `equipment_margin` | per-item contingency, percent |
+| `eqpt_margin` | per-item contingency, percent |
 | `number_of_units` | how many are flown |
 | `mass_class` | `equipment` or `propellant`; blank means `equipment` |
 | `comments` | free text |
@@ -57,7 +57,7 @@ The derived row takes its location's name as its `responsibility`, so it is coun
 
 Two of the query flags give the four standard reporting masses:
 
-| | `wet=True` | `wet=False` |
+| | `propellant=100` | `propellant=0` |
 |---|---|---|
 | `in_orbit=False` | launch mass | dry mass at launch |
 | `in_orbit=True` | separated wet mass | in-orbit dry mass |
@@ -70,7 +70,7 @@ Every query takes the same four flags, all defaulting to `True`, so the common q
 
 | flag | when `True` |
 |---|---|
-| `wet` | propellant is counted |
+| `propellant` | percentage of the propellant load counted: 100 at start of life, 0 at end |
 | `sys_margin` | the location's system margin is applied |
 | `eqpt_margin` | the per-item equipment margin is applied |
 | `in_orbit` | hardware at locations that do not survive separation is dropped |
@@ -81,17 +81,18 @@ from quicksat.mass.budget import MassBudget
 budget = MassBudget.from_csv("sample/data/equipment.csv", "sample/data/budget_config.yaml")
 
 budget.in_orbit_mass()                      # separated wet mass
-budget.on_ground_mass(wet=False)            # dry mass at launch
+budget.on_ground_mass(propellant=0)         # dry mass at launch
+budget.in_orbit_mass(propellant=50)         # half-way through the mission
 budget.total_mass(sys_margin=False)         # everything, before system margin
 budget.platform_mass()                      # the bus
-budget.payload_mass(by_location=False)      # payload, summed on responsibility
+budget.payload_mass(by_responsibility=True)  # payload, summed on responsibility
 budget.subsystem_mass("ADCS")               # one subsystem, no system margin
 budget.propellant_mass()                    # propellant, at face value
 ```
 
 All of these return a pint `Quantity` in kg. `total_mass` is the generic query; the rest are presets over it with a filter applied.
 
-`platform_mass` and `payload_mass` take a `by_location` switch because Platform and Payload name both a location and a responsibility — an item can sit physically on the payload while belonging to the platform team, and the two axes then disagree. `subsystem_mass` carries no system margin, since margins of that kind are held at the platform and payload level and cannot be attributed to a subsystem.
+`platform_mass` and `payload_mass` take a `by_responsibility` switch because Platform and Payload name both a location and a responsibility — an item can sit physically on the payload while belonging to the platform team, and the two axes then disagree. `subsystem_mass` carries no system margin, since margins of that kind are held at the platform and payload level and cannot be attributed to a subsystem.
 
 ### Aggregation
 
@@ -100,7 +101,7 @@ The same rows can be summed over any of the three cross-cutting axes. Each view 
 ```python
 budget.by_location()                        # per location
 budget.by_responsibility()                  # per responsibility
-budget.by_subsystem(wet=False)              # per subsystem, dry
+budget.by_subsystem(propellant=0)           # per subsystem, dry
 ```
 
 Because the margin flags apply here too, the three margin layers are the same call three times:
@@ -117,15 +118,22 @@ pd.DataFrame({
 
 ### The budget as a document
 
-`tabulated_mass()` returns the whole budget as a table rather than a single figure: every item, grouped into subsystem blocks within each location, subtotalled, then the location subtotal before and after its system margin, and finally the dry mass, the propellant, and the wet mass.
+`tabulated_mass()` returns the whole budget as a table rather than a single figure: every item, grouped into subsystem blocks within each location, then the location subtotal before and after its system margin, and finally the dry mass, the propellant, and the wet mass.
 
 ```python
-budget.tabulated_mass(in_orbit=True)
+budget.tabulated_mass(in_orbit=True)                          # the document view
+budget.tabulated_mass(subsystem_subtotals=True)               # add per-subsystem lines
+budget.tabulated_mass(comments=True)                          # show the CSV's comments
+budget.tabulated_mass().data                                  # the numbers, as a frame
 ```
+
+What comes back is a pandas `Styler`, so cells that do not apply to a row come out blank rather than `NaN`, the masses print at a fixed number of decimals, and the summary lines are bold. The frame is still available as `.data`. Per-subsystem subtotal lines are off by default because they crowd the table; the grouping by subsystem stays either way. The equipment file's `comments` column is hidden by default for the same reason, though it is worth turning on to see the derived harness rows explain where their mass came from. The `location` column is hidden outright, since every subtotal and total row already names the location it closes. All three stay in `.data` regardless.
+
+Each row reads as the same three-step progression, whichever level it sits at: `total_mass`, then `margin_pct`, then `total_mass_with_margin`. On an item row that margin is the equipment contingency; on a location total it is the system margin applied to the subtotal above. Items carry both an `equipment_id` and a `name`, since neither alone identifies them — the id says what a thing is (`magnetorquer`), the name which one it is (`ZARM MT30`). Subtotal captions sit in the `name` column with the id blank, so they indent one column in from the items above.
 
 Propellant appears once, at the bottom, and is left out of the blocks above it, so every subtotal on the way down is a dry mass and the column adds up as it reads. One consequence worth knowing: the Propulsion subsystem subtotal in this table is dry, while `subsystem_mass("Propulsion")` is wet — they answer different questions.
 
-Every row carries a `row_type` — `equipment`, `subsystem_subtotal`, `location_subtotal`, `system_margin`, `location_total`, `dry_total`, `propellant`, `wet_total` — so the frame can be styled, filtered or exported.
+Every row carries a `row_type` in `.data` — `equipment`, `subsystem_subtotal`, `location_subtotal`, `location_total`, `dry_total`, `propellant`, `wet_total` — so the report can be filtered or exported. It is hidden in the rendered table.
 
 `sample/mass_budget.ipynb` works through the whole thing against the sample data.
 

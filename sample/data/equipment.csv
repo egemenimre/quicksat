@@ -1,4 +1,4 @@
-equipment_id,equipment_name,location,responsibility,subsystem,unit_mass,equipment_margin,number_of_units,mass_class,comments
+equipment_id,equipment_name,location,responsibility,subsystem,unit_mass,eqpt_margin,number_of_units,mass_class,comments
 telescope,TMA telescope assembly,Payload,Payload,Instrument,62.0 kg,20,1,equipment,
 focal_plane,Focal plane assembly,Payload,Payload,Instrument,11.5 kg,15,1,equipment,
 payload_electronics,Video processing unit,Payload,Payload,OBDH,8.0 kg,10,1,equipment,

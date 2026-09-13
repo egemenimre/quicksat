@@ -13,10 +13,12 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
+from pandas.io.formats.style import Styler
 from pydantic import BaseModel, Field, ValidationError
 
 from quicksat import Q_
 from quicksat.mass.equipment import Equipment, MassClass
+from quicksat.mass.report import tabulate
 
 LAUNCHER_LOCATION = "Launcher"
 """Reserved location name for hardware that stays with the launch vehicle."""
@@ -30,7 +32,6 @@ PAYLOAD_LOCATION = "Payload"
 HARNESS_SUBSYSTEM = "Harness"
 """Subsystem tag given to the derived harness rows."""
 
-NAN = float("nan")
 
 REQUIRED_COLUMNS = (
     "equipment_id",
@@ -39,7 +40,7 @@ REQUIRED_COLUMNS = (
     "responsibility",
     "subsystem",
     "unit_mass",
-    "equipment_margin",
+    "eqpt_margin",
     "number_of_units",
 )
 
@@ -50,25 +51,11 @@ _FRAME_COLUMNS = (
     "responsibility",
     "subsystem",
     "eqpt_mass",
-    "equipment_margin",
+    "eqpt_margin",
     "number_of_units",
     "mass_class",
     "comments",
     "eqpt_total_mass",
-)
-
-_REPORT_COLUMNS = (
-    "label",
-    "equipment_name",
-    "location",
-    "subsystem",
-    "units",
-    "eqpt_mass",
-    "margin_pct",
-    "eqpt_total_mass",
-    "eqpt_total_mass_with_margin",
-    "total_mass_with_sys_margin",
-    "row_type",
 )
 
 
@@ -185,8 +172,9 @@ class MassBudget:
     Every query takes the same four flags, all defaulting to `True`, so the common
     question is a bare call and each deviation is one explicit switch:
 
-    wet
-        Count propellant.
+    propellant
+        Percentage of the propellant load to count: 100 at the start of life, 0 at
+        the end, and anything between for a point part-way through the mission.
     sys_margin
         Apply the location's system margin.
     eqpt_margin
@@ -203,6 +191,16 @@ class MassBudget:
     """
 
     def __init__(self, equipment: list[Equipment], config: BudgetConfig):
+        """
+        Assembles the budget, validating locations and deriving the harness rows.
+
+        Parameters
+        ----------
+        equipment : list[Equipment]
+            Validated equipment items
+        config : BudgetConfig
+            Margin and harness settings, keyed on location
+        """
         self.config = config
         frame = _frame_from_items(equipment)
         _check_duplicates(frame)
@@ -246,13 +244,20 @@ class MassBudget:
         return cls(equipment, config)
 
     @property
-    def equipment(self) -> pd.DataFrame:
-        """The validated equipment table, harness rows included."""
+    def eqpt_table(self) -> pd.DataFrame:
+        """
+        The validated equipment table, harness rows included.
+
+        Returns
+        -------
+        frame : pd.DataFrame
+            A copy of the working table, one row per item
+        """
         return self._frame.copy()
 
     def resolve(
         self,
-        wet: bool = True,
+        propellant: float = 100.0,
         in_orbit: bool = True,
         sys_margin: bool = True,
         eqpt_margin: bool = True,
@@ -265,8 +270,8 @@ class MassBudget:
 
         Parameters
         ----------
-        wet : bool
-            Count propellant
+        propellant : float
+            Percentage of the propellant load to count
         in_orbit : bool
             Drop hardware at locations that do not survive separation
         sys_margin : bool
@@ -279,21 +284,25 @@ class MassBudget:
         frame : pd.DataFrame
             Retained rows, with a `mass` column added
         """
+        if not 0.0 <= propellant <= 100.0:
+            raise ValueError(
+                f"propellant is a percentage of the load, so it must be between "
+                f"0 and 100, got {propellant}"
+            )
+
         frame = self._frame
 
-        if not wet:
-            frame = frame[frame["mass_class"] != MassClass.PROPELLANT.value]
         if in_orbit:
             retained = frame["location"].map(
                 lambda name: self.config.for_location(name).retained_in_orbit
             )
             frame = frame[retained]
 
-        return frame.assign(mass=self._mass(frame, sys_margin, eqpt_margin))
+        return frame.assign(mass=self._mass(frame, sys_margin, eqpt_margin, propellant))
 
     def total_mass(
         self,
-        wet: bool = True,
+        propellant: float = 100.0,
         sys_margin: bool = True,
         eqpt_margin: bool = True,
         in_orbit: bool = True,
@@ -301,37 +310,96 @@ class MassBudget:
         """
         Total mass. The generic query the others are presets of.
 
+        Parameters
+        ----------
+        propellant : float
+            Percentage of the propellant load to count
+        in_orbit : bool
+            Drop hardware at locations that do not survive separation
+        sys_margin : bool
+            Apply the location's system margin
+        eqpt_margin : bool
+            Apply the per-item equipment margin
+
+
         Returns
         -------
         mass : Quantity
         """
         frame = self.resolve(
-            wet=wet, in_orbit=in_orbit, sys_margin=sys_margin, eqpt_margin=eqpt_margin
+            propellant=propellant,
+            in_orbit=in_orbit,
+            sys_margin=sys_margin,
+            eqpt_margin=eqpt_margin,
         )
         return Q_(frame["mass"].sum(), "kg")
 
     def in_orbit_mass(
-        self, wet: bool = True, sys_margin: bool = True, eqpt_margin: bool = True
+        self,
+        propellant: float = 100.0,
+        sys_margin: bool = True,
+        eqpt_margin: bool = True,
     ):
-        """Mass after separation, excluding hardware left with the launcher."""
+        """
+        Mass after separation, excluding hardware left with the launcher.
+
+        Parameters
+        ----------
+        propellant : float
+            Percentage of the propellant load to count
+        sys_margin : bool
+            Apply the location's system margin
+        eqpt_margin : bool
+            Apply the per-item equipment margin
+
+        Returns
+        -------
+        mass : Quantity
+            The in-orbit mass
+        """
         return self.total_mass(
-            wet=wet, sys_margin=sys_margin, eqpt_margin=eqpt_margin, in_orbit=True
+            propellant=propellant,
+            sys_margin=sys_margin,
+            eqpt_margin=eqpt_margin,
+            in_orbit=True,
         )
 
     def on_ground_mass(
-        self, wet: bool = True, sys_margin: bool = True, eqpt_margin: bool = True
+        self,
+        propellant: float = 100.0,
+        sys_margin: bool = True,
+        eqpt_margin: bool = True,
     ):
-        """Mass before separation, including the launcher-side hardware."""
+        """
+        Mass before separation, including the launcher-side hardware.
+
+        Parameters
+        ----------
+        propellant : float
+            Percentage of the propellant load to count
+        sys_margin : bool
+            Apply the location's system margin
+        eqpt_margin : bool
+            Apply the per-item equipment margin
+
+        Returns
+        -------
+        mass : Quantity
+            The on-ground mass
+        """
         return self.total_mass(
-            wet=wet, sys_margin=sys_margin, eqpt_margin=eqpt_margin, in_orbit=False
+            propellant=propellant,
+            sys_margin=sys_margin,
+            eqpt_margin=eqpt_margin,
+            in_orbit=False,
         )
 
     def platform_mass(
         self,
-        wet: bool = True,
+        propellant: float = 100.0,
         sys_margin: bool = True,
         eqpt_margin: bool = True,
-        by_location: bool = True,
+        by_responsibility: bool = False,
     ):
         """
         Platform mass, summed on location or on responsibility.
@@ -341,30 +409,52 @@ class MassBudget:
 
         Parameters
         ----------
-        by_location : bool
-            Sum rows whose `location` is Platform; otherwise their `responsibility`
+        propellant : float
+            Percentage of the propellant load to count
+        sys_margin : bool
+            Apply the location's system margin
+        eqpt_margin : bool
+            Apply the per-item equipment margin
+        by_responsibility : bool
+            Sum rows whose `responsibility` is Platform; otherwise their `location`
+
+        Returns
+        -------
+        mass : Quantity
+            The platform mass
         """
         return self._named_mass(
-            PLATFORM_LOCATION, wet, sys_margin, eqpt_margin, by_location
+            PLATFORM_LOCATION, propellant, sys_margin, eqpt_margin, by_responsibility
         )
 
     def payload_mass(
         self,
-        wet: bool = True,
+        propellant: float = 100.0,
         sys_margin: bool = True,
         eqpt_margin: bool = True,
-        by_location: bool = True,
+        by_responsibility: bool = False,
     ):
         """
         Payload mass, summed on location or on responsibility.
 
         Parameters
         ----------
-        by_location : bool
-            Sum rows whose `location` is Payload; otherwise their `responsibility`
+        propellant : float
+            Percentage of the propellant load to count
+        sys_margin : bool
+            Apply the location's system margin
+        eqpt_margin : bool
+            Apply the per-item equipment margin
+        by_responsibility : bool
+            Sum rows whose `responsibility` is Payload; otherwise their `location`
+
+        Returns
+        -------
+        mass : Quantity
+            The payload mass
         """
         return self._named_mass(
-            PAYLOAD_LOCATION, wet, sys_margin, eqpt_margin, by_location
+            PAYLOAD_LOCATION, propellant, sys_margin, eqpt_margin, by_responsibility
         )
 
     def subsystem_mass(self, subsys_id: str, eqpt_margin: bool = True):
@@ -373,7 +463,7 @@ class MassBudget:
 
         Carries no system margin: system margins are held at the platform and
         payload level and cannot be attributed to a subsystem. Nor does it need a
-        `wet` flag — a propellant row carries its own `subsystem`, so a propulsion
+        `propellant` flag — a propellant row carries its own `subsystem`, so a propulsion
         query picks the propellant up and every other subsystem is unaffected.
 
         Parameters
@@ -382,9 +472,14 @@ class MassBudget:
             Subsystem name, as it appears in the equipment file
         eqpt_margin : bool
             Apply the per-item equipment margin
+
+        Returns
+        -------
+        mass : Quantity
+            The subsystem mass, at the full propellant load
         """
         frame = self.resolve(
-            wet=True, in_orbit=True, sys_margin=False, eqpt_margin=eqpt_margin
+            propellant=100.0, in_orbit=True, sys_margin=False, eqpt_margin=eqpt_margin
         )
         return Q_(frame.loc[frame["subsystem"] == subsys_id, "mass"].sum(), "kg")
 
@@ -394,31 +489,77 @@ class MassBudget:
 
         Takes no flags: propellant is never margined, and it is present both on the
         ground and in orbit.
+
+        Returns
+        -------
+        mass : Quantity
+            The full propellant load
         """
         frame = self._frame
         is_propellant = frame["mass_class"] == MassClass.PROPELLANT.value
         return Q_(frame.loc[is_propellant, "eqpt_total_mass"].sum(), "kg")
 
     def by_location(self, **kwargs) -> pd.DataFrame:
-        """Mass grouped by location. Takes the same flags as `total_mass`."""
+        """
+        Mass grouped by location.
+
+        Parameters
+        ----------
+        **kwargs
+            The query flags, passed through to `resolve`
+
+        Returns
+        -------
+        grouped : pd.DataFrame
+            One row per location, with a single `mass` column
+        """
         return self._grouped("location", **kwargs)
 
     def by_responsibility(self, **kwargs) -> pd.DataFrame:
-        """Mass grouped by responsibility. Takes the same flags as `total_mass`."""
+        """
+        Mass grouped by responsibility.
+
+        Parameters
+        ----------
+        **kwargs
+            The query flags, passed through to `resolve`
+
+        Returns
+        -------
+        grouped : pd.DataFrame
+            One row per responsibility, with a single `mass` column
+        """
         return self._grouped("responsibility", **kwargs)
 
     def by_subsystem(self, **kwargs) -> pd.DataFrame:
-        """Mass grouped by subsystem. Takes the same flags as `total_mass`."""
+        """
+        Mass grouped by subsystem.
+
+        Parameters
+        ----------
+        **kwargs
+            The query flags, passed through to `resolve`
+
+        Returns
+        -------
+        grouped : pd.DataFrame
+            One row per subsystem, with a single `mass` column
+        """
         return self._grouped("subsystem", **kwargs)
 
-    def tabulated_mass(self, in_orbit: bool = True) -> pd.DataFrame:
+    def tabulated_mass(
+        self,
+        in_orbit: bool = True,
+        subsystem_subtotals: bool = False,
+        comments: bool = False,
+    ) -> Styler:
         """
         The budget as a document: every item, with subtotals in reading order.
 
-        Equipment is grouped into subsystem blocks within each location, each block
-        subtotalled, then the location subtotal before its system margin, the margin
-        itself, and the location total after it. The location totals are followed by
-        the dry mass, the propellant, and the wet mass.
+        Equipment is grouped into subsystem blocks within each location, then the
+        location subtotal before its system margin, the margin itself, and the
+        location total after it. The location totals are followed by the dry mass,
+        the propellant, and the wet mass.
 
         Propellant appears once, at the bottom, and is left out of the blocks above
         it, so every subtotal on the way down is a dry mass and the column adds up as
@@ -431,50 +572,134 @@ class MassBudget:
             When set, launcher-side hardware is absent and the totals are the
             in-orbit masses; otherwise a launcher block joins the others and the
             totals become the on-ground masses.
+        subsystem_subtotals : bool
+            Add a subtotal line after each subsystem block. Off by default: on a
+            table this size the extra lines crowd out the items themselves. The
+            blocks stay grouped by subsystem either way.
+        comments : bool
+            Show the equipment file's `comments` column. Off by default because
+            free text stretches the table, but it is where the derived harness rows
+            explain themselves. The column is in `.data` either way.
 
         Returns
         -------
-        report : pd.DataFrame
-            One row per item and per subtotal, tagged by `row_type`
+        report : Styler
+            One row per item and per subtotal. A Styler rather than a plain frame,
+            so that cells which do not apply to a row come out blank instead of
+            NaN. The frame itself is still there as `.data`, where every row also
+            carries the `row_type` that the rendered table hides.
         """
-        return _tabulate(self, in_orbit)
-
-    def _named_mass(self, name, wet, sys_margin, eqpt_margin, by_location):
-        """Sums one location's or one responsibility's rows."""
-        frame = self.resolve(
-            wet=wet, in_orbit=True, sys_margin=sys_margin, eqpt_margin=eqpt_margin
+        return tabulate(
+            self._frame, self.config, in_orbit, subsystem_subtotals, comments
         )
-        column = "location" if by_location else "responsibility"
+
+    def _named_mass(self, name, propellant, sys_margin, eqpt_margin, by_responsibility):
+        """
+        Sums one location's or one responsibility's rows.
+
+        Parameters
+        ----------
+        name : str
+            The location or responsibility to match
+        propellant : float
+            Percentage of the propellant load to count
+        sys_margin : bool
+            Apply the location's system margin
+        eqpt_margin : bool
+            Apply the per-item equipment margin
+        by_responsibility : bool
+            Match on `responsibility` rather than `location`
+
+        Returns
+        -------
+        mass : Quantity
+            The matching rows' mass
+        """
+        frame = self.resolve(
+            propellant=propellant,
+            in_orbit=True,
+            sys_margin=sys_margin,
+            eqpt_margin=eqpt_margin,
+        )
+        column = "responsibility" if by_responsibility else "location"
         return Q_(frame.loc[frame[column] == name, "mass"].sum(), "kg")
 
     def _grouped(self, column: str, **kwargs) -> pd.DataFrame:
-        """Sums the resolved mass over one grouping axis."""
-        frame = self.resolve(**kwargs)
-        grouped = frame.groupby(column, sort=True)[["mass"]].sum()
-        return grouped.rename(columns={"mass": "mass"})
+        """
+        Sums the resolved mass over one grouping axis.
 
-    def _mass(self, frame: pd.DataFrame, sys_margin: bool, eqpt_margin: bool):
+        Parameters
+        ----------
+        column : str
+            The column to group on
+        **kwargs
+            The query flags, passed through to `resolve`
+
+        Returns
+        -------
+        grouped : pd.DataFrame
+            One row per distinct value, with a single `mass` column
+        """
+        frame = self.resolve(**kwargs)
+        return frame.groupby(column, sort=True)[["mass"]].sum()
+
+    def _mass(
+        self,
+        frame: pd.DataFrame,
+        sys_margin: bool,
+        eqpt_margin: bool,
+        propellant: float,
+    ):
         """
         Mass per row for a flag combination.
 
         Building the figure from the flags rather than selecting one of three
         precomputed columns covers every combination uniformly, including margining
         by system but not by equipment.
+
+        Parameters
+        ----------
+        frame : pd.DataFrame
+            The rows to price, already filtered for the case
+        sys_margin : bool
+            Apply the location's system margin
+        eqpt_margin : bool
+            Apply the per-item equipment margin
+        propellant : float
+            Percentage of the propellant load to count
+
+        Returns
+        -------
+        mass : pd.Series
+            Mass per row, aligned with `frame`
         """
         mass = frame["eqpt_total_mass"]
         if eqpt_margin:
-            mass = mass * (1.0 + frame["equipment_margin"] / 100.0)
+            mass = mass * (1.0 + frame["eqpt_margin"] / 100.0)
         if sys_margin:
             mass = mass * frame["location"].map(
                 lambda name: 1.0 + self.config.for_location(name).system_margin / 100.0
             )
-        # propellant is never margined, whatever the flags say
+        # propellant is never margined whatever the flags say, and burns off over
+        # the mission rather than being present or absent
         is_propellant = frame["mass_class"] == MassClass.PROPELLANT.value
-        return mass.mask(is_propellant, frame["eqpt_total_mass"])
+        return mass.mask(is_propellant, frame["eqpt_total_mass"] * propellant / 100.0)
 
 
 def _frame_from_items(equipment: list[Equipment]) -> pd.DataFrame:
-    """Flattens validated equipment into the working table, in canonical kg."""
+    """
+    Flattens validated equipment into the working table, in canonical kg.
+
+    Parameters
+    ----------
+    equipment : list[Equipment]
+        Validated equipment items
+
+    Returns
+    -------
+    frame : pd.DataFrame
+        One row per item, with the mass columns as plain floats
+    """
     records = []
     for item in equipment:
         eqpt_mass = item.unit_mass.to("kg").magnitude
@@ -486,7 +711,7 @@ def _frame_from_items(equipment: list[Equipment]) -> pd.DataFrame:
                 "responsibility": item.responsibility,
                 "subsystem": item.subsystem,
                 "eqpt_mass": eqpt_mass,
-                "equipment_margin": item.equipment_margin,
+                "eqpt_margin": item.eqpt_margin,
                 "number_of_units": item.number_of_units,
                 "mass_class": item.mass_class.value,
                 "comments": item.comments,
@@ -495,14 +720,29 @@ def _frame_from_items(equipment: list[Equipment]) -> pd.DataFrame:
         )
 
     frame = pd.DataFrame(records, columns=list(_FRAME_COLUMNS))
-    for column in ("eqpt_mass", "equipment_margin", "eqpt_total_mass"):
+    for column in ("eqpt_mass", "eqpt_margin", "eqpt_total_mass"):
         frame[column] = frame[column].astype(float)
     frame["number_of_units"] = frame["number_of_units"].astype(int)
     return frame
 
 
 def _check_duplicates(frame: pd.DataFrame) -> None:
-    """Rejects a repeated equipment id within one location."""
+    """
+    Rejects a repeated equipment id within one location.
+
+    The same id may appear at several locations — physically distinct items often
+    share a name — but not twice in the same place.
+
+    Parameters
+    ----------
+    frame : pd.DataFrame
+        The equipment table to check
+
+    Raises
+    ------
+    ValueError
+        If any (equipment_id, location) pair appears more than once
+    """
     duplicated = frame.duplicated(subset=["equipment_id", "location"], keep=False)
     if duplicated.any():
         pairs = (
@@ -524,6 +764,18 @@ def _harness_frame(frame: pd.DataFrame, config: BudgetConfig) -> pd.DataFrame:
     The row takes its location's name as its responsibility, so that summing on
     either axis includes it. Where a location hosts several responsibilities, that
     attributes the whole harness to the location's own name.
+
+    Parameters
+    ----------
+    frame : pd.DataFrame
+        The equipment table, before harness rows are added
+    config : BudgetConfig
+        Margin and harness settings, keyed on location
+
+    Returns
+    -------
+    harness : pd.DataFrame
+        One row per location with a non-zero harness fraction
     """
     hardware = frame[frame["mass_class"] == MassClass.EQUIPMENT.value]
     records = []
@@ -542,7 +794,7 @@ def _harness_frame(frame: pd.DataFrame, config: BudgetConfig) -> pd.DataFrame:
                 "responsibility": location,
                 "subsystem": HARNESS_SUBSYSTEM,
                 "eqpt_mass": harness_kg,
-                "equipment_margin": location_config.harness_margin,
+                "eqpt_margin": location_config.harness_margin,
                 "number_of_units": 1,
                 "mass_class": MassClass.EQUIPMENT.value,
                 "comments": f"Derived: {location_config.harness_fraction}% of "
@@ -552,137 +804,3 @@ def _harness_frame(frame: pd.DataFrame, config: BudgetConfig) -> pd.DataFrame:
         )
 
     return pd.DataFrame(records, columns=list(_FRAME_COLUMNS))
-
-
-def _report_row(label: str, row_type: str, **values) -> dict:
-    """One row of the tabulated report, with everything not supplied left blank."""
-    row = dict.fromkeys(_REPORT_COLUMNS, NAN)
-    row.update(equipment_name="", location="", subsystem="")
-    row.update(label=label, row_type=row_type)
-    row.update(values)
-    return row
-
-
-def _tabulate(budget: "MassBudget", in_orbit: bool) -> pd.DataFrame:
-    """
-    Assembles the mass budget document.
-
-    Locations and subsystems come out in order of first appearance in the equipment
-    file rather than sorted, so the report keeps the structure the file was written
-    with — and the derived harness, appended last, lands at the foot of its location.
-    """
-    hardware = budget._frame[budget._frame["mass_class"] != MassClass.PROPELLANT.value]
-    if in_orbit:
-        retained = hardware["location"].map(
-            lambda name: budget.config.for_location(name).retained_in_orbit
-        )
-        hardware = hardware[retained]
-
-    rows = []
-    totals = []
-
-    for location in hardware["location"].drop_duplicates():
-        block = hardware[hardware["location"] == location]
-
-        for subsystem in block["subsystem"].drop_duplicates():
-            items = block[block["subsystem"] == subsystem]
-            item_margined = _with_margin(items)
-            for item in items.itertuples():
-                rows.append(
-                    _report_row(
-                        item.equipment_id,
-                        "equipment",
-                        equipment_name=item.equipment_name,
-                        location=location,
-                        subsystem=subsystem,
-                        units=item.number_of_units,
-                        eqpt_mass=item.eqpt_mass,
-                        margin_pct=item.equipment_margin,
-                        eqpt_total_mass=item.eqpt_total_mass,
-                        eqpt_total_mass_with_margin=item_margined.loc[item.Index],
-                    )
-                )
-            rows.append(
-                _report_row(
-                    f"{subsystem} subtotal",
-                    "subsystem_subtotal",
-                    location=location,
-                    subsystem=subsystem,
-                    eqpt_total_mass=items["eqpt_total_mass"].sum(),
-                    eqpt_total_mass_with_margin=item_margined.sum(),
-                )
-            )
-
-        block_raw = block["eqpt_total_mass"].sum()
-        block_margined = _with_margin(block).sum()
-        margin_pct = budget.config.for_location(location).system_margin
-        margin_kg = block_margined * margin_pct / 100.0
-
-        rows.append(
-            _report_row(
-                f"{location} subtotal (before system margin)",
-                "location_subtotal",
-                location=location,
-                eqpt_total_mass=block_raw,
-                eqpt_total_mass_with_margin=block_margined,
-            )
-        )
-        rows.append(
-            _report_row(
-                f"{location} system margin ({margin_pct:g}%)",
-                "system_margin",
-                location=location,
-                margin_pct=margin_pct,
-                total_mass_with_sys_margin=margin_kg,
-            )
-        )
-        rows.append(
-            _report_row(
-                f"{location} total",
-                "location_total",
-                location=location,
-                eqpt_total_mass=block_raw,
-                eqpt_total_mass_with_margin=block_margined,
-                total_mass_with_sys_margin=block_margined + margin_kg,
-            )
-        )
-        totals.append((block_raw, block_margined, block_margined + margin_kg))
-
-    dry_raw = sum(entry[0] for entry in totals)
-    dry_margined = sum(entry[1] for entry in totals)
-    dry_total = sum(entry[2] for entry in totals)
-    propellant_kg = budget.propellant_mass().to("kg").magnitude
-
-    rows.append(
-        _report_row(
-            "Total Dry Mass (with system margin)",
-            "dry_total",
-            eqpt_total_mass=dry_raw,
-            eqpt_total_mass_with_margin=dry_margined,
-            total_mass_with_sys_margin=dry_total,
-        )
-    )
-    rows.append(
-        _report_row(
-            "Propellant",
-            "propellant",
-            eqpt_total_mass=propellant_kg,
-            total_mass_with_sys_margin=propellant_kg,
-        )
-    )
-    rows.append(
-        _report_row(
-            "Total Wet Mass",
-            "wet_total",
-            eqpt_total_mass=dry_raw + propellant_kg,
-            eqpt_total_mass_with_margin=dry_margined + propellant_kg,
-            total_mass_with_sys_margin=dry_total + propellant_kg,
-        )
-    )
-
-    return pd.DataFrame(rows, columns=list(_REPORT_COLUMNS))
-
-
-def _with_margin(frame: pd.DataFrame) -> pd.Series:
-    """Margined mass per row, for the hardware rows of the report."""
-    return frame["eqpt_total_mass"] * (1.0 + frame["equipment_margin"] / 100.0)
