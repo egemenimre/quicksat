@@ -53,6 +53,7 @@ ignore = ["E203", "E266", "E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "sample/**/*.ipynb" = ["E402"]
+"docs/**/*.ipynb" = ["E402"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["quicksat"]
