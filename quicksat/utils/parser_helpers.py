@@ -51,43 +51,56 @@ def _serialize_quantity(v) -> str:
     return str(v)
 
 
-def _validate_mass(v):
+def non_negative_quantity(dimension: str, label: str):
     """
-    Pydantic AfterValidator that requires a non-negative mass Quantity.
+    Builds an Annotated Quantity type restricted to one dimension and to non-negative values.
 
     Parameters
     ----------
-    v : Quantity
-        The parsed quantity to check
+    dimension : str
+        Dimensionality the value must have, in pint's notation (`"[mass]"`)
+    label : str
+        Name of the quantity, used in the error messages
 
     Returns
     -------
-    quantity : Quantity
-        The same quantity, unchanged
-
-    Raises
-    ------
-    ValueError
-        If the quantity is not a mass, or is negative
+    annotated : type
+        A type usable as a Pydantic field annotation
     """
-    if not v.check("[mass]"):
-        raise ValueError(f"Value must have mass dimensions, got '{v}'")
-    if v.magnitude < 0:
-        raise ValueError(f"Mass must not be negative, got '{v}'")
-    return v
+
+    def _validate(v):
+        if not v.check(dimension):
+            raise ValueError(f"Value must have {label} dimensions, got '{v}'")
+        if v.magnitude < 0:
+            raise ValueError(f"{label.capitalize()} must not be negative, got '{v}'")
+        return v
+
+    return Annotated[
+        u.Quantity,
+        BeforeValidator(_parse_quantity),
+        AfterValidator(_validate),
+        PlainSerializer(_serialize_quantity, return_type=str),
+    ]
 
 
-MassQty = Annotated[
-    u.Quantity,
-    BeforeValidator(_parse_quantity),
-    AfterValidator(_validate_mass),
-    PlainSerializer(_serialize_quantity, return_type=str),
-]
+MassQty = non_negative_quantity("[mass]", "mass")
 """Annotated Quantity type restricted to non-negative masses.
 
 Rejects a dimensionally wrong entry such as '100 W' in a mass column, which a
 plain float would have silently accepted.
 """
+
+LengthQty = non_negative_quantity("[length]", "length")
+"""Annotated Quantity type restricted to non-negative lengths."""
+
+AngleQty = non_negative_quantity("", "angle")
+"""Annotated Quantity type for angles.
+
+pint treats radians as dimensionless, so this checks only that the value carries
+no other dimension: it rejects `500 km` but cannot tell `97.4 deg` from a bare
+`97.4`.
+"""
+
 
 NoSpaceStr = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\S+$")]
 """String field that must not contain whitespace, used for the grouping axes."""

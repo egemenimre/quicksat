@@ -24,3 +24,16 @@ pint.set_application_registry(u)
 
 Q_ = u.Quantity
 """Shorthand for the registry-bound Quantity class."""
+
+# pint carries standard_gravity, which the rocket equation needs, but no Earth
+# constants. `earth_mu` is the measured GM rather than gravitational_constant x
+# earth_mass: GM is known to about nine significant figures where G is known to
+# five, so deriving it would throw four of them away.
+u.define("earth_radius = 6378.137 km = R_earth")  # WGS-84 equatorial
+u.define("earth_mu = 398600.4418 km**3 / s**2 = GM_earth")  # EGM96
+
+R_EARTH = Q_(1, "earth_radius")
+"""Earth equatorial radius, WGS-84."""
+
+MU_EARTH = Q_(1, "earth_mu")
+"""Earth gravitational parameter, EGM96."""
