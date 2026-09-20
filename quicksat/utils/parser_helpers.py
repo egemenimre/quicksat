@@ -71,7 +71,7 @@ def non_negative_quantity(dimension: str, label: str):
     def _validate(v):
         if not v.check(dimension):
             raise ValueError(f"Value must have {label} dimensions, got '{v}'")
-        if v.magnitude < 0:
+        if v < 0:
             raise ValueError(f"{label.capitalize()} must not be negative, got '{v}'")
         return v
 

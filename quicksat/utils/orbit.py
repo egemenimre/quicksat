@@ -16,10 +16,10 @@ Circular throughout. Nothing here models eccentricity, perturbations or drag.
 
 """
 
-import math
 import os
 from pathlib import Path
 
+import numpy as np
 import yaml
 from pydantic import BaseModel, ConfigDict
 
@@ -106,7 +106,7 @@ class Orbit(BaseModel):
         -------
         period : Quantity
         """
-        return (2 * math.pi * (self.radius**3 / MU_EARTH) ** 0.5).to("s")
+        return (2 * np.pi * (self.radius**3 / MU_EARTH) ** 0.5).to("s")
 
     @property
     def orbits_per_day(self):

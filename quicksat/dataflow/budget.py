@@ -48,7 +48,7 @@ class Generation(BaseModel):
     @classmethod
     def _at_most_all_of_the_orbit(cls, value):
         """A payload cannot collect for more than the whole orbit."""
-        if value.to("dimensionless").magnitude > 1:
+        if value > 1:
             raise ValueError(f"Duty cycle must not exceed 100%, got '{value}'")
         return value
 
