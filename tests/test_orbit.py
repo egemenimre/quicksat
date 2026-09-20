@@ -85,8 +85,8 @@ def test_missing_file():
         Orbit.from_yaml_file("no/such/orbit.yaml")
 
 
-def test_sample_file_loads():
-    orbit = Orbit.from_yaml_file("sample/data/orbit.yaml")
+def test_input_file_loads(data_dir):
+    orbit = Orbit.from_yaml_file(data_dir / "orbit.yaml")
     assert_allclose(orbit.altitude, Q_(500.0, "km"))
     assert_allclose(orbit.period, Q_(5677.0, "s"), atol=0.5)
 

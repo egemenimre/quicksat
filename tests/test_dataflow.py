@@ -170,9 +170,9 @@ def test_missing_file():
         DataFlowModel.from_yaml_file("no/such/model.yaml")
 
 
-def test_sample_files_load():
+def test_input_files_load(data_dir):
     budget = DataBudget.from_yaml_file(
-        "sample/data/pl_dataflow_model.yaml", "sample/data/orbit.yaml"
+        data_dir / "pl_dataflow_model.yaml", data_dir / "orbit.yaml"
     )
     assert_allclose(budget.margin, Q_(0.12, "dimensionless"), rtol=1e-3)
 
