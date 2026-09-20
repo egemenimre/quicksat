@@ -13,7 +13,7 @@ lets the report be exercised against a bare frame.
 
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 from pandas.io.formats.style import Styler
@@ -108,7 +108,7 @@ _COLUMN_HEADERS = {
 }
 
 
-def _row(name: str, row_type: str, **values) -> dict:
+def _row(name: str, row_type: str, **values) -> dict[str, Any]:
     """
     One row of the tabulated report, with everything not supplied left blank.
 
@@ -127,10 +127,10 @@ def _row(name: str, row_type: str, **values) -> dict:
 
     Returns
     -------
-    row : dict
+    row : dict[str, Any]
         One report row, with unsupplied columns left blank
     """
-    row = dict.fromkeys(_REPORT_COLUMNS, NAN)
+    row: dict[str, Any] = dict.fromkeys(_REPORT_COLUMNS, NAN)
     row.update(equipment_id="", location="", subsystem="", comments="")
     row.update(name=name, row_type=row_type)
     row.update(values)
@@ -183,6 +183,7 @@ def _assemble(
         for subsystem in block["subsystem"].drop_duplicates():
             items = block[block["subsystem"] == subsystem]
             item_margined = _with_margin(items)
+            item: Any  # itertuples() fields are columns, invisible to a checker
             for item in items.itertuples():
                 rows.append(
                     _row(

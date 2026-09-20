@@ -112,13 +112,13 @@ class DataFlowModel(BaseModel):
     storage: Storage
 
     @classmethod
-    def from_yaml_file(cls, file_path: Path) -> "DataFlowModel":
+    def from_yaml_file(cls, file_path: str | Path) -> "DataFlowModel":
         """
         Initialise the dataflow model from a YAML file.
 
         Parameters
         ----------
-        file_path : Path
+        file_path : str | Path
             Filepath containing the payload dataflow model (YAML)
 
         Returns
@@ -176,7 +176,9 @@ class DataBudget:
         self.orbit = orbit
 
     @classmethod
-    def from_yaml_file(cls, model_path: Path, orbit_path: Path) -> "DataBudget":
+    def from_yaml_file(
+        cls, model_path: str | Path, orbit_path: str | Path
+    ) -> "DataBudget":
         """
         Build a data budget from a payload dataflow model and an orbit file.
 
@@ -185,9 +187,9 @@ class DataBudget:
 
         Parameters
         ----------
-        model_path : Path
+        model_path : str | Path
             Filepath of the payload dataflow model (YAML)
-        orbit_path : Path
+        orbit_path : str | Path
             Filepath of the shared orbit (YAML)
 
         Returns
@@ -300,7 +302,7 @@ class DataBudget:
             "dimensionless"
         )
 
-    def storage_required(self, orbits_without_contact: float = None):
+    def storage_required(self, orbits_without_contact: float | None = None):
         """
         Onboard storage needed to cover a run of orbits with no usable contact.
 

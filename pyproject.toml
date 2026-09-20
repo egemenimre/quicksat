@@ -58,6 +58,13 @@ ignore = ["E203", "E266", "E501"]
 [tool.ruff.lint.isort]
 known-first-party = ["quicksat"]
 
+[tool.pyright]
+# The quantity types in utils/parser_helpers are built by a factory, so they are
+# function return values rather than statically visible aliases, and pyright will
+# not accept one in a type expression. pint's own Quantity alias trips the same
+# rule. Nothing else here writes a type expression this rule would catch.
+reportInvalidTypeForm = "none"
+
 [tool.pytest.ini_options]
 
 [tool.coverage.report]

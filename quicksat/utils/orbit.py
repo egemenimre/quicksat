@@ -45,13 +45,13 @@ class Orbit(BaseModel):
     inclination: AngleQty
 
     @classmethod
-    def from_yaml_file(cls, file_path: Path) -> "Orbit":
+    def from_yaml_file(cls, file_path: str | Path) -> "Orbit":
         """
         Initialise the orbit from a YAML file.
 
         Parameters
         ----------
-        file_path : Path
+        file_path : str | Path
             Filepath containing the orbit data (YAML)
 
         Returns

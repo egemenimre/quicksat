@@ -10,6 +10,7 @@ Mass budget assembly and reporting.
 
 import os
 from pathlib import Path
+from typing import cast
 
 import pandas as pd
 import yaml
@@ -90,13 +91,13 @@ class BudgetConfig(BaseModel):
     locations: dict[str, LocationConfig] = Field(default_factory=dict)
 
     @classmethod
-    def from_yaml_file(cls, file_path: Path) -> "BudgetConfig":
+    def from_yaml_file(cls, file_path: str | Path) -> "BudgetConfig":
         """
         Initialise the budget config from a YAML file.
 
         Parameters
         ----------
-        file_path : Path
+        file_path : str | Path
             Filepath containing the config data (YAML)
 
         Returns
@@ -211,15 +212,15 @@ class MassBudget:
         )
 
     @classmethod
-    def from_csv(cls, csv_path: Path, config_path: Path) -> "MassBudget":
+    def from_csv(cls, csv_path: str | Path, config_path: str | Path) -> "MassBudget":
         """
         Build a mass budget from an equipment CSV and a config YAML.
 
         Parameters
         ----------
-        csv_path : Path
+        csv_path : str | Path
             Filepath of the equipment list (CSV)
-        config_path : Path
+        config_path : str | Path
             Filepath of the budget config (YAML)
 
         Returns
@@ -641,7 +642,7 @@ class MassBudget:
             One row per distinct value, with a single `mass` column
         """
         frame = self.resolve(**kwargs)
-        return frame.groupby(column, sort=True)[["mass"]].sum()
+        return cast(pd.DataFrame, frame.groupby(column, sort=True)[["mass"]].sum())
 
     def _mass(
         self,
