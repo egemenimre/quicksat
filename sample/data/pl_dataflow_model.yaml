@@ -1,0 +1,17 @@
+# Payload dataflow model: what the instrument generates, what the downlink clears,
+# and what has to be held on board in between.
+#
+# Orbit comes from orbit.yaml.
+
+generation:
+  raw_datarate: 1000 Mbit/s   # before compression; 416.67 Mbit/s after
+  compression_ratio: 2.4
+  duty_cycle: 5 %          # of each orbit: daytime, full VNIR
+
+downlink:
+  rate: 800 Mbit/s              # X-band transmitter throughput
+  contacts_per_day: 7           # usable ground contacts, from Mission Analysis
+  avg_contact_duration: 6 min   # average usable contact
+
+storage:
+  orbits_without_contact: 3   # sizing case for the mass memory

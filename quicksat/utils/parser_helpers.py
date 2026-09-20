@@ -102,5 +102,21 @@ no other dimension: it rejects `500 km` but cannot tell `97.4 deg` from a bare
 """
 
 
+DataRateQty = non_negative_quantity("1/[time]", "data rate")
+"""Annotated Quantity type for data rates.
+
+Bits are dimensionless in pint, so a data rate has the dimensionality of a
+frequency. This rejects `500 km` but cannot tell `800 Mbit/s` from `800 MHz`.
+"""
+
+TimeQty = non_negative_quantity("[time]", "time")
+"""Annotated Quantity type restricted to non-negative durations."""
+
+FractionQty = non_negative_quantity("", "fraction")
+"""Annotated Quantity type for dimensionless fractions, written as percentages.
+
+pint reads `5 %` as 0.05, so a duty cycle can be entered either way.
+"""
+
 NoSpaceStr = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\S+$")]
 """String field that must not contain whitespace, used for the grouping axes."""
