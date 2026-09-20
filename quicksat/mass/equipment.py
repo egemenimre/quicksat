@@ -24,7 +24,7 @@ class MassClass(str, Enum):
 
     PROPELLANT = "propellant"
     """Consumable. Counted only when `with_propellant` is set, and never margined —
-    propellant uncertainty is defined as a delta-V reserve, not as mass contingency."""
+    propellant uncertainty is defined as a delta-V margin, not as mass contingency."""
 
 
 def _default_mass_class(v):

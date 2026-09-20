@@ -102,6 +102,17 @@ no other dimension: it rejects `500 km` but cannot tell `97.4 deg` from a bare
 """
 
 
+PlainQty = Annotated[
+    u.Quantity,
+    BeforeValidator(_parse_quantity),
+    PlainSerializer(_serialize_quantity, return_type=str),
+]
+"""Annotated Quantity type that is parsed but not dimension-checked.
+
+For a column whose dimension depends on another field, where the check has to be
+a model validator rather than a field one.
+"""
+
 DataRateQty = non_negative_quantity("1/[time]", "data rate")
 """Annotated Quantity type for data rates.
 
