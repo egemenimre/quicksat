@@ -17,16 +17,16 @@ pcdu,Airbus PCDU,Platform,Platform,EPS,14.0 kg,10,1,equipment,
 obc,SSTL OBC750,Platform,Platform,OBDH,3.2 kg,5,2,equipment,Cold redundant
 mass_memory,SSDR 2 TB,Platform,Platform,OBDH,4.5 kg,15,1,equipment,
 s_band_tx,S-band transceiver,Platform,Platform,COMM,1.8 kg,5,2,equipment,
-x_band_tx,X-band downlink chain,Platform,Platform,COMM,5.5 kg,15,1,equipment,
+x_band_tx,X-band transmitter,Platform,Platform,COMM,5.5 kg,15,1,equipment,
 s_band_ant,S-band patch antenna,Platform,Platform,COMM,0.3 kg,10,4,equipment,
-x_band_ant,X-band horn,Platform,Platform,COMM,2.4 kg,10,1,equipment,
+x_band_ant,X-band patch antenna,Platform,Platform,COMM,0.4 kg,10,2,equipment,
 primary_structure,CFRP central tube,Platform,Platform,Structure,48.0 kg,20,1,equipment,
 side_panels,Sandwich side panels,Platform,Platform,Structure,26.0 kg,20,1,equipment,
 mli,Multi-layer insulation,Platform,Platform,Thermal,6.5 kg,20,1,equipment,
 heaters,Heater lines and thermistors,Platform,Platform,Thermal,2.2 kg,15,1,equipment,
 thruster,Hydrazine 1 N thruster,Platform,Platform,Propulsion,0.35 kg,10,4,equipment,
 tank,Propellant tank,Platform,Platform,Propulsion,8.8 kg,15,1,equipment,
-hydrazine,Hydrazine load,Platform,Platform,Propulsion,22.0 kg,0,1,propellant,No mass margin; carried as delta-V reserve
+hydrazine,Hydrazine load,Platform,Platform,Propulsion,22.0 kg,0,1,propellant,No mass margin; carried as delta-V margin
 sep_ring_sat,"Adapter ring, satellite side",Platform,Platform,Structure,9.0 kg,10,1,equipment,Stays with the satellite
 sep_ring_lv,"Adapter ring, launcher side",Launcher,Launcher,Structure,11.0 kg,10,1,equipment,Stays with the launcher
 clampband,Clampband and pyros,Launcher,Launcher,Structure,4.2 kg,10,1,equipment,Stays with the launcher
