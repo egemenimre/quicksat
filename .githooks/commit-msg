@@ -1,0 +1,22 @@
+#!/bin/sh
+# Reject commit messages that credit Claude as a co-author.
+#
+# Claude Code's system prompt tells the model to end every commit message with
+# a Co-Authored-By trailer naming the model. This repository does not want one.
+# Saying so in the project's instructions has not held -- the trailer has been
+# reintroduced twice and pushed once -- so the rule is enforced here, where a
+# model cannot talk its way past it.
+#
+# Enabled per clone, since git does not track .git/hooks:
+#     git config core.hooksPath .githooks
+
+pattern='^[[:space:]]*Co-authored-by:.*\(claude\|anthropic\)'
+
+if grep -qi "$pattern" "$1"; then
+    echo "commit-msg: refusing a Co-Authored-By trailer crediting Claude." >&2
+    echo >&2
+    grep -in "$pattern" "$1" | sed 's/^/    /' >&2
+    echo >&2
+    echo "Remove the line and commit again." >&2
+    exit 1
+fi
