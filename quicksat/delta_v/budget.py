@@ -404,12 +404,11 @@ class DeltaVBudget:
         frame = self._frame
         years = self.config.mission.duration.to("year").magnitude
 
-        each = [
-            self._manoeuvre_deltav(row) * row.loss_factor for row in frame.itertuples()
-        ]
-        occurrences = [
-            row.count * (years if row.recurring else 1) for row in frame.itertuples()
-        ]
+        row: Any  # itertuples() fields are columns, invisible to a checker
+        each, occurrences = [], []
+        for row in frame.itertuples():
+            each.append(self._manoeuvre_deltav(row) * row.loss_factor)
+            occurrences.append(row.count * (years if row.recurring else 1))
 
         return frame.assign(
             deltav_each=each,

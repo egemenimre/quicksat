@@ -223,8 +223,8 @@ def _style(report: pd.DataFrame, comments: bool, loss_factor: bool) -> Styler:
     headers = [_HEADERS[name] for name in report.columns if name not in hidden]
 
     return (
-        report.style.format(_FORMATS, na_rep="")
-        .apply(_bold_summary, axis=1)
+        report.style.format(_FORMATS, na_rep="")  # pyright: ignore[reportArgumentType]
+        .apply(_bold_summary, axis=1)  # pyright: ignore[reportAttributeAccessIssue]
         .hide(axis="index")
         .hide(hidden, axis="columns")
         .relabel_index(headers, axis="columns")

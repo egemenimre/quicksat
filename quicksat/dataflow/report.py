@@ -215,7 +215,7 @@ def _style(report: pd.DataFrame) -> Styler:
 
     return (
         report.style.format({"value": "{:,.2f}"}, na_rep="")
-        .apply(_bold_results, axis=1)
+        .apply(_bold_results, axis=1)  # pyright: ignore[reportAttributeAccessIssue]
         .hide(axis="index")
         .hide(["row_type"], axis="columns")
         .relabel_index(headers, axis="columns")

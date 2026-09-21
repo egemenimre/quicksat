@@ -299,7 +299,7 @@ class MassBudget:
             )
             frame = frame[retained]
 
-        return frame.assign(mass=self._mass(frame, sys_margin, eqpt_margin, propellant))
+        return frame.assign(mass=self._mass(frame, sys_margin, eqpt_margin, propellant))  # pyright: ignore[reportArgumentType]
 
     def total_mass(
         self,
@@ -782,14 +782,14 @@ def _harness_frame(frame: pd.DataFrame, config: BudgetConfig) -> pd.DataFrame:
     records = []
 
     for location, group in hardware.groupby("location", sort=True):
-        location_config = config.for_location(location)
+        location_config = config.for_location(location)  # pyright: ignore[reportArgumentType]
         base_kg = group["eqpt_total_mass"].sum()
         harness_kg = base_kg * location_config.harness_fraction / 100.0
         if harness_kg <= 0:
             continue
         records.append(
             {
-                "equipment_id": f"harness_{location.lower()}",
+                "equipment_id": f"harness_{location.lower()}",  # pyright: ignore[reportAttributeAccessIssue]
                 "equipment_name": f"{location} harness",
                 "location": location,
                 "responsibility": location,

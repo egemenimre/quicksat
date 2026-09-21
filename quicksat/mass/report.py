@@ -169,7 +169,7 @@ def _assemble(
     is_propellant = frame["mass_class"] == MassClass.PROPELLANT.value
     hardware = frame[~is_propellant]
     if in_orbit:
-        retained = hardware["location"].map(
+        retained = hardware["location"].map(  # pyright: ignore[reportAttributeAccessIssue]
             lambda name: config.for_location(name).retained_in_orbit
         )
         hardware = hardware[retained]
@@ -177,14 +177,14 @@ def _assemble(
     rows = []
     totals = []
 
-    for location in hardware["location"].drop_duplicates():
+    for location in hardware["location"].drop_duplicates():  # pyright: ignore[reportAttributeAccessIssue]
         block = hardware[hardware["location"] == location]
 
-        for subsystem in block["subsystem"].drop_duplicates():
+        for subsystem in block["subsystem"].drop_duplicates():  # pyright: ignore[reportAttributeAccessIssue]
             items = block[block["subsystem"] == subsystem]
-            item_margined = _with_margin(items)
+            item_margined = _with_margin(items)  # pyright: ignore[reportArgumentType]
             item: Any  # itertuples() fields are columns, invisible to a checker
-            for item in items.itertuples():
+            for item in items.itertuples():  # pyright: ignore[reportAttributeAccessIssue]
                 rows.append(
                     _row(
                         item.equipment_name,
@@ -213,7 +213,7 @@ def _assemble(
                 )
 
         block_raw = block["eqpt_total_mass"].sum()
-        block_margined = _with_margin(block).sum()
+        block_margined = _with_margin(block).sum()  # pyright: ignore[reportArgumentType]
         margin_pct = config.for_location(location).system_margin
         margin_kg = block_margined * margin_pct / 100.0
 
@@ -320,8 +320,8 @@ def _style(report: pd.DataFrame, comments: bool) -> Styler:
     headers = [_COLUMN_HEADERS[name] for name in report.columns if name not in hidden]
 
     return (
-        report.style.format(_REPORT_FORMATS, na_rep="")
-        .apply(_bold_summary, axis=1)
+        report.style.format(_REPORT_FORMATS, na_rep="")  # pyright: ignore[reportArgumentType]
+        .apply(_bold_summary, axis=1)  # pyright: ignore[reportAttributeAccessIssue]
         .hide(axis="index")
         .hide(hidden, axis="columns")
         .relabel_index(headers, axis="columns")
