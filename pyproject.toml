@@ -5,7 +5,7 @@ build-backend = "flit_core.buildapi"
 [project]
 name = "quicksat"
 version = "0.1.0"
-dependencies = ["pandas", "pint", "pydantic>=2.0", "pyyaml"]
+dependencies = ["numpy", "pandas", "pint", "pydantic>=2.0", "pyyaml"]
 
 requires-python = ">=3.11"
 
