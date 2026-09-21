@@ -28,6 +28,7 @@ _COLUMNS = (
     "name",
     "type",
     "value",
+    "loss_factor",
     "each",
     "occurrences",
     "deltav",
@@ -40,13 +41,19 @@ _HEADERS = {
     "name": "Name",
     "type": "Type",
     "value": "Input",
+    "loss_factor": "Loss factor",
     "each": "ΔV each [m/s]",
     "occurrences": "Times",
     "deltav": "ΔV total [m/s]",
     "comments": "Comments",
 }
 
-_FORMATS = {"each": "{:,.3f}", "occurrences": "{:,.1f}", "deltav": "{:,.2f}"}
+_FORMATS = {
+    "loss_factor": "{:,.3g}",
+    "each": "{:,.3f}",
+    "occurrences": "{:,.1f}",
+    "deltav": "{:,.2f}",
+}
 
 _BOLD_ROW_TYPES = frozenset({"phase_subtotal", "subtotal", "margin", "total"})
 
@@ -56,6 +63,7 @@ def tabulate(
     config: "DeltaVConfig",
     margin: bool = True,
     comments: bool = False,
+    loss_factor: bool = False,
 ) -> Styler:
     """
     The delta-V budget laid out as a document.
@@ -73,13 +81,15 @@ def tabulate(
         Show the margin line and the total that includes it
     comments : bool
         Show the manoeuvre file's comments column
+    loss_factor : bool
+        Show the loss factor each manoeuvre's delta-V was scaled by
 
     Returns
     -------
     report : Styler
         One row per manoeuvre and per subtotal, rendered for reading
     """
-    return _style(_assemble(frame, config, margin), comments)
+    return _style(_assemble(frame, config, margin), comments, loss_factor)
 
 
 def _row(manoeuvre_id: str, name: str, row_type: str, **values) -> dict[str, Any]:
@@ -146,6 +156,7 @@ def _assemble(
                     "manoeuvre",
                     type=item.manoeuvre_type,
                     value=f"{item.value:~.6g}",
+                    loss_factor=item.loss_factor,
                     each=item.deltav_each,
                     occurrences=item.occurrences,
                     deltav=item.deltav_total,
@@ -174,7 +185,7 @@ def _assemble(
     return pd.DataFrame(rows, columns=list(_COLUMNS))
 
 
-def _style(report: pd.DataFrame, comments: bool) -> Styler:
+def _style(report: pd.DataFrame, comments: bool, loss_factor: bool) -> Styler:
     """
     Renders the report for reading: blanks instead of NaN, bold summaries.
 
@@ -188,6 +199,10 @@ def _style(report: pd.DataFrame, comments: bool) -> Styler:
         The assembled report rows
     comments : bool
         Show the comments column
+    loss_factor : bool
+        Show the loss factor column. Off by default: on a budget flown as
+        impulsive it is a column of ones, and worth the width only once some
+        manoeuvre carries a correction
 
     Returns
     -------
@@ -203,6 +218,8 @@ def _style(report: pd.DataFrame, comments: bool) -> Styler:
     hidden = ["row_type"]
     if not comments:
         hidden.append("comments")
+    if not loss_factor:
+        hidden.append("loss_factor")
     headers = [_HEADERS[name] for name in report.columns if name not in hidden]
 
     return (

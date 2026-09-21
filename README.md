@@ -1,6 +1,6 @@
 # quicksat
 
-Basic satellite sizing tool: mass, data and delta-V budgets, with power, battery and radiator sizing to come. Deliberately spartan — the aim is a first-pass sizing, not a full systems engineering environment.
+Basic satellite sizing tool: mass, data and delta-V budgets, with agility and with power, battery and radiator sizing to come. Deliberately spartan — the aim is a first-pass sizing, not a full systems engineering environment.
 
 ## Status
 
@@ -9,6 +9,7 @@ Basic satellite sizing tool: mass, data and delta-V budgets, with power, battery
 | **Mass budget** | implemented |
 | **Data and downlink budget** | implemented |
 | **Delta-V budget** | implemented |
+| **Agility budget** | planned, not yet implemented |
 | **Power, battery and radiator sizing** | not yet specified |
 
 ## The shared orbit
@@ -30,7 +31,7 @@ orbit.orbits_per_day    # 15.22
 orbit.velocity          # 7.61 km/s
 ```
 
-The data budget takes the period and the orbits in a day, delta-V takes the circular velocity. Each budget will read the file itself, or take an already-loaded `Orbit` — `DataBudget(model, orbit)`, `DeltaVBudget(manoeuvres, config, orbit)` — so that several budgets in one session demonstrably fly the same one rather than three parses that merely agree today. Stating the altitude once keeps them from drifting apart, which is what happens the first time the same number is copied into three config files and one of them is retuned. Circular throughout: nothing here models eccentricity, perturbations or drag.
+The data budget takes the period and the orbits in a day, and delta-V takes the circular velocity; the agility budget, when it lands, will take the ground track speed the orbit already derives. Each budget will read the file itself, or take an already-loaded `Orbit` — `DataBudget(model, orbit)`, `DeltaVBudget(manoeuvres, config, orbit)` — so that several budgets in one session demonstrably fly the same one rather than three parses that merely agree today. Stating the altitude once keeps them from drifting apart, which is what happens the first time the same number is copied into three config files and one of them is retuned. Circular throughout: nothing here models eccentricity, perturbations or drag.
 
 ## Mass budget
 
@@ -108,35 +109,42 @@ A positive margin means the backlog clears; a negative one means data accumulate
 A flat list again, one row per manoeuvre, with `phase` and `manoeuvre_type` as the two axes to group over. Each row names a type that says how its `value` becomes a delta-V — a Hohmann transfer between circular altitudes, a collision avoidance hop that is the same transfer doubled when the config says it returns, a plane change at circular velocity, a deorbit impulse, or `given` for anything that needs real analysis done elsewhere. A `recurring` row is counted per year and scaled by the mission duration.
 
 ```csv
-manoeuvre_id,manoeuvre_name,phase,manoeuvre_type,value,count,recurring,comments
-injection_correction,Launcher dispersion correction,Commissioning,altitude_change,12 km,1,false,Semi-major axis dispersion at separation
-drag_makeup,Drag make-up,Operations,altitude_change,1.2 km,1,true,Per year at 500 km solar mean
-collision_avoidance,Collision avoidance,Operations,collision_avoidance,200 m,4,true,Per year; one-way hop as the drag make-up absorbs the return
-deorbit,End-of-life deorbit,Disposal,deorbit,250 km,1,false,Single burn to a 500 x 250 km disposal orbit; natural decay rather than controlled re-entry
+manoeuvre_id,manoeuvre_name,phase,manoeuvre_type,value,count,recurring,loss_factor,comments
+injection_correction,Launcher dispersion correction,Commissioning,altitude_change,12 km,1,false,1.0,Semi-major axis dispersion at separation
+drag_makeup,Drag make-up,Operations,altitude_change,1.2 km,1,true,1.0,Per year at 500 km solar mean
+collision_avoidance,Collision avoidance,Operations,collision_avoidance,200 m,4,true,1.0,Per year; one-way hop as the drag make-up absorbs the return
+deorbit,End-of-life deorbit,Disposal,deorbit,250 km,1,false,1.0,Single burn to a 500 x 250 km disposal orbit; natural decay rather than controlled re-entry
 ```
 
 The `value` column carries whatever its type requires, and is checked against it on load: a length where a velocity belongs is caught at the row that holds it. Margins are one layer rather than two — a single margin on the total, because per-manoeuvre contingency means little when the counts are the uncertain part.
 
+The closed forms are impulsive. `loss_factor` is where you say they are not: a multiplier on one row's delta-V for finite-burn and gravity losses, defaulting to 1.0 and bounded below by it. How large it should be depends on the thrust level and on how the manoeuvre is split into instalments, which is an operational matter, so it is an input rather than a calculation — and it is a different thing from the margin, which covers uncertainty in the counts.
+
 ```python
 from quicksat.delta_v.budget import DeltaVBudget
+from quicksat.mass.budget import MassBudget
 
+spacecraft = MassBudget.from_csv("sample/data/equipment.csv", "sample/data/budget_config.yaml")
 budget = DeltaVBudget.from_csv(
-    "sample/data/manoeuvres.csv", "sample/data/delta_v_config.yaml", "sample/data/orbit.yaml"
+    "sample/data/manoeuvres.csv",
+    "sample/data/delta_v_config.yaml",
+    "sample/data/orbit.yaml",
+    mass_budget=spacecraft,
 )
 
 budget.total_deltav()               # 116.5 m/s, margin included
 budget.total_deltav(margin=False)   # 111.0 m/s
 budget.by_phase()                   # Commissioning 22.3, Operations 19.9, Disposal 74.3
-budget.propellant_mass(dry_mass)    # 24.89 kg, for a 448.6 kg dry spacecraft
+budget.propellant_mass()            # 24.89 kg, from the attached mass budget
 ```
 
-`tabulated_deltav()` lays the budget out as a document: every manoeuvre, a subtotal per phase, then the total before margin, the margin line, and the total with it.
+`tabulated_deltav()` lays the budget out as a document: every manoeuvre, a subtotal per phase, then the total before margin, the margin line, and the total with it. `comments=True` and `loss_factor=True` each add a column that is hidden by default.
 
-`propellant_mass` takes the dry mass as an argument rather than reaching for a `MassBudget`, so the two modules stay decoupled and the sizing loop between them is closed where it can be seen. Nothing is written back: the equipment CSV stays the source of truth for what is actually loaded. In the sample data that loop does not quite close: the budget asks for 24.9 kg where the equipment list carries 22. The disposal choice is what decides it — a single burn to a 500 × 250 km decay orbit costs 74 m/s of the 117 m/s total, where a direct re-entry from the same orbit would cost 152 and put the propellant at 42 kg.
+`propellant_mass` takes the dry mass from a `MassBudget` attached when the delta-V budget is built, or from an argument that overrides it. The attachment is optional and one-directional — `quicksat.delta_v` never imports `quicksat.mass` at runtime — so every other query works with no spacecraft attached. Nothing is written back: the equipment CSV stays the source of truth for what is actually loaded. In the sample data that loop does not quite close: the budget asks for 24.9 kg where the equipment list carries 22. The disposal choice is what decides it — a single burn to a 500 × 250 km decay orbit costs 74 m/s of the 117 m/s total, where a direct re-entry from the same orbit would cost 152 and put the propellant at 42 kg.
 
 ## Documentation
 
-Split along [Diátaxis](https://diataxis.fr/) lines: the sample is there to be followed, the docs to be understood. Files under `docs/` take a `_ref` suffix, so the two halves of a topic cannot be confused.
+Split along [Diátaxis](https://diataxis.fr/) lines: the sample is there to be followed, the docs to be understood. Files under `docs/` take a `_ref` suffix, so the two halves of a topic cannot be confused, and each half reads its own input files — `sample/data/` and `docs/data/` — so that retuning a tutorial cannot quietly falsify a figure quoted in a reference.
 
 | | tutorial and how-to | explanation and reference |
 |---|---|---|

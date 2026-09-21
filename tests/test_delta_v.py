@@ -26,7 +26,9 @@ from quicksat.delta_v.budget import (
     DeltaVConfig,
     deorbit_deltav,
     hohmann_deltav,
+    plane_change_deltav,
 )
+from quicksat.mass.budget import MassBudget
 from quicksat.utils.orbit import Orbit
 
 CONFIG = """
@@ -54,12 +56,15 @@ ROWS = [
 ]
 
 
-def write_budget(tmp_path, rows=None, config=CONFIG, orbit=ORBIT):
+LOSS_HEADER = HEADER.replace("recurring,", "recurring,loss_factor,")
+
+
+def write_budget(tmp_path, rows=None, config=CONFIG, orbit=ORBIT, header=HEADER):
     """Writes a manoeuvre CSV, a config and an orbit, and returns the three paths."""
     csv_path = tmp_path / "manoeuvres.csv"
     config_path = tmp_path / "config.yaml"
     orbit_path = tmp_path / "orbit.yaml"
-    csv_path.write_text("\n".join([HEADER, *(ROWS if rows is None else rows)]))
+    csv_path.write_text("\n".join([header, *(ROWS if rows is None else rows)]))
     config_path.write_text(config)
     orbit_path.write_text(orbit)
     return csv_path, config_path, orbit_path
@@ -276,13 +281,130 @@ def test_report_phase_subtotals_sum_to_the_budget(budget):
 
 def test_report_hides_columns_without_dropping_them(budget):
     report = budget.tabulated_deltav()
-    for column in ("row_type", "comments"):
+    for column in ("row_type", "comments", "loss_factor"):
         assert column in report.data.columns
     assert "Comments" not in report.to_html()
     assert "Comments" in budget.tabulated_deltav(comments=True).to_html()
+
+
+def test_report_shows_the_loss_factor_only_on_request(budget):
+    """A column of ones is not worth the width until some row carries one."""
+    assert "Loss factor" not in budget.tabulated_deltav().to_html()
+    shown = budget.tabulated_deltav(loss_factor=True)
+    assert "Loss factor" in shown.to_html()
+    factors = shown.data.loc[shown.data["row_type"] == "manoeuvre", "loss_factor"]
+    assert (factors == 1.0).all()
+
+
+def test_report_loss_factor_reaches_the_rendered_table(tmp_path):
+    row = "hop,Altitude hop,Operations,altitude_change,1 km,1,false,1.07,"
+    budget = DeltaVBudget.from_csv(*write_budget(tmp_path, [row], header=LOSS_HEADER))
+    html = budget.tabulated_deltav(loss_factor=True).to_html()
+    assert "1.07" in html
 
 
 def test_report_without_margin_stops_at_the_subtotal(budget):
     types = set(budget.tabulated_deltav(margin=False).data["row_type"])
     assert "margin" not in types and "total" not in types
     assert "subtotal" in types
+
+
+# --- the loss factor ---------------------------------------------------------
+
+
+def test_loss_factor_defaults_to_the_impulsive_ideal(budget):
+    """The column is optional: a file without it is priced as an impulsive burn."""
+    assert (budget.manoeuvre_table["loss_factor"] == 1.0).all()
+
+
+def test_loss_factor_scales_the_manoeuvre(tmp_path):
+    """3% of finite-burn loss costs 3% more delta-V, on that row alone."""
+    rows = [
+        "hop,Altitude hop,Operations,altitude_change,1 km,1,false,1.03,",
+        "trim,Plane trim,Commissioning,inclination_change,0.05 deg,1,false,1.0,",
+    ]
+    budget = DeltaVBudget.from_csv(*write_budget(tmp_path, rows, header=LOSS_HEADER))
+    ideal = hohmann_deltav(budget.orbit.radius, budget.orbit.radius + Q_(1, "km"))
+    frame = budget.resolve().set_index("manoeuvre_id")
+    assert_allclose(Q_(frame.loc["hop", "deltav_each"], "m/s"), ideal * 1.03)
+    assert_allclose(
+        Q_(frame.loc["trim", "deltav_each"], "m/s"),
+        plane_change_deltav(budget.orbit.velocity, Q_(0.05, "deg")),
+    )
+
+
+def test_loss_factor_applies_before_the_count(tmp_path):
+    """A recurring row pays the loss on every occurrence, not once."""
+    row = "cam,Collision avoidance,Operations,collision_avoidance,200 m,4,true,1.10,"
+    budget = DeltaVBudget.from_csv(*write_budget(tmp_path, [row], header=LOSS_HEADER))
+    frame = budget.resolve().iloc[0]
+    assert frame.occurrences == pytest.approx(28.0)
+    assert frame.deltav_total == pytest.approx(frame.deltav_each * 28.0)
+    assert frame.deltav_each == pytest.approx(0.1107 * 2 * 1.10, abs=1e-4)
+
+
+def test_loss_factor_below_one_is_rejected(tmp_path):
+    """A burn cannot cost less than the impulsive ideal, so 0.97 is a typo."""
+    row = "hop,Altitude hop,Operations,altitude_change,1 km,1,false,0.97,"
+    with pytest.raises(ValueError, match="greater than or equal to 1"):
+        DeltaVBudget.from_csv(*write_budget(tmp_path, [row], header=LOSS_HEADER))
+
+
+# --- the optional mass budget ------------------------------------------------
+
+
+MASS_CONFIG = """
+locations:
+  Platform:
+    system_margin: 20
+    harness_fraction: 10
+    harness_margin: 10
+"""
+
+MASS_CSV = """\
+equipment_id,equipment_name,location,responsibility,subsystem,\
+unit_mass,eqpt_margin,number_of_units,mass_class,comments
+bus,Bus,Platform,Platform,Structure,400 kg,10,1,equipment,
+fuel,Hydrazine,Platform,Platform,Propulsion,20 kg,0,1,propellant,
+"""
+
+
+@pytest.fixture
+def mass_budget(tmp_path):
+    """A spacecraft of its own, so the delta-V tests do not import the mass ones."""
+    csv_path = tmp_path / "equipment.csv"
+    config_path = tmp_path / "mass_config.yaml"
+    csv_path.write_text(MASS_CSV)
+    config_path.write_text(MASS_CONFIG)
+    return MassBudget.from_csv(csv_path, config_path)
+
+
+def test_propellant_mass_needs_a_dry_mass_from_somewhere(budget):
+    """Unattached and unargued, it says so rather than guessing."""
+    with pytest.raises(ValueError, match="no mass budget attached"):
+        budget.propellant_mass()
+
+
+def test_propellant_mass_falls_back_to_the_attached_budget(tmp_path, mass_budget):
+    """No argument means the in-orbit mass with the tanks empty."""
+    paths = write_budget(tmp_path)
+    attached = DeltaVBudget.from_csv(*paths, mass_budget=mass_budget)
+    loose = DeltaVBudget.from_csv(*paths)
+    assert_allclose(
+        attached.propellant_mass(),
+        loose.propellant_mass(mass_budget.in_orbit_mass(propellant=0)),
+    )
+
+
+def test_an_explicit_dry_mass_overrides_the_attached_budget(tmp_path, mass_budget):
+    """The what-if path: ask for another spacecraft without touching the file."""
+    budget = DeltaVBudget.from_csv(*write_budget(tmp_path), mass_budget=mass_budget)
+    assert budget.propellant_mass(Q_(600, "kg")) > budget.propellant_mass()
+
+
+def test_the_mass_budget_is_not_required(tmp_path):
+    """Every other query works without one, so the coupling stays optional."""
+    budget = DeltaVBudget.from_csv(*write_budget(tmp_path))
+    assert budget.mass_budget is None
+    assert budget.total_deltav().magnitude > 0
+    assert not budget.by_phase().empty

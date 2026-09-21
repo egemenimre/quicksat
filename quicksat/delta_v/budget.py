@@ -20,7 +20,7 @@ out elsewhere.
 import os
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import numpy as np
 import pandas as pd
@@ -30,6 +30,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from quicksat import MU_EARTH, Q_, R_EARTH
 from quicksat.delta_v.report import tabulate
 from quicksat.utils.orbit import Orbit
+
+if TYPE_CHECKING:  # a type annotation only, so quicksat.mass stays unimported
+    from quicksat.mass.budget import MassBudget
+
 from quicksat.utils.parser_helpers import (
     NoSpaceStr,
     PlainQty,
@@ -53,6 +57,7 @@ _FRAME_COLUMNS = (
     "value",
     "count",
     "recurring",
+    "loss_factor",
     "comments",
 )
 
@@ -116,6 +121,15 @@ class Manoeuvre(BaseModel):
 
     recurring: bool = False
     """When set, `count` is per year and is multiplied by the mission duration."""
+
+    loss_factor: Annotated[float, Field(ge=1.0)] = 1.0
+    """Finite-burn and gravity losses, as a multiplier on the closed-form delta-V.
+
+    1.0 is the impulsive assumption the closed forms make; 1.03 asks for 3% more
+    to fly the manoeuvre for real. How much depends on how long each burn arc is
+    and on how the manoeuvre is split into instalments, which is an operational
+    matter this module cannot see -- hence an input rather than a calculation.
+    Bounded below at 1.0: a burn cannot cost less than the impulsive ideal."""
 
     comments: str = ""
     """Free text notes."""
@@ -299,16 +313,30 @@ class DeltaVBudget:
         Mission duration, propulsion and the margin
     orbit : Orbit
         The shared orbit the manoeuvres are flown from
+    mass_budget : MassBudget, optional
+        The spacecraft this budget is flown by, so `propellant_mass` can take the
+        dry mass from it. Optional, and the only place the two modules meet
     """
 
-    def __init__(self, manoeuvres: list[Manoeuvre], config: DeltaVConfig, orbit: Orbit):
+    def __init__(
+        self,
+        manoeuvres: list[Manoeuvre],
+        config: DeltaVConfig,
+        orbit: Orbit,
+        mass_budget: "MassBudget | None" = None,
+    ):
         self.config = config
         self.orbit = orbit
+        self.mass_budget = mass_budget
         self._frame = _frame_from_items(manoeuvres)
 
     @classmethod
     def from_csv(
-        cls, csv_path: str | Path, config_path: str | Path, orbit_path: str | Path
+        cls,
+        csv_path: str | Path,
+        config_path: str | Path,
+        orbit_path: str | Path,
+        mass_budget: "MassBudget | None" = None,
     ) -> "DeltaVBudget":
         """
         Build a delta-V budget from a manoeuvre CSV, a config and an orbit file.
@@ -324,6 +352,8 @@ class DeltaVBudget:
             Filepath of the budget config (YAML)
         orbit_path : str | Path
             Filepath of the shared orbit (YAML)
+        mass_budget : MassBudget, optional
+            The spacecraft this budget is flown by, for `propellant_mass`
 
         Returns
         -------
@@ -345,7 +375,7 @@ class DeltaVBudget:
             except ValidationError as exc:
                 raise ValueError(f"{csv_path}, row {row_number}:\n{exc}") from exc
 
-        return cls(manoeuvres, config, orbit)
+        return cls(manoeuvres, config, orbit, mass_budget)
 
     @property
     def manoeuvre_table(self) -> pd.DataFrame:
@@ -367,15 +397,20 @@ class DeltaVBudget:
         -------
         frame : pd.DataFrame
             The manoeuvres, with `deltav_each` and `deltav_total` columns in m/s
-            and the effective `occurrences` the count resolves to
+            and the effective `occurrences` the count resolves to. `deltav_each`
+            carries the row's `loss_factor`, so it is what the manoeuvre costs to
+            fly rather than the closed form's impulsive ideal
         """
         frame = self._frame
         years = self.config.mission.duration.to("year").magnitude
 
-        each = [self._manoeuvre_deltav(row) for row in frame.itertuples()]
+        each = [
+            self._manoeuvre_deltav(row) * row.loss_factor for row in frame.itertuples()
+        ]
         occurrences = [
             row.count * (years if row.recurring else 1) for row in frame.itertuples()
         ]
+
         return frame.assign(
             deltav_each=each,
             occurrences=occurrences,
@@ -432,19 +467,24 @@ class DeltaVBudget:
         """
         return self._grouped("manoeuvre_type", margin)
 
-    def propellant_mass(self, dry_mass, margin: bool = True):
+    def propellant_mass(self, dry_mass=None, margin: bool = True):
         """
         Propellant needed to deliver the budget, from the rocket equation.
 
-        Takes the dry mass as an argument rather than reaching for a `MassBudget`,
-        so the two modules stay decoupled and the sizing loop is closed where it can
-        be seen. Nothing is written back: the equipment CSV stays the source of
-        truth for what is actually loaded.
+        With no `dry_mass`, takes it from the attached mass budget as the in-orbit
+        mass with the tanks empty -- the final mass of the last burn. Passing one
+        overrides that, which is how a what-if is asked without touching the
+        equipment file, and is the only way to use this method at all when no mass
+        budget is attached.
+
+        Nothing is written back either way: the equipment CSV stays the source of
+        truth for what is actually loaded, and the comparison is left to a human.
 
         Parameters
         ----------
-        dry_mass : Quantity
-            Spacecraft mass with no propellant aboard, the final mass of the burn
+        dry_mass : Quantity, optional
+            Spacecraft mass with no propellant aboard, the final mass of the burn.
+            Defaults to the attached mass budget's `in_orbit_mass(propellant=0)`
         margin : bool
             Include the config's margin in the delta-V
 
@@ -452,12 +492,30 @@ class DeltaVBudget:
         -------
         mass : Quantity
             Propellant required
+
+        Raises
+        ------
+        ValueError
+            If no dry mass is given and no mass budget is attached
         """
+        if dry_mass is None:
+            if self.mass_budget is None:
+                raise ValueError(
+                    "No dry mass given and no mass budget attached. Pass a dry mass, "
+                    "or build the delta-V budget with mass_budget=... to take it "
+                    "from there."
+                )
+            dry_mass = self.mass_budget.in_orbit_mass(propellant=0)
         exhaust_velocity = self.config.propulsion.isp * Q_(1, "standard_gravity")
         ratio = (self.total_deltav(margin) / exhaust_velocity).to("dimensionless")
         return (dry_mass * (np.exp(ratio) - 1)).to("kg")
 
-    def tabulated_deltav(self, margin: bool = True, comments: bool = False):
+    def tabulated_deltav(
+        self,
+        margin: bool = True,
+        comments: bool = False,
+        loss_factor: bool = False,
+    ):
         """
         The budget as a document: every manoeuvre, with subtotals by phase.
 
@@ -467,13 +525,16 @@ class DeltaVBudget:
             Show the margin line and the total that includes it
         comments : bool
             Show the manoeuvre file's comments column
+        loss_factor : bool
+            Show the loss factor each manoeuvre's delta-V was scaled by. Off by
+            default, since on a budget flown as impulsive it is a column of ones
 
         Returns
         -------
         report : Styler
             One row per manoeuvre and per subtotal, rendered for reading
         """
-        return tabulate(self.resolve(), self.config, margin, comments)
+        return tabulate(self.resolve(), self.config, margin, comments, loss_factor)
 
     def _grouped(self, column: str, margin: bool) -> pd.DataFrame:
         """
@@ -558,6 +619,7 @@ def _frame_from_items(manoeuvres: list[Manoeuvre]) -> pd.DataFrame:
             "value": item.value,
             "count": item.count,
             "recurring": item.recurring,
+            "loss_factor": item.loss_factor,
             "comments": item.comments,
         }
         for item in manoeuvres
@@ -565,4 +627,5 @@ def _frame_from_items(manoeuvres: list[Manoeuvre]) -> pd.DataFrame:
     frame = pd.DataFrame(records, columns=list(_FRAME_COLUMNS))
     frame["count"] = frame["count"].astype(float)
     frame["recurring"] = frame["recurring"].astype(bool)
+    frame["loss_factor"] = frame["loss_factor"].astype(float)
     return frame

@@ -1,8 +1,8 @@
-manoeuvre_id,manoeuvre_name,phase,manoeuvre_type,value,count,recurring,comments
-injection_correction,Launcher dispersion correction,Commissioning,altitude_change,12 km,1,false,Semi-major axis dispersion at separation
-inclination_trim,Injection inclination trim,Commissioning,inclination_change,0.05 deg,1,false,Plane error at separation
-phasing,Orbit phasing to the reference slot,Commissioning,given,8 m/s,1,false,From Mission Analysis; needs a real phasing analysis
-drag_makeup,Drag make-up,Operations,altitude_change,1.2 km,1,true,Per year at 500 km solar mean
-collision_avoidance,Collision avoidance,Operations,collision_avoidance,200 m,4,true,Per year; one-way hop as the drag make-up absorbs the return
-inclination_maint,Inclination maintenance,Operations,inclination_change,0.012 deg,1,true,"Per year, holds the sun-synchronous plane"
-deorbit,End-of-life deorbit,Disposal,deorbit,250 km,1,false,Single burn to a 500 x 250 km disposal orbit; natural decay rather than controlled re-entry
+manoeuvre_id,manoeuvre_name,phase,manoeuvre_type,value,count,recurring,loss_factor,comments
+injection_correction,Launcher dispersion correction,Commissioning,altitude_change,12 km,1,false,1.0,Semi-major axis dispersion at separation
+inclination_trim,Injection inclination trim,Commissioning,inclination_change,0.05 deg,1,false,1.0,Plane error at separation
+phasing,Orbit phasing to the reference slot,Commissioning,given,8 m/s,1,false,1.0,From Mission Analysis; needs a real phasing analysis
+drag_makeup,Drag make-up,Operations,altitude_change,1.2 km,1,true,1.0,Per year at 500 km solar mean
+collision_avoidance,Collision avoidance,Operations,collision_avoidance,200 m,4,true,1.0,Per year; one-way hop as the drag make-up absorbs the return
+inclination_maint,Inclination maintenance,Operations,inclination_change,0.012 deg,1,true,1.0,"Per year, holds the sun-synchronous plane"
+deorbit,End-of-life deorbit,Disposal,deorbit,250 km,1,false,1.0,Single burn to a 500 x 250 km disposal orbit; natural decay rather than controlled re-entry
