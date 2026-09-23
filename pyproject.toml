@@ -5,7 +5,15 @@ build-backend = "flit_core.buildapi"
 [project]
 name = "quicksat"
 version = "0.1.0"
-dependencies = ["numpy", "pandas", "pint", "pydantic>=2.0", "pyyaml"]
+dependencies = [
+    "numpy",
+    # output-formatting brings jinja2, which pandas Styler needs -- every report.py
+    # returns one
+    "pandas[output-formatting]",
+    "pint",
+    "pydantic>=2.0",
+    "pyyaml",
+]
 
 requires-python = ">=3.11"
 
