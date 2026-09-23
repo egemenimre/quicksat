@@ -1,9 +1,6 @@
 # Python CircleCI 2.1 configuration file
 version: 2.1
 
-orbs:
-  codecov: codecov/codecov@5.4.3
-
 jobs:
 
   codecov-coverage-report:
@@ -21,14 +18,20 @@ jobs:
             coverage run --source quicksat -m pytest
             coverage xml
             coverage report -m
-      # use_pypi installs the uploader with pip instead of fetching the binary from
-      # cli.codecov.io. That download imports Codecov's PGP key first, and when the key
-      # fetch comes back empty gpg exits 2 and takes the job with it. pip is already
-      # here, so this keeps a verified channel rather than passing skip_validation and
-      # turning the check off altogether.
-      - codecov/upload:
-          files: coverage.xml
-          use_pypi: true
+      # The upload calls the Codecov CLI directly rather than going through the codecov
+      # orb. The orb downloads a signed binary from cli.codecov.io and verifies it with
+      # gpg; on CircleCI that key fetch came back empty, so gpg exited 2 and failed the
+      # job. Its use_pypi parameter is supposed to install from pip and skip the check
+      # instead, but 5.4.3 ignored it and downloaded the binary regardless. Two plain
+      # commands have none of those moving parts, and pip is already here.
+      #
+      # CODECOV_TOKEN comes from the project's environment variables -- the CLI picks it
+      # up on its own. -Z makes a failed upload fail the job rather than pass quietly.
+      - run:
+          name: Upload coverage to Codecov
+          command: |
+            pip install codecov-cli
+            codecovcli upload-coverage --fail-on-error --disable-search --file coverage.xml
 
 
   tests:
