@@ -21,8 +21,14 @@ jobs:
             coverage run --source quicksat -m pytest
             coverage xml
             coverage report -m
+      # use_pypi installs the uploader with pip instead of fetching the binary from
+      # cli.codecov.io. That download imports Codecov's PGP key first, and when the key
+      # fetch comes back empty gpg exits 2 and takes the job with it. pip is already
+      # here, so this keeps a verified channel rather than passing skip_validation and
+      # turning the check off altogether.
       - codecov/upload:
           files: coverage.xml
+          use_pypi: true
 
 
   tests:
