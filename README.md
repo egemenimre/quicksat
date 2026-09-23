@@ -3,7 +3,7 @@
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/egemenimre/quicksat/tree/master.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/egemenimre/quicksat/tree/master)
 [![codecov](https://codecov.io/github/egemenimre/quicksat/graph/badge.svg?token=ANT5QB5UB8)](https://codecov.io/github/egemenimre/quicksat)
 
-Basic satellite sizing tool: mass, data and delta-V budgets, with agility and with power, battery and radiator sizing to come. Deliberately spartan — the aim is a first-pass sizing, not a full systems engineering environment.
+Basic satellite sizing tool: mass, data, delta-V and attitude agility budgets, with power, battery and radiator sizing to come. Deliberately spartan — the aim is a first-pass sizing, not a full systems engineering environment.
 
 ## Status
 
@@ -12,7 +12,7 @@ Basic satellite sizing tool: mass, data and delta-V budgets, with agility and wi
 | **Mass budget** | implemented |
 | **Data and downlink budget** | implemented |
 | **Delta-V budget** | implemented |
-| **Agility budget** | planned, not yet implemented |
+| **Attitude agility budget** | implemented |
 | **Power, battery and radiator sizing** | not yet specified |
 
 ## The shared orbit
@@ -34,7 +34,7 @@ orbit.orbits_per_day    # 15.22
 orbit.velocity          # 7.61 km/s
 ```
 
-The data budget takes the period and the orbits in a day, and delta-V takes the circular velocity; the agility budget, when it lands, will take the ground track speed the orbit already derives. Each budget will read the file itself, or take an already-loaded `Orbit` — `DataBudget(model, orbit)`, `DeltaVBudget(manoeuvres, config, orbit)` — so that several budgets in one session demonstrably fly the same one rather than three parses that merely agree today. Stating the altitude once keeps them from drifting apart, which is what happens the first time the same number is copied into three config files and one of them is retuned. Circular throughout: nothing here models eccentricity, perturbations or drag.
+The data budget takes the period and the orbits in a day, delta-V takes the circular velocity, and agility takes the ground track speed. Each budget will read the file itself, or take an already-loaded `Orbit` — `DataBudget(model, orbit)`, `DeltaVBudget(manoeuvres, config, orbit)`, `AgilityBudget(config, orbit, axis, case)` — so that several budgets in one session demonstrably fly the same one rather than four parses that merely agree today. Stating the altitude once keeps them from drifting apart, which is what happens the first time the same number is copied into three config files and one of them is retuned. Circular throughout: nothing here models eccentricity, perturbations or drag.
 
 ## Mass budget
 
@@ -144,6 +144,71 @@ budget.propellant_mass()            # 24.89 kg, from the attached mass budget
 `tabulated_deltav()` lays the budget out as a document: every manoeuvre, a subtotal per phase, then the total before margin, the margin line, and the total with it. `comments=True` and `loss_factor=True` each add a column that is hidden by default.
 
 `propellant_mass` takes the dry mass from a `MassBudget` attached when the delta-V budget is built, or from an argument that overrides it. The attachment is optional and one-directional — `quicksat.delta_v` never imports `quicksat.mass` at runtime — so every other query works with no spacecraft attached. Nothing is written back: the equipment CSV stays the source of truth for what is actually loaded. In the sample data that loop does not quite close: the budget asks for 24.9 kg where the equipment list carries 22. The disposal choice is what decides it — a single burn to a 500 × 250 km decay orbit costs 74 m/s of the 117 m/s total, where a direct re-entry from the same orbit would cost 152 and put the propellant at 42 kg.
+
+## Attitude agility budget
+
+Rest-to-rest slew performance about one axis. The wheel geometry collapses into two numbers — how much momentum and how much torque the assembly can put about that axis — and the slew arithmetic takes it from there. There is no distribution matrix and no per-wheel loading: a sizing model wants to know whether 40 degrees fits, not how the command is shared between wheels.
+
+Mass properties arrive as **named cases**, as many as the mission needs. A case is either an envelope estimate — a box and a per-axis appendage uplift, whose inertia follows whatever the mass budget reports — or a stated inertia, as a mass properties report gives it. Never both, so there is never a question which of the two produced a number, and the names are yours: nothing in the code matches on them.
+
+```yaml
+inertia_cases:
+  first_guess:               # inertia estimated from a uniform box
+    body:
+      x: 1.5 m
+      y: 1.5 m
+      z: 2.0 m
+    appendage_factor:        # per axis: the appendages are not symmetric
+      roll: 1.07
+      pitch: 1.02
+    propellant: 100 %        # mission point at which the mass budget is read
+
+  measured_bol:              # stated outright, and needs no mass at all
+    inertia:
+      roll: 264.7 kg*m**2
+      pitch: 280.0 kg*m**2
+
+wheels:
+  count: 4                   # pyramid, symmetry axis along yaw
+  elevation: 26.5 deg        # of each wheel above the pyramid base plane
+  momentum: 4.0 N*m*s        # nameplate, per wheel
+  torque: 0.2 N*m
+  momentum_use_factor: 33.3 %   # policy: the rest is disturbance storage
+  torque_derating: 75 %         # policy: the rest is control authority
+
+settling_time: 20 s          # an ADCS property, applied once at the end of a slew
+```
+
+The config carries **no mass** — the mass budget owns that, and a second copy here would drift — and **no target duration**, because how long a manoeuvre may take is a question asked of a spacecraft rather than a property of one.
+
+```python
+from quicksat import u
+from quicksat.agility.budget import AgilityBudget, Axis
+from quicksat.mass.budget import MassBudget
+
+spacecraft = MassBudget.from_csv("sample/data/equipment.csv", "sample/data/mass_budget_config.yaml")
+roll = AgilityBudget.from_yaml_file(
+    "sample/data/agility_config.yaml",
+    "sample/data/orbit.yaml",
+    Axis.ROLL,
+    "first_guess",
+    mass_budget=spacecraft,
+)
+
+roll.slew_time(40 * u.deg)                 # 63.2 s, momentum limited
+roll.total_time(40 * u.deg)                # 83.2 s once settling is added
+roll.time_margin(40 * u.deg, 113 * u.s)    # +35.8% against that target
+roll.achievable_angle(113 * u.s)           # 62.0 deg — the inverse solve
+roll.slew_time(40 * u.deg, degraded=True)  # 117.5 s with one wheel failed
+```
+
+Momentum sets the fastest the spacecraft can turn and torque sets how quickly it gets there. The crossover between them — 6.5° here — is where a triangular accelerate-then-decelerate profile gives way to a trapezoid that coasts at maximum rate. Which of the two binds is the useful output rather than a detail: below the crossover more torque would buy something, above it only more momentum would.
+
+Every capability query takes a `degraded` flag rather than there being a second object. With one of four wheels gone, only two of the three survivors can be driven at full torque if the net in-plane momentum is to stay zero, so both momentum and torque about the axis halve — the same pyramid flying degraded, not a three-wheel mounting.
+
+Roll and pitch run identical machinery, because the pyramid's symmetry axis is along yaw and both lie in its base plane; only the inertia differs, so one implementation serves both and takes the axis as an argument. Yaw is reported but never slewed — it is the weak axis under this mounting, and what a yaw manoeuvre would have to live within.
+
+`tabulated_agility()` renders the slew table as a document. Given a `target_duration` it also checks each angle against it and marks what does not fit; without one those columns are absent rather than merely hidden, because there is nothing to check against. Tying a slew time to the shared orbit's ground track speed turns it into swath given up — 798 km over the 113 s allowance here — which is the currency a payload operator thinks in.
 
 ## Documentation
 
