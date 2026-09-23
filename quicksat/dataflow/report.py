@@ -42,7 +42,7 @@ def tabulate(budget: "DataBudget") -> Styler:
     """
     The data budget laid out as a document.
 
-    One row per quantity, in the order the chain computes them: the orbit, then
+    One row per quantity, in the order the chain computes them: the mission, then
     generation, then downlink, then the margin they produce, then storage.
 
     Parameters
@@ -103,8 +103,8 @@ def _assemble(budget: "DataBudget") -> pd.DataFrame:
     report : pd.DataFrame
         One row per quantity, tagged by `row_type`
     """
-    orbit, generation, downlink = (
-        budget.orbit,
+    mission, generation, downlink = (
+        budget.mission,
         budget.model.generation,
         budget.model.downlink,
     )
@@ -113,12 +113,12 @@ def _assemble(budget: "DataBudget") -> pd.DataFrame:
     rows = [
         _row(
             "Orbital period",
-            orbit.period.to("min").magnitude,
+            mission.period.to("min").magnitude,
             "min",
-            f"{orbit.altitude:~.0f} circular",
+            f"{mission.altitude:~.0f} circular",
             "input",
         ),
-        _row("Orbits per day", orbit.orbits_per_day.magnitude, "-", "", "derived"),
+        _row("Orbits per day", mission.orbits_per_day.magnitude, "-", "", "derived"),
         _row(
             "Data generation rate",
             budget.effective_datarate.magnitude,

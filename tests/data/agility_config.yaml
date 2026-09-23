@@ -2,7 +2,7 @@
 # that slew them, and how long the platform takes to settle afterwards.
 #
 # No mass anywhere. The mass budget owns it, and a second copy here would drift --
-# the same reason altitude lives only in orbit.yaml. Orbit comes from orbit.yaml,
+# the same reason altitude lives only in mission.yaml. Orbit comes from mission.yaml,
 # for ground track speed. The target duration for a manoeuvre is not here
 # either: that is asked of a spacecraft, not a property of one.
 

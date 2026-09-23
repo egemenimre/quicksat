@@ -1,0 +1,12 @@
+# Shared mission. Read by every module that needs any of it: the data budget for
+# period and orbits per day, delta-V for its Hohmann transfers and for scaling the
+# recurring manoeuvres, agility for ground track speed.
+#
+# A fact more than one module can use lives here; a fact only one module can use
+# stays in that module's own config -- the Isp, say.
+#
+# The orbit is circular throughout. quicksat models no eccentricity.
+
+altitude: 500 km
+inclination: 97.4 deg      # sun-synchronous at this altitude
+duration: 7 yr             # design life, scales the recurring manoeuvres

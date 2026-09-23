@@ -4,15 +4,20 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The orbit, and the quantities every budget derives from it.
+The mission, and the quantities every budget derives from it.
 
-The orbit is shared: the data budget needs the period and the orbits in a day,
-delta-V needs the circular velocity, agility needs the ground track speed. Stating
-the altitude once and deriving the rest here keeps the three from drifting apart,
-which is what happens the first time the same altitude is copied into three config
-files and one of them is retuned.
+The mission is shared: the data budget needs the period and the orbits in a day,
+delta-V needs the circular velocity and the design life, agility needs the ground
+track speed. Stating each fact once and deriving the rest here keeps the budgets
+from drifting apart, which is what happens the first time the same altitude is
+copied into three config files and one of them is retuned.
 
-Circular throughout. Nothing here models eccentricity, perturbations or drag.
+Where the spacecraft is and how long it flies are both here for the same reason:
+more than one module can use either. A fact only one module can use stays in that
+module's own config -- the Isp in delta_v_config.yaml, say.
+
+The orbit is circular throughout. Nothing here models eccentricity, perturbations
+or drag.
 
 """
 
@@ -24,12 +29,12 @@ import yaml
 from pydantic import BaseModel, ConfigDict
 
 from quicksat import MU_EARTH, Q_, R_EARTH
-from quicksat.utils.parser_helpers import AngleQty, LengthQty
+from quicksat.utils.parser_helpers import AngleQty, LengthQty, TimeQty
 
 
-class Orbit(BaseModel):
+class Mission(BaseModel):
     """
-    A circular Earth orbit.
+    A mission: a circular Earth orbit, and how long it is flown.
 
     Parameters
     ----------
@@ -37,27 +42,31 @@ class Orbit(BaseModel):
         Height above the WGS-84 equatorial radius
     inclination : Quantity
         Orbit plane inclination; read only by calculations that change the plane
+    duration : Quantity
+        Design life. Scales the recurring delta-V manoeuvres, and the power and
+        radiator work will want it too.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     altitude: LengthQty
     inclination: AngleQty
+    duration: TimeQty
 
     @classmethod
-    def from_yaml_file(cls, file_path: str | Path) -> "Orbit":
+    def from_yaml_file(cls, file_path: str | Path) -> "Mission":
         """
-        Initialise the orbit from a YAML file.
+        Initialise the mission from a YAML file.
 
         Parameters
         ----------
         file_path : str | Path
-            Filepath containing the orbit data (YAML)
+            Filepath containing the mission data (YAML)
 
         Returns
         -------
-        orbit : Orbit
-            Orbit object from the input data
+        mission : Mission
+            Mission object from the input data
         """
         if not file_path:
             raise ValueError("Path is None. No file to be found.")
@@ -68,19 +77,19 @@ class Orbit(BaseModel):
                 return cls.from_yaml_text(file.read())
 
     @classmethod
-    def from_yaml_text(cls, yaml_text: str) -> "Orbit":
+    def from_yaml_text(cls, yaml_text: str) -> "Mission":
         """
-        Initialise the orbit from YAML text.
+        Initialise the mission from YAML text.
 
         Parameters
         ----------
         yaml_text : str
-            Text containing the orbit data (YAML)
+            Text containing the mission data (YAML)
 
         Returns
         -------
-        orbit : Orbit
-            Orbit object from the input data
+        mission : Mission
+            Mission object from the input data
         """
         if not yaml_text:
             raise ValueError("Text content is None.")

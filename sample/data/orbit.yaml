@@ -1,8 +1,0 @@
-# Shared orbit. Read by every module that needs it: the data
-# budget for period and orbits per day, delta-V for its Hohmann transfers,
-# agility for ground track speed.
-#
-# Circular throughout. quicksat models no eccentricity.
-
-altitude: 500 km
-inclination: 97.4 deg      # sun-synchronous at this altitude

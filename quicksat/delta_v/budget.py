@@ -29,7 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from quicksat import MU_EARTH, Q_, R_EARTH
 from quicksat.delta_v.report import tabulate
-from quicksat.utils.orbit import Orbit
+from quicksat.utils.mission import Mission
 
 if TYPE_CHECKING:  # a type annotation only, so quicksat.mass stays unimported
     from quicksat.mass.budget import MassBudget
@@ -153,14 +153,6 @@ class Manoeuvre(BaseModel):
         return self
 
 
-class Mission(BaseModel):
-    """How long the mission lasts, for scaling the recurring manoeuvres."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    duration: TimeQty
-
-
 class Propulsion(BaseModel):
     """What the propulsion system delivers, for the rocket equation."""
 
@@ -181,11 +173,11 @@ class DeltaVConfig(BaseModel):
     """
     Budget settings.
 
-    The orbit is not here: it comes from the shared orbit file, because delta-V is
-    not the only budget that needs it.
+    Neither the orbit nor the mission duration is here: both come from the shared
+    mission file, because delta-V is not the only budget that needs either. What
+    stays is what only this budget can use.
     """
 
-    mission: Mission
     propulsion: Propulsion
     margin: Annotated[float, Field(ge=0)] = 0.0
     """One allowance on the total, as a percentage. Per-manoeuvre contingency is
@@ -310,9 +302,10 @@ class DeltaVBudget:
     manoeuvres : list[Manoeuvre]
         Validated manoeuvre items
     config : DeltaVConfig
-        Mission duration, propulsion and the margin
-    orbit : Orbit
-        The shared orbit the manoeuvres are flown from
+        Propulsion and the margin
+    mission : Mission
+        The shared mission: the orbit the manoeuvres are flown from, and the
+        duration that scales the recurring ones
     mass_budget : MassBudget, optional
         The spacecraft this budget is flown by, so `propellant_mass` can take the
         dry mass from it. Optional, and the only place the two modules meet
@@ -322,11 +315,11 @@ class DeltaVBudget:
         self,
         manoeuvres: list[Manoeuvre],
         config: DeltaVConfig,
-        orbit: Orbit,
+        mission: Mission,
         mass_budget: "MassBudget | None" = None,
     ):
         self.config = config
-        self.orbit = orbit
+        self.mission = mission
         self.mass_budget = mass_budget
         self._frame = _frame_from_items(manoeuvres)
 
@@ -335,14 +328,14 @@ class DeltaVBudget:
         cls,
         csv_path: str | Path,
         config_path: str | Path,
-        orbit_path: str | Path,
+        mission_path: str | Path,
         mass_budget: "MassBudget | None" = None,
     ) -> "DeltaVBudget":
         """
-        Build a delta-V budget from a manoeuvre CSV, a config and an orbit file.
+        Build a delta-V budget from a manoeuvre CSV, a config and a mission file.
 
-        Where several budgets share one orbit, load it once with
-        `Orbit.from_yaml_file` and use the constructor instead.
+        Where several budgets share one mission, load it once with
+        `Mission.from_yaml_file` and use the constructor instead.
 
         Parameters
         ----------
@@ -350,8 +343,8 @@ class DeltaVBudget:
             Filepath of the manoeuvre list (CSV)
         config_path : str | Path
             Filepath of the budget config (YAML)
-        orbit_path : str | Path
-            Filepath of the shared orbit (YAML)
+        mission_path : str | Path
+            Filepath of the shared mission (YAML)
         mass_budget : MassBudget, optional
             The spacecraft this budget is flown by, for `propellant_mass`
 
@@ -361,7 +354,7 @@ class DeltaVBudget:
             The assembled budget
         """
         config = DeltaVConfig.from_yaml_file(Path(config_path))
-        orbit = Orbit.from_yaml_file(Path(orbit_path))
+        mission = Mission.from_yaml_file(Path(mission_path))
         raw = pd.read_csv(csv_path, dtype=str, keep_default_na=False)
 
         missing = [name for name in REQUIRED_COLUMNS if name not in raw.columns]
@@ -375,7 +368,7 @@ class DeltaVBudget:
             except ValidationError as exc:
                 raise ValueError(f"{csv_path}, row {row_number}:\n{exc}") from exc
 
-        return cls(manoeuvres, config, orbit, mass_budget)
+        return cls(manoeuvres, config, mission, mass_budget)
 
     @property
     def manoeuvre_table(self) -> pd.DataFrame:
@@ -402,7 +395,7 @@ class DeltaVBudget:
             fly rather than the closed form's impulsive ideal
         """
         frame = self._frame
-        years = self.config.mission.duration.to("year").magnitude
+        years = self.mission.duration.to("year").magnitude
 
         row: Any  # itertuples() fields are columns, invisible to a checker
         each, occurrences = [], []
@@ -573,13 +566,13 @@ class DeltaVBudget:
         deltav : float
             Magnitude in m/s
         """
-        radius = self.orbit.radius
+        radius = self.mission.radius
         kind = ManoeuvreType(row.manoeuvre_type)
 
         if kind is ManoeuvreType.GIVEN:
             return row.value.to("m/s").magnitude
         if kind is ManoeuvreType.INCLINATION_CHANGE:
-            return plane_change_deltav(self.orbit.velocity, row.value).magnitude
+            return plane_change_deltav(self.mission.velocity, row.value).magnitude
         if kind is ManoeuvreType.DEORBIT:
             return deorbit_deltav(radius, R_EARTH + row.value).magnitude
 

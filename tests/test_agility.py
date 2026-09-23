@@ -25,7 +25,7 @@ from pint.testing import assert_allclose
 from quicksat import Q_
 from quicksat.agility.budget import AgilityBudget, AgilityConfig, Axis, Profile
 from quicksat.mass.budget import MassBudget
-from quicksat.utils.orbit import Orbit
+from quicksat.utils.mission import Mission
 
 CONFIG = """
 inertia_cases:
@@ -61,7 +61,7 @@ wheels:
 settling_time: 20 s
 """
 
-ORBIT = "altitude: 500 km\ninclination: 97.4 deg\n"
+MISSION = "altitude: 500 km\ninclination: 97.4 deg\nduration: 7 yr\n"
 
 MASS_CONFIG = (
     "locations:\n  Platform:\n    system_margin: 0\n"
@@ -102,13 +102,13 @@ def config():
 
 
 @pytest.fixture
-def orbit():
-    return Orbit.from_yaml_text(ORBIT)
+def mission():
+    return Mission.from_yaml_text(MISSION)
 
 
 @pytest.fixture
-def budget(config, orbit):
-    return AgilityBudget(config, orbit, Axis.ROLL, "workbook", mass=WORKBOOK_MASS)
+def budget(config, mission):
+    return AgilityBudget(config, mission, Axis.ROLL, "workbook", mass=WORKBOOK_MASS)
 
 
 @pytest.fixture
@@ -229,56 +229,56 @@ def test_ground_track_ties_the_slew_to_the_orbit(budget):
 # --- the inertia cases -------------------------------------------------------
 
 
-def test_a_stated_case_gives_its_inertia_verbatim(config, orbit):
+def test_a_stated_case_gives_its_inertia_verbatim(config, mission):
     """And needs no mass at all: inertia is the only route mass takes in."""
-    budget = AgilityBudget(config, orbit, Axis.ROLL, "stated")
+    budget = AgilityBudget(config, mission, Axis.ROLL, "stated")
     assert_allclose(budget.inertia, Q_(300.0, "kg * m**2"))
     assert budget.mass_budget is None
     assert budget.slew_time(Q_(40, "deg")).magnitude > 0
 
 
-def test_a_stated_case_is_per_axis(config, orbit):
-    pitch = AgilityBudget(config, orbit, Axis.PITCH, "stated")
+def test_a_stated_case_is_per_axis(config, mission):
+    pitch = AgilityBudget(config, mission, Axis.PITCH, "stated")
     assert_allclose(pitch.inertia, Q_(340.0, "kg * m**2"))
 
 
-def test_an_envelope_case_needs_a_mass_from_somewhere(config, orbit):
-    budget = AgilityBudget(config, orbit, Axis.ROLL, "workbook")
+def test_an_envelope_case_needs_a_mass_from_somewhere(config, mission):
+    budget = AgilityBudget(config, mission, Axis.ROLL, "workbook")
     with pytest.raises(ValueError, match="needs a mass"):
         _ = budget.inertia
 
 
-def test_an_envelope_case_reads_the_budget_at_its_own_propellant(config, orbit, bus):
+def test_an_envelope_case_reads_the_budget_at_its_own_propellant(config, mission, bus):
     """Tanks empty over the mission, so the spacecraft grows more agile with age."""
-    bol = AgilityBudget(config, orbit, Axis.ROLL, "workbook", mass_budget=bus)
-    eol = AgilityBudget(config, orbit, Axis.ROLL, "workbook_eol", mass_budget=bus)
+    bol = AgilityBudget(config, mission, Axis.ROLL, "workbook", mass_budget=bus)
+    eol = AgilityBudget(config, mission, Axis.ROLL, "workbook_eol", mass_budget=bus)
     assert bol.mass > eol.mass
     assert bol.inertia > eol.inertia
     assert bol.slew_time(Q_(40, "deg")) > eol.slew_time(Q_(40, "deg"))
     assert bol.achievable_angle(TARGET_DURATION) < eol.achievable_angle(TARGET_DURATION)
 
 
-def test_an_explicit_mass_wins_over_the_attached_budget(config, orbit, bus):
+def test_an_explicit_mass_wins_over_the_attached_budget(config, mission, bus):
     """The what-if path, and it overrides rather than raising."""
     budget = AgilityBudget(
-        config, orbit, Axis.ROLL, "workbook", mass_budget=bus, mass=WORKBOOK_MASS
+        config, mission, Axis.ROLL, "workbook", mass_budget=bus, mass=WORKBOOK_MASS
     )
     assert_allclose(budget.mass, WORKBOOK_MASS)
     assert_allclose(budget.inertia, Q_(264.7, "kg * m**2"), atol=0.1)
 
 
-def test_cases_give_different_answers(config, orbit):
+def test_cases_give_different_answers(config, mission):
     """Which is the whole point of naming more than one."""
-    stated = AgilityBudget(config, orbit, Axis.ROLL, "stated")
-    envelope = AgilityBudget(config, orbit, Axis.ROLL, "workbook", mass=WORKBOOK_MASS)
+    stated = AgilityBudget(config, mission, Axis.ROLL, "stated")
+    envelope = AgilityBudget(config, mission, Axis.ROLL, "workbook", mass=WORKBOOK_MASS)
     angle = Q_(40, "deg")
     assert stated.slew_time(angle) != envelope.slew_time(angle)
 
 
-def test_an_unknown_case_is_an_error(config, orbit):
+def test_an_unknown_case_is_an_error(config, mission):
     """Rather than a silent fallback answering for a spacecraft nobody asked for."""
     with pytest.raises(KeyError, match="No inertia case named 'typo'"):
-        AgilityBudget(config, orbit, Axis.ROLL, "typo")
+        AgilityBudget(config, mission, Axis.ROLL, "typo")
 
 
 def test_the_config_carries_no_mass(config):
@@ -291,18 +291,18 @@ def test_the_config_carries_no_mass(config):
 # --- the axes ----------------------------------------------------------------
 
 
-def test_pitch_runs_the_same_machinery(budget, config, orbit):
+def test_pitch_runs_the_same_machinery(budget, config, mission):
     """Same wheels, same plane; only the inertia can differ."""
-    pitch = AgilityBudget(config, orbit, Axis.PITCH, "workbook", mass=WORKBOOK_MASS)
+    pitch = AgilityBudget(config, mission, Axis.PITCH, "workbook", mass=WORKBOOK_MASS)
     assert pitch.projection == budget.projection
     assert pitch.axis_momentum() == budget.axis_momentum()
 
 
-def test_a_heavier_axis_slews_more_slowly(orbit):
+def test_a_heavier_axis_slews_more_slowly(mission):
     """Raising the pitch appendage factor must show up as a slower pitch slew."""
     config = AgilityConfig.from_yaml_text(CONFIG.replace("pitch: 1.07", "pitch: 1.30"))
-    roll = AgilityBudget(config, orbit, Axis.ROLL, "workbook", mass=WORKBOOK_MASS)
-    pitch = AgilityBudget(config, orbit, Axis.PITCH, "workbook", mass=WORKBOOK_MASS)
+    roll = AgilityBudget(config, mission, Axis.ROLL, "workbook", mass=WORKBOOK_MASS)
+    pitch = AgilityBudget(config, mission, Axis.PITCH, "workbook", mass=WORKBOOK_MASS)
     assert pitch.inertia > roll.inertia
     assert pitch.slew_time(Q_(40, "deg")) > roll.slew_time(Q_(40, "deg"))
 
@@ -377,7 +377,7 @@ def test_config_missing_file():
 def test_input_files_load(data_dir):
     budget = AgilityBudget.from_yaml_file(
         data_dir / "agility_config.yaml",
-        data_dir / "orbit.yaml",
+        data_dir / "mission.yaml",
         Axis.ROLL,
         "measured_bol",
     )

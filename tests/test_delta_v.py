@@ -29,11 +29,9 @@ from quicksat.delta_v.budget import (
     plane_change_deltav,
 )
 from quicksat.mass.budget import MassBudget
-from quicksat.utils.orbit import Orbit
+from quicksat.utils.mission import Mission
 
 CONFIG = """
-mission:
-  duration: 7 yr
 propulsion:
   isp: 220 s
 margin: 5
@@ -41,7 +39,7 @@ collision_avoidance:
   return_burn: true
 """
 
-ORBIT = "altitude: 500 km\ninclination: 97.4 deg\n"
+MISSION = "altitude: 500 km\ninclination: 97.4 deg\nduration: 7 yr\n"
 
 HEADER = (
     "manoeuvre_id,manoeuvre_name,phase,manoeuvre_type,value,count,recurring,comments"
@@ -59,15 +57,15 @@ ROWS = [
 LOSS_HEADER = HEADER.replace("recurring,", "recurring,loss_factor,")
 
 
-def write_budget(tmp_path, rows=None, config=CONFIG, orbit=ORBIT, header=HEADER):
-    """Writes a manoeuvre CSV, a config and an orbit, and returns the three paths."""
+def write_budget(tmp_path, rows=None, config=CONFIG, mission=MISSION, header=HEADER):
+    """Writes a manoeuvre CSV, a config and a mission, and returns the three paths."""
     csv_path = tmp_path / "manoeuvres.csv"
     config_path = tmp_path / "config.yaml"
-    orbit_path = tmp_path / "orbit.yaml"
+    mission_path = tmp_path / "mission.yaml"
     csv_path.write_text("\n".join([header, *(ROWS if rows is None else rows)]))
     config_path.write_text(config)
-    orbit_path.write_text(orbit)
-    return csv_path, config_path, orbit_path
+    mission_path.write_text(mission)
+    return csv_path, config_path, mission_path
 
 
 @pytest.fixture
@@ -80,24 +78,26 @@ def budget(tmp_path):
 
 def test_hohmann_hop_of_200_m():
     """The pair of impulses for a 200 m raise from the sample orbit."""
-    orbit = Orbit.from_yaml_text(ORBIT)
-    hop = hohmann_deltav(orbit.radius, orbit.radius + Q_(200, "m"))
+    mission = Mission.from_yaml_text(MISSION)
+    hop = hohmann_deltav(mission.radius, mission.radius + Q_(200, "m"))
     assert_allclose(hop, Q_(0.1107, "m/s"), atol=1e-4)
 
 
 def test_hohmann_is_symmetric():
     """Going down costs what going up costs."""
-    orbit = Orbit.from_yaml_text(ORBIT)
-    up = hohmann_deltav(orbit.radius, orbit.radius + Q_(10, "km"))
-    down = hohmann_deltav(orbit.radius + Q_(10, "km"), orbit.radius)
+    mission = Mission.from_yaml_text(MISSION)
+    up = hohmann_deltav(mission.radius, mission.radius + Q_(10, "km"))
+    down = hohmann_deltav(mission.radius + Q_(10, "km"), mission.radius)
     assert_allclose(up, down)
 
 
 def test_deorbit_to_the_surface():
-    orbit = Orbit.from_yaml_text(ORBIT)
+    mission = Mission.from_yaml_text(MISSION)
     from quicksat import R_EARTH
 
-    assert_allclose(deorbit_deltav(orbit.radius, R_EARTH), Q_(144.95, "m/s"), atol=0.01)
+    assert_allclose(
+        deorbit_deltav(mission.radius, R_EARTH), Q_(144.95, "m/s"), atol=0.01
+    )
 
 
 def test_plane_change_costs_more_than_the_same_altitude_change(budget):
@@ -120,7 +120,7 @@ def test_a_longer_mission_costs_more_only_through_the_recurring_rows(tmp_path):
     seven = DeltaVBudget.from_csv(*write_budget(tmp_path))
     fourteen = DeltaVBudget.from_csv(
         *write_budget(
-            tmp_path, config=CONFIG.replace("duration: 7 yr", "duration: 14 yr")
+            tmp_path, mission=MISSION.replace("duration: 7 yr", "duration: 14 yr")
         )
     )
     recurring = seven.resolve().set_index("manoeuvre_id").loc["cam", "deltav_total"]
@@ -171,8 +171,8 @@ def test_return_burn_doubles_only_the_avoidance_line(tmp_path):
 
 def test_an_avoidance_hop_is_two_transfers(budget):
     """With a return burn it is exactly twice the one-way Hohmann."""
-    orbit = Orbit.from_yaml_text(ORBIT)
-    one_way = hohmann_deltav(orbit.radius, orbit.radius + Q_(200, "m"))
+    mission = Mission.from_yaml_text(MISSION)
+    one_way = hohmann_deltav(mission.radius, mission.radius + Q_(200, "m"))
     frame = budget.resolve().set_index("manoeuvre_id")
     assert_allclose(Q_(frame.loc["cam", "deltav_each"], "m/s"), 2 * one_way)
 
@@ -232,17 +232,17 @@ def test_validation_failures(tmp_path, row, expected):
 
 
 def test_missing_column(tmp_path):
-    csv_path, config_path, orbit_path = write_budget(tmp_path)
+    csv_path, config_path, mission_path = write_budget(tmp_path)
     csv_path.write_text("manoeuvre_id,manoeuvre_name\nx,X\n")
     with pytest.raises(ValueError, match="missing columns"):
-        DeltaVBudget.from_csv(csv_path, config_path, orbit_path)
+        DeltaVBudget.from_csv(csv_path, config_path, mission_path)
 
 
 def test_input_files_load(data_dir):
     budget = DeltaVBudget.from_csv(
         data_dir / "manoeuvres.csv",
         data_dir / "delta_v_config.yaml",
-        data_dir / "orbit.yaml",
+        data_dir / "mission.yaml",
     )
     assert_allclose(budget.total_deltav(), Q_(116.5, "m/s"), atol=0.5)
 
@@ -324,12 +324,12 @@ def test_loss_factor_scales_the_manoeuvre(tmp_path):
         "trim,Plane trim,Commissioning,inclination_change,0.05 deg,1,false,1.0,",
     ]
     budget = DeltaVBudget.from_csv(*write_budget(tmp_path, rows, header=LOSS_HEADER))
-    ideal = hohmann_deltav(budget.orbit.radius, budget.orbit.radius + Q_(1, "km"))
+    ideal = hohmann_deltav(budget.mission.radius, budget.mission.radius + Q_(1, "km"))
     frame = budget.resolve().set_index("manoeuvre_id")
     assert_allclose(Q_(frame.loc["hop", "deltav_each"], "m/s"), ideal * 1.03)
     assert_allclose(
         Q_(frame.loc["trim", "deltav_each"], "m/s"),
-        plane_change_deltav(budget.orbit.velocity, Q_(0.05, "deg")),
+        plane_change_deltav(budget.mission.velocity, Q_(0.05, "deg")),
     )
 
 

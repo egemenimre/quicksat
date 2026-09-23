@@ -15,26 +15,30 @@ Basic satellite sizing tool: mass, data, delta-V and attitude agility budgets, w
 | **Attitude agility budget** | implemented |
 | **Power, battery and radiator sizing** | not yet specified |
 
-## The shared orbit
+## The shared mission
 
-Every budget that needs an orbit reads the same file, and derives what it wants from it:
+Every budget that needs to know where the spacecraft is, or how long it flies, reads the same file:
 
 ```yaml
 altitude: 500 km
 inclination: 97.4 deg      # sun-synchronous at this altitude
+duration: 7 yr             # design life
 ```
 
 ```python
-from quicksat.utils.orbit import Orbit
+from quicksat.utils.mission import Mission
 
-orbit = Orbit.from_yaml_file("sample/data/orbit.yaml")
+mission = Mission.from_yaml_file("sample/data/mission.yaml")
 
-orbit.period.to("min")  # 94.6 min
-orbit.orbits_per_day    # 15.22
-orbit.velocity          # 7.61 km/s
+mission.period.to("min")  # 94.6 min
+mission.orbits_per_day    # 15.22
+mission.velocity          # 7.61 km/s
+mission.duration          # 7 yr
 ```
 
-The data budget takes the period and the orbits in a day, delta-V takes the circular velocity, and agility takes the ground track speed. Each budget will read the file itself, or take an already-loaded `Orbit` — `DataBudget(model, orbit)`, `DeltaVBudget(manoeuvres, config, orbit)`, `AgilityBudget(config, orbit, axis, case)` — so that several budgets in one session demonstrably fly the same one rather than four parses that merely agree today. Stating the altitude once keeps them from drifting apart, which is what happens the first time the same number is copied into three config files and one of them is retuned. Circular throughout: nothing here models eccentricity, perturbations or drag.
+The data budget takes the period and the orbits in a day, delta-V takes the circular velocity and the design life that scales its recurring manoeuvres, and agility takes the ground track speed. Each budget will read the file itself, or take an already-loaded `Mission` — `DataBudget(model, mission)`, `DeltaVBudget(manoeuvres, config, mission)`, `AgilityBudget(config, mission, axis, case)` — so that several budgets in one session demonstrably fly the same one rather than four parses that merely agree today.
+
+The rule that decides what belongs here: **a fact more than one module can use lives in this file; a fact only one module can use stays in that module's own config.** So the altitude is here and the Isp is not, and stating each once keeps them from drifting apart, which is what happens the first time the same number is copied into three config files and one of them is retuned. The orbit is circular throughout: nothing here models eccentricity, perturbations or drag.
 
 ## Mass budget
 
@@ -97,7 +101,7 @@ storage:
 ```python
 from quicksat.dataflow.budget import DataBudget
 
-budget = DataBudget.from_yaml_file("sample/data/pl_dataflow_model.yaml", "sample/data/orbit.yaml")
+budget = DataBudget.from_yaml_file("sample/data/pl_dataflow_model.yaml", "sample/data/mission.yaml")
 
 budget.generated_per_day    # 225.00 GB
 budget.downlinked_per_day   # 252.00 GB
@@ -131,7 +135,7 @@ spacecraft = MassBudget.from_csv("sample/data/equipment.csv", "sample/data/mass_
 budget = DeltaVBudget.from_csv(
     "sample/data/manoeuvres.csv",
     "sample/data/delta_v_config.yaml",
-    "sample/data/orbit.yaml",
+    "sample/data/mission.yaml",
     mass_budget=spacecraft,
 )
 
@@ -189,7 +193,7 @@ from quicksat.mass.budget import MassBudget
 spacecraft = MassBudget.from_csv("sample/data/equipment.csv", "sample/data/mass_budget_config.yaml")
 roll = AgilityBudget.from_yaml_file(
     "sample/data/agility_config.yaml",
-    "sample/data/orbit.yaml",
+    "sample/data/mission.yaml",
     Axis.ROLL,
     "first_guess",
     mass_budget=spacecraft,
@@ -208,7 +212,7 @@ Every capability query takes a `degraded` flag rather than there being a second 
 
 Roll and pitch run identical machinery, because the pyramid's symmetry axis is along yaw and both lie in its base plane; only the inertia differs, so one implementation serves both and takes the axis as an argument. Yaw is reported but never slewed — it is the weak axis under this mounting, and what a yaw manoeuvre would have to live within.
 
-`tabulated_agility()` renders the slew table as a document. Given a `target_duration` it also checks each angle against it and marks what does not fit; without one those columns are absent rather than merely hidden, because there is nothing to check against. Tying a slew time to the shared orbit's ground track speed turns it into swath given up — 798 km over the 113 s allowance here — which is the currency a payload operator thinks in.
+`tabulated_agility()` renders the slew table as a document. Given a `target_duration` it also checks each angle against it and marks what does not fit; without one those columns are absent rather than merely hidden, because there is nothing to check against. Tying a slew time to the shared mission's ground track speed turns it into swath given up — 798 km over the 113 s allowance here — which is the currency a payload operator thinks in.
 
 ## Documentation
 
@@ -216,7 +220,7 @@ Split along [Diátaxis](https://diataxis.fr/) lines: the sample is there to be f
 
 | | tutorial and how-to | explanation and reference |
 |---|---|---|
-| Orbit | — | [`docs/orbit_ref.ipynb`](docs/orbit_ref.ipynb) |
+| Mission | — | [`docs/mission_ref.ipynb`](docs/mission_ref.ipynb) |
 | Mass | [`sample/mass_budget.ipynb`](sample/mass_budget.ipynb) | [`docs/mass_budget_ref.ipynb`](docs/mass_budget_ref.ipynb) |
 | Data | [`sample/data_budget.ipynb`](sample/data_budget.ipynb) | [`docs/data_budget_ref.ipynb`](docs/data_budget_ref.ipynb) |
 | Delta-V | [`sample/delta_v_budget.ipynb`](sample/delta_v_budget.ipynb) | [`docs/delta_v_ref.ipynb`](docs/delta_v_ref.ipynb) |

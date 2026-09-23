@@ -1,10 +1,8 @@
 # Delta-V budget settings.
 #
-# Orbit comes from orbit.yaml -- the manoeuvres are flown from it, and the
-# delta-V budget is not the only thing that needs it.
-
-mission:
-  duration: 7 yr           # design life, scales the recurring manoeuvres
+# Orbit and duration both come from mission.yaml: the manoeuvres are flown from the
+# orbit and the recurring ones are scaled by the duration, and the delta-V budget is
+# not the only thing that needs either. What stays here is what only it can use.
 
 propulsion:
   isp: 220 s               # hydrazine monopropellant, for the rocket equation

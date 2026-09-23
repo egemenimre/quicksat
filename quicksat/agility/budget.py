@@ -34,7 +34,7 @@ from quicksat.agility.report import tabulate
 
 if TYPE_CHECKING:  # a type annotation only, so quicksat.mass stays unimported
     from quicksat.mass.budget import MassBudget
-from quicksat.utils.orbit import Orbit
+from quicksat.utils.mission import Mission
 from quicksat.utils.parser_helpers import (
     AngleQty,
     FractionQty,
@@ -319,8 +319,8 @@ class AgilityBudget:
     ----------
     config : AgilityConfig
         Inertia cases, wheels and the settling time
-    orbit : Orbit
-        The shared orbit, for ground track speed
+    mission : Mission
+        The shared mission, for ground track speed
     axis : Axis
         Which axis the slews are about
     case : str
@@ -341,14 +341,14 @@ class AgilityBudget:
     def __init__(
         self,
         config: AgilityConfig,
-        orbit: Orbit,
+        mission: Mission,
         axis: Axis,
         case: str,
         mass_budget: "MassBudget | None" = None,
         mass=None,
     ):
         self.config = config
-        self.orbit = orbit
+        self.mission = mission
         self.axis = Axis(axis)
         self.case_name = case
         self.case = config.for_case(case)
@@ -394,24 +394,24 @@ class AgilityBudget:
     def from_yaml_file(
         cls,
         config_path: str | Path,
-        orbit_path: str | Path,
+        mission_path: str | Path,
         axis: Axis,
         case: str,
         mass_budget: "MassBudget | None" = None,
         mass=None,
     ) -> "AgilityBudget":
         """
-        Build an agility budget from a config and an orbit file.
+        Build an agility budget from a config and a mission file.
 
-        Where several budgets share one orbit, load it once with
-        `Orbit.from_yaml_file` and use the constructor instead.
+        Where several budgets share one mission, load it once with
+        `Mission.from_yaml_file` and use the constructor instead.
 
         Parameters
         ----------
         config_path : str | Path
             Filepath of the agility config (YAML)
-        orbit_path : str | Path
-            Filepath of the shared orbit (YAML)
+        mission_path : str | Path
+            Filepath of the shared mission (YAML)
         axis : Axis
             Which axis the slews are about
         case : str
@@ -428,7 +428,7 @@ class AgilityBudget:
         """
         return cls(
             AgilityConfig.from_yaml_file(Path(config_path)),
-            Orbit.from_yaml_file(Path(orbit_path)),
+            Mission.from_yaml_file(Path(mission_path)),
             axis,
             case,
             mass_budget,
@@ -812,7 +812,7 @@ class AgilityBudget:
         """
         How far the ground track runs while a manoeuvre is flown.
 
-        Ties the slew to the orbit the other budgets already share, which is what
+        Ties the slew to the mission the other budgets already share, which is what
         makes a slew time mean something: it is the swath the satellite gives up.
 
         Parameters
@@ -825,7 +825,7 @@ class AgilityBudget:
         distance : Quantity
             In km
         """
-        return (self.orbit.ground_track_speed * time).to("km")
+        return (self.mission.ground_track_speed * time).to("km")
 
     def tabulated_agility(
         self, angles=None, degraded: bool = False, target_duration=None

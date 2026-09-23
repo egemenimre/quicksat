@@ -20,7 +20,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from quicksat.dataflow.report import tabulate
-from quicksat.utils.orbit import Orbit
+from quicksat.utils.mission import Mission
 from quicksat.utils.parser_helpers import DataRateQty, FractionQty, TimeQty
 
 
@@ -167,30 +167,30 @@ class DataBudget:
     ----------
     model : DataFlowModel
         The payload dataflow model
-    orbit : Orbit
-        The shared orbit, for the period and the orbits in a day
+    mission : Mission
+        The shared mission, for the period and the orbits in a day
     """
 
-    def __init__(self, model: DataFlowModel, orbit: Orbit):
+    def __init__(self, model: DataFlowModel, mission: Mission):
         self.model = model
-        self.orbit = orbit
+        self.mission = mission
 
     @classmethod
     def from_yaml_file(
-        cls, model_path: str | Path, orbit_path: str | Path
+        cls, model_path: str | Path, mission_path: str | Path
     ) -> "DataBudget":
         """
-        Build a data budget from a payload dataflow model and an orbit file.
+        Build a data budget from a payload dataflow model and a mission file.
 
-        Where several budgets share one orbit, load it once with
-        `Orbit.from_yaml_file` and use the constructor instead.
+        Where several budgets share one mission, load it once with
+        `Mission.from_yaml_file` and use the constructor instead.
 
         Parameters
         ----------
         model_path : str | Path
             Filepath of the payload dataflow model (YAML)
-        orbit_path : str | Path
-            Filepath of the shared orbit (YAML)
+        mission_path : str | Path
+            Filepath of the shared mission (YAML)
 
         Returns
         -------
@@ -199,7 +199,7 @@ class DataBudget:
         """
         return cls(
             DataFlowModel.from_yaml_file(Path(model_path)),
-            Orbit.from_yaml_file(Path(orbit_path)),
+            Mission.from_yaml_file(Path(mission_path)),
         )
 
     @property
@@ -224,7 +224,7 @@ class DataBudget:
         duration : Quantity
         """
         duty = self.model.generation.duty_cycle.to("dimensionless")
-        return (duty * self.orbit.period).to("s")
+        return (duty * self.mission.period).to("s")
 
     @property
     def generated_per_orbit(self):
@@ -246,7 +246,7 @@ class DataBudget:
         -------
         volume : Quantity
         """
-        return (self.generated_per_orbit * self.orbit.orbits_per_day).to("GB")
+        return (self.generated_per_orbit * self.mission.orbits_per_day).to("GB")
 
     @property
     def contact_per_day(self):
@@ -282,7 +282,7 @@ class DataBudget:
         -------
         volume : Quantity
         """
-        return (self.downlinked_per_day / self.orbit.orbits_per_day).to("GB")
+        return (self.downlinked_per_day / self.mission.orbits_per_day).to("GB")
 
     @property
     def margin(self):

@@ -20,7 +20,7 @@ from pint.testing import assert_allclose
 
 from quicksat import Q_
 from quicksat.dataflow.budget import DataBudget, DataFlowModel
-from quicksat.utils.orbit import Orbit
+from quicksat.utils.mission import Mission
 
 MODEL = """
 generation:
@@ -35,11 +35,13 @@ storage:
   orbits_without_contact: 3
 """
 
-ORBIT = "altitude: 500 km\ninclination: 97.4 deg\n"
+MISSION = "altitude: 500 km\ninclination: 97.4 deg\nduration: 7 yr\n"
 
 
-def build(model=MODEL, orbit=ORBIT):
-    return DataBudget(DataFlowModel.from_yaml_text(model), Orbit.from_yaml_text(orbit))
+def build(model=MODEL, mission=MISSION):
+    return DataBudget(
+        DataFlowModel.from_yaml_text(model), Mission.from_yaml_text(mission)
+    )
 
 
 @pytest.fixture
@@ -72,7 +74,7 @@ def test_margin(budget):
 
 def test_the_two_periods_are_consistent(budget):
     """Per-day and per-orbit differ by exactly the orbit count, on both sides."""
-    n = budget.orbit.orbits_per_day
+    n = budget.mission.orbits_per_day
     assert_allclose(budget.generated_per_orbit * n, budget.generated_per_day)
     assert_allclose(budget.downlinked_per_orbit * n, budget.downlinked_per_day)
 
@@ -172,7 +174,7 @@ def test_missing_file():
 
 def test_input_files_load(data_dir):
     budget = DataBudget.from_yaml_file(
-        data_dir / "pl_dataflow_model.yaml", data_dir / "orbit.yaml"
+        data_dir / "pl_dataflow_model.yaml", data_dir / "mission.yaml"
     )
     assert_allclose(budget.margin, Q_(0.12, "dimensionless"), rtol=1e-3)
 

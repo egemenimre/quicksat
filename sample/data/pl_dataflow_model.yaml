@@ -1,7 +1,7 @@
 # Payload dataflow model: what the instrument generates, what the downlink clears,
 # and what has to be held on board in between.
 #
-# Orbit comes from orbit.yaml.
+# Orbit comes from mission.yaml.
 
 generation:
   raw_datarate: 1000 Mbit/s   # before compression; 416.67 Mbit/s after
