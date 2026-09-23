@@ -152,6 +152,7 @@ Split along [Diátaxis](https://diataxis.fr/) lines: the sample is there to be f
 | Mass | [`sample/mass_budget.ipynb`](sample/mass_budget.ipynb) | [`docs/mass_budget_ref.ipynb`](docs/mass_budget_ref.ipynb) |
 | Data | [`sample/data_budget.ipynb`](sample/data_budget.ipynb) | [`docs/data_budget_ref.ipynb`](docs/data_budget_ref.ipynb) |
 | Delta-V | [`sample/delta_v_budget.ipynb`](sample/delta_v_budget.ipynb) | [`docs/delta_v_ref.ipynb`](docs/delta_v_ref.ipynb) |
+| Agility | [`sample/agility_roll.ipynb`](sample/agility_roll.ipynb), [`sample/agility_pitch.ipynb`](sample/agility_pitch.ipynb) | [`docs/agility_ref.ipynb`](docs/agility_ref.ipynb) |
 
 The sample notebooks work each budget through against one sample satellite — a small Earth observation platform in a 500 km sun-synchronous orbit — in the order you would actually do it. The reference notebooks sit behind them and say why each piece behaves as it does: the data model, unit handling, the input files field by field, how the derived quantities and the margin layers are worked out, and where each budget stops.
 

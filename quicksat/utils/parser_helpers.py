@@ -131,3 +131,16 @@ pint reads `5 %` as 0.05, so a duty cycle can be entered either way.
 
 NoSpaceStr = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\S+$")]
 """String field that must not contain whitespace, used for the grouping axes."""
+
+MomentumQty = non_negative_quantity("[mass] * [length]**2 / [time]", "angular momentum")
+"""Annotated Quantity type for angular momentum, as a wheel stores it (`4 N*m*s`)."""
+
+TorqueQty = non_negative_quantity("[mass] * [length]**2 / [time]**2", "torque")
+"""Annotated Quantity type for torque.
+
+Torque and energy share a dimensionality, so this rejects `4 N*m*s` but cannot
+tell `0.2 N*m` from `0.2 J` -- the same limitation as `DataRateQty`.
+"""
+
+InertiaQty = non_negative_quantity("[mass] * [length]**2", "moment of inertia")
+"""Annotated Quantity type for a moment of inertia (`264.7 kg*m**2`)."""
