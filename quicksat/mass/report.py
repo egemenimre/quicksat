@@ -21,12 +21,12 @@ from pandas.io.formats.style import Styler
 from quicksat.mass.equipment import MassClass
 
 if TYPE_CHECKING:
-    from quicksat.mass.budget import BudgetConfig
+    from quicksat.mass.budget import MassBudgetConfig
 
 
 def tabulate(
     frame: pd.DataFrame,
-    config: "BudgetConfig",
+    config: "MassBudgetConfig",
     in_orbit: bool = True,
     subsystem_subtotals: bool = False,
     comments: bool = False,
@@ -38,7 +38,7 @@ def tabulate(
     ----------
     frame : pd.DataFrame
         The validated equipment table, harness rows included
-    config : BudgetConfig
+    config : MassBudgetConfig
         Margin settings, keyed on location
     in_orbit : bool
         Drop hardware left with the launcher, and report the in-orbit masses
@@ -139,7 +139,7 @@ def _row(name: str, row_type: str, **values) -> dict[str, Any]:
 
 def _assemble(
     frame: pd.DataFrame,
-    config: "BudgetConfig",
+    config: "MassBudgetConfig",
     in_orbit: bool,
     subsystem_subtotals: bool,
 ) -> pd.DataFrame:
@@ -154,7 +154,7 @@ def _assemble(
     ----------
     frame : pd.DataFrame
         The validated equipment table, harness rows included
-    config : BudgetConfig
+    config : MassBudgetConfig
         Margin settings, keyed on location
     in_orbit : bool
         Drop hardware left with the launcher, and report the in-orbit masses

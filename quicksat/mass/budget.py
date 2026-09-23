@@ -79,7 +79,7 @@ class LocationConfig(BaseModel):
 _LAUNCHER_DEFAULT = LocationConfig(retained_in_orbit=False)
 
 
-class BudgetConfig(BaseModel):
+class MassBudgetConfig(BaseModel):
     """
     Budget settings, keyed on location.
 
@@ -91,7 +91,7 @@ class BudgetConfig(BaseModel):
     locations: dict[str, LocationConfig] = Field(default_factory=dict)
 
     @classmethod
-    def from_yaml_file(cls, file_path: str | Path) -> "BudgetConfig":
+    def from_yaml_file(cls, file_path: str | Path) -> "MassBudgetConfig":
         """
         Initialise the budget config from a YAML file.
 
@@ -102,7 +102,7 @@ class BudgetConfig(BaseModel):
 
         Returns
         -------
-        config : BudgetConfig
+        config : MassBudgetConfig
             Config object from the input data
         """
         if not file_path:
@@ -114,7 +114,7 @@ class BudgetConfig(BaseModel):
                 return cls.from_yaml_text(file.read())
 
     @classmethod
-    def from_yaml_text(cls, yaml_text: str) -> "BudgetConfig":
+    def from_yaml_text(cls, yaml_text: str) -> "MassBudgetConfig":
         """
         Initialise the budget config from YAML text.
 
@@ -125,7 +125,7 @@ class BudgetConfig(BaseModel):
 
         Returns
         -------
-        config : BudgetConfig
+        config : MassBudgetConfig
             Config object from the input data
         """
         if not yaml_text:
@@ -187,11 +187,11 @@ class MassBudget:
     ----------
     equipment : list[Equipment]
         Validated equipment items
-    config : BudgetConfig
+    config : MassBudgetConfig
         Margin and harness settings, keyed on location
     """
 
-    def __init__(self, equipment: list[Equipment], config: BudgetConfig):
+    def __init__(self, equipment: list[Equipment], config: MassBudgetConfig):
         """
         Assembles the budget, validating locations and deriving the harness rows.
 
@@ -199,7 +199,7 @@ class MassBudget:
         ----------
         equipment : list[Equipment]
             Validated equipment items
-        config : BudgetConfig
+        config : MassBudgetConfig
             Margin and harness settings, keyed on location
         """
         self.config = config
@@ -228,7 +228,7 @@ class MassBudget:
         budget : MassBudget
             The assembled budget
         """
-        config = BudgetConfig.from_yaml_file(Path(config_path))
+        config = MassBudgetConfig.from_yaml_file(Path(config_path))
         raw = pd.read_csv(csv_path, dtype=str, keep_default_na=False)
 
         missing = [name for name in REQUIRED_COLUMNS if name not in raw.columns]
@@ -754,7 +754,7 @@ def _check_duplicates(frame: pd.DataFrame) -> None:
         raise ValueError(f"Duplicate (equipment_id, location) pairs: {pairs}")
 
 
-def _harness_frame(frame: pd.DataFrame, config: BudgetConfig) -> pd.DataFrame:
+def _harness_frame(frame: pd.DataFrame, config: MassBudgetConfig) -> pd.DataFrame:
     """
     Derives one harness row per location.
 
@@ -770,7 +770,7 @@ def _harness_frame(frame: pd.DataFrame, config: BudgetConfig) -> pd.DataFrame:
     ----------
     frame : pd.DataFrame
         The equipment table, before harness rows are added
-    config : BudgetConfig
+    config : MassBudgetConfig
         Margin and harness settings, keyed on location
 
     Returns

@@ -65,7 +65,7 @@ Then ask the budget things. Every query takes the same four flags — `propellan
 ```python
 from quicksat.mass.budget import MassBudget
 
-budget = MassBudget.from_csv("sample/data/equipment.csv", "sample/data/budget_config.yaml")
+budget = MassBudget.from_csv("sample/data/equipment.csv", "sample/data/mass_budget_config.yaml")
 
 budget.in_orbit_mass()               # 470.62 kg  - separated wet mass
 budget.on_ground_mass(propellant=0)  # 465.34 kg  - dry mass at launch
@@ -127,7 +127,7 @@ The closed forms are impulsive. `loss_factor` is where you say they are not: a m
 from quicksat.delta_v.budget import DeltaVBudget
 from quicksat.mass.budget import MassBudget
 
-spacecraft = MassBudget.from_csv("sample/data/equipment.csv", "sample/data/budget_config.yaml")
+spacecraft = MassBudget.from_csv("sample/data/equipment.csv", "sample/data/mass_budget_config.yaml")
 budget = DeltaVBudget.from_csv(
     "sample/data/manoeuvres.csv",
     "sample/data/delta_v_config.yaml",
