@@ -1,0 +1,239 @@
+{
+  "description": "510 km sun-synchronous orbit, 10:30 LTAN, nadir pointing (LVLH), six 1 m2 faces. One day at 10 s from 2026-10-01T00:00:00 UTC, SGP4.",
+  "inputs": {
+    "altitude_km": 510.0,
+    "ltan_h": 10.5,
+    "epoch_utc": "2026-10-01T00:00:00.000",
+    "step_s": 10.0,
+    "n_samples": 8640,
+    "tle": [
+      "1 99999U          26274.00000000  .00000000  00000-0  00000+0 0    08",
+      "2 99999  97.4398 167.2426 0000000   0.0000   0.0000 15.19115961    04"
+    ],
+    "area_m2": 1.0,
+    "attitude": "LVLH: x along track, y minus the orbit normal (-h), z nadir (-r); Orekit LOFType.LVLH_CCSDS",
+    "faces": {
+      "velocity": [
+        1,
+        0,
+        0
+      ],
+      "anti-velocity": [
+        -1,
+        0,
+        0
+      ],
+      "orbit normal": [
+        0,
+        -1,
+        0
+      ],
+      "anti orbit normal": [
+        0,
+        1,
+        0
+      ],
+      "nadir": [
+        0,
+        0,
+        1
+      ],
+      "anti-nadir": [
+        0,
+        0,
+        -1
+      ]
+    },
+    "shadow": "cylindrical, spherical Earth of radius 6378.137 km, no penumbra",
+    "flux": "L_sun / (4 pi d^2), d from astropy get_sun"
+  },
+  "derived": {
+    "inclination_deg": 97.43975373708574,
+    "raan_teme_deg": 167.2425911697935,
+    "node_drift_deg_per_day": 0.9856473320990841,
+    "altitude_km": {
+      "mean": 510.0000000417534,
+      "min": 501.04136574504355,
+      "max": 515.8823817029324
+    },
+    "nodal_period_min": 94.85246762101139,
+    "ltan_mean_solar_h": [
+      10.501264664135578,
+      10.501261001651553,
+      10.501257342401512,
+      10.501253683763764,
+      10.50125002232743,
+      10.50124635596089,
+      10.501242682494368,
+      10.501239000587695,
+      10.501235308775051,
+      10.501231614733356,
+      10.501227926948346,
+      10.50122424428277,
+      10.501220565610456,
+      10.50121688900558,
+      10.501213212397232
+    ],
+    "ltan_apparent_solar_h": 10.673854790828496,
+    "beta_deg": {
+      "min": -19.32616711430473,
+      "max": -19.179997464873566
+    }
+  },
+  "whole_orbits": {
+    "n": 14,
+    "first_index": 570,
+    "last_index": 8536
+  },
+  "expected": {
+    "eclipse_fraction_whole_orbits": {
+      "orekit": 0.3690222166436551,
+      "astropy_spike": 0.3690222166436551,
+      "closed_form": 0.3690131182143658
+    },
+    "face_mean_power_w_whole_orbits": {
+      "velocity": {
+        "orekit": 286.66531175469106,
+        "astropy_spike": 286.68424221777974,
+        "closed_form_circular": 285.7691749140866
+      },
+      "anti-velocity": {
+        "orekit": 284.6229254248525,
+        "astropy_spike": 284.62073744249903,
+        "closed_form_circular": 285.7691749140866
+      },
+      "orbit normal": {
+        "orekit": 0.0,
+        "astropy_spike": 0.0,
+        "closed_form_circular": 0.0
+      },
+      "anti orbit normal": {
+        "orekit": 282.5383808088247,
+        "astropy_spike": 282.4705180373085,
+        "closed_form_circular": 282.61611950456046
+      },
+      "nadir": {
+        "orekit": 34.020997999626914,
+        "astropy_spike": 34.02207109855959,
+        "closed_form_circular": 34.16736209006937
+      },
+      "anti-nadir": {
+        "orekit": 408.11925773726847,
+        "astropy_spike": 408.1311747417508,
+        "closed_form_circular": 408.08001648903013
+      }
+    }
+  },
+  "eclipses": {
+    "reference_file": "eclipse_orekit.json",
+    "count": 15,
+    "models": "sphere_point_sun is the counterpart of the cylinder test (the sun's centre at the limb); sphere_/wgs84_ umbra and penumbra are the full-disk edges",
+    "mean_duration_s": {
+      "sphere_point_sun": 2100.4173648352103,
+      "sphere_umbra": 2091.406073644522,
+      "sphere_penumbra": 2109.4261263107487,
+      "wgs84_umbra": 2076.34561947152,
+      "wgs84_penumbra": 2094.358221068939
+    },
+    "astropy_spike": {
+      "entry_s": [
+        1697.9624882340443,
+        7388.680568039425,
+        13079.398735463625,
+        18770.1169911027,
+        24460.8353343606,
+        30151.553766429424,
+        35842.27228730917,
+        41532.99089759588,
+        47223.709597885616,
+        52914.428388178356,
+        58605.14726907014,
+        64295.86624056101,
+        69986.58530384302,
+        75677.30445891619,
+        81368.0237057805
+      ],
+      "exit_s": [
+        3798.014873564251,
+        9488.776779472837,
+        15179.53873544932,
+        20870.300741493702,
+        26561.062797605988,
+        32251.824904382232,
+        37942.58706122637,
+        43633.34926933051,
+        49324.11152869462,
+        55014.8738399148,
+        60705.63620239496,
+        66396.39861732721,
+        72087.1610841155,
+        77777.92360335588,
+        83468.68617504835
+      ],
+      "duration_s": [
+        2100.0523853302066,
+        2100.0962114334116,
+        2100.139999985695,
+        2100.183750391003,
+        2100.227463245388,
+        2100.271137952808,
+        2100.314773917198,
+        2100.3583717346264,
+        2100.4019308090064,
+        2100.445451736443,
+        2100.488933324821,
+        2100.532376766205,
+        2100.575780272484,
+        2100.6191444396973,
+        2100.662469267845
+      ]
+    },
+    "spike_minus_orekit_point_sun": {
+      "apparent_sun": {
+        "entry_s": {
+          "mean": 0.08075881984817292,
+          "min": 0.08068837011433061,
+          "max": 0.08082781506527681
+        },
+        "exit_s": {
+          "mean": 0.021406025093529023,
+          "min": 0.02140474932093639,
+          "max": 0.021406756288342876
+        },
+        "duration_s": {
+          "mean": -0.05935279475464388,
+          "min": -0.05942306574434042,
+          "max": -0.05928246889288857
+        }
+      },
+      "geometric_sun": {
+        "entry_s": {
+          "mean": 0.04141470776953611,
+          "min": 0.041399938592803665,
+          "max": 0.041429770832337454
+        },
+        "exit_s": {
+          "mean": -0.041182587144188196,
+          "min": -0.04119685718615074,
+          "max": -0.04116820676426869
+        },
+        "duration_s": {
+          "mean": -0.08259729491370914,
+          "min": -0.08262662801826082,
+          "max": -0.08256814535707235
+        }
+      },
+      "explained": "With the geometric sun the residual is a symmetric 0.041 s per edge: a point sun at 1 AU casts a shadow that widens behind the Earth by R_E/D = 4.26e-5 rad, 111 m at the 2600 km behind the Earth where the edges fall, crossed at 2.68 km/s. The cylinder has parallel sides. The apparent sun adds ~0.05 s of common shift, which is aberration."
+    }
+  },
+  "agreement_observed": {
+    "lit_flag_mismatches": 0,
+    "face_mean_max_rel_diff_astropy_vs_orekit": 0.00024018956759741528,
+    "sun_direction_offset_arcsec": {
+      "min": 20.481494489169492,
+      "max": 20.488939888040605,
+      "cause": "annual aberration: get_sun is apparent, Orekit geometric"
+    },
+    "face_mean_max_rel_diff_sgp4_vs_closed_form": 0.0042523327123343835
+  }
+}
