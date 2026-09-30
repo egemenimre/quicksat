@@ -31,7 +31,7 @@ There are seven files. The mission file is shared. Each of the other six belongs
 to one budget.
 
 | File | Describes | Used by |
-|---|---|---|
+| --- | --- | --- |
 | `mission.yaml` | The orbit and the design life | data, delta-V, agility |
 | `equipment.csv` | Every item on the satellite, with its mass | mass |
 | `mass_budget_config.yaml` | Margins and harness for each location | mass |
