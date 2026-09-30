@@ -703,7 +703,7 @@ def _frame_from_items(equipment: list[Equipment]) -> pd.DataFrame:
     """
     records = []
     for item in equipment:
-        eqpt_mass = item.unit_mass.to("kg").magnitude
+        eqpt_mass = item.unit_mass.to_value("kg")
         records.append(
             {
                 "equipment_id": item.equipment_id,

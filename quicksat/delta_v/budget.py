@@ -25,9 +25,12 @@ from typing import TYPE_CHECKING, Annotated, Any, cast
 import numpy as np
 import pandas as pd
 import yaml
+
+# astropy.constants creates its constants at import, so pyright cannot see them
+from astropy.constants import g0  # pyright: ignore[reportAttributeAccessIssue]
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from quicksat import MU_EARTH, Q_, R_EARTH
+from quicksat import MU_EARTH, Q_, R_EARTH, u
 from quicksat.delta_v.report import tabulate
 from quicksat.utils.mission import Mission
 
@@ -83,11 +86,11 @@ class ManoeuvreType(str, Enum):
 
 
 _DIMENSIONS = {
-    ManoeuvreType.ALTITUDE_CHANGE: ("[length]", "length"),
-    ManoeuvreType.COLLISION_AVOIDANCE: ("[length]", "length"),
-    ManoeuvreType.INCLINATION_CHANGE: ("", "angle"),
-    ManoeuvreType.DEORBIT: ("[length]", "length"),
-    ManoeuvreType.GIVEN: ("[length]/[time]", "velocity"),
+    ManoeuvreType.ALTITUDE_CHANGE: (u.m, "length"),
+    ManoeuvreType.COLLISION_AVOIDANCE: (u.m, "length"),
+    ManoeuvreType.INCLINATION_CHANGE: (u.deg, "angle"),
+    ManoeuvreType.DEORBIT: (u.m, "length"),
+    ManoeuvreType.GIVEN: (u.m / u.s, "velocity"),
 }
 
 
@@ -143,8 +146,8 @@ class Manoeuvre(BaseModel):
         a velocity belongs is caught at the row that holds it, rather than becoming
         a number that happens to be wrong.
         """
-        dimension, label = _DIMENSIONS[self.manoeuvre_type]
-        if not self.value.check(dimension):
+        unit, label = _DIMENSIONS[self.manoeuvre_type]
+        if not unit.is_equivalent(self.value.unit):
             article = "an" if label[0] in "aeiou" else "a"
             raise ValueError(
                 f"A '{self.manoeuvre_type.value}' manoeuvre needs {article} {label} "
@@ -395,7 +398,7 @@ class DeltaVBudget:
             fly rather than the closed form's impulsive ideal
         """
         frame = self._frame
-        years = self.mission.duration.to("year").magnitude
+        years = self.mission.duration.to_value("yr")
 
         row: Any  # itertuples() fields are columns, invisible to a checker
         each, occurrences = [], []
@@ -498,8 +501,10 @@ class DeltaVBudget:
                     "from there."
                 )
             dry_mass = self.mass_budget.in_orbit_mass(propellant=0)
-        exhaust_velocity = self.config.propulsion.isp * Q_(1, "standard_gravity")
-        ratio = (self.total_deltav(margin) / exhaust_velocity).to("dimensionless")
+        exhaust_velocity = self.config.propulsion.isp * g0
+        ratio = (self.total_deltav(margin) / exhaust_velocity).to(
+            u.dimensionless_unscaled
+        )
         return (dry_mass * (np.exp(ratio) - 1)).to("kg")
 
     def tabulated_deltav(
@@ -570,13 +575,13 @@ class DeltaVBudget:
         kind = ManoeuvreType(row.manoeuvre_type)
 
         if kind is ManoeuvreType.GIVEN:
-            return row.value.to("m/s").magnitude
+            return row.value.to_value("m/s")
         if kind is ManoeuvreType.INCLINATION_CHANGE:
-            return plane_change_deltav(self.mission.velocity, row.value).magnitude
+            return plane_change_deltav(self.mission.velocity, row.value).to_value("m/s")
         if kind is ManoeuvreType.DEORBIT:
-            return deorbit_deltav(radius, R_EARTH + row.value).magnitude
+            return deorbit_deltav(radius, R_EARTH + row.value).to_value("m/s")
 
-        hop = hohmann_deltav(radius, radius + row.value).magnitude
+        hop = hohmann_deltav(radius, radius + row.value).to_value("m/s")
         if kind is ManoeuvreType.COLLISION_AVOIDANCE and (
             self.config.collision_avoidance.return_burn
         ):
@@ -588,7 +593,7 @@ def _frame_from_items(manoeuvres: list[Manoeuvre]) -> pd.DataFrame:
     """
     Flattens validated manoeuvres into the working table.
 
-    `value` stays a pint Quantity rather than being reduced to a float: unlike the
+    `value` stays a Quantity rather than being reduced to a float: unlike the
     mass budget's single dimension, these are lengths, angles and velocities in one
     column, so there is no canonical unit to convert to.
 

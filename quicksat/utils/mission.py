@@ -28,7 +28,7 @@ import numpy as np
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-from quicksat import MU_EARTH, Q_, R_EARTH
+from quicksat import MU_EARTH, Q_, R_EARTH, u
 from quicksat.utils.parser_helpers import AngleQty, LengthQty, TimeQty
 
 
@@ -39,7 +39,7 @@ class Mission(BaseModel):
     Parameters
     ----------
     altitude : Quantity
-        Height above the WGS-84 equatorial radius
+        Height above the Earth's equatorial radius, `R_EARTH`
     inclination : Quantity
         Orbit plane inclination; read only by calculations that change the plane
     duration : Quantity
@@ -129,7 +129,7 @@ class Mission(BaseModel):
         -------
         orbits_per_day : Quantity
         """
-        return (Q_(1, "day") / self.period).to("dimensionless")
+        return (Q_(1, "day") / self.period).to(u.dimensionless_unscaled)
 
     @property
     def velocity(self):

@@ -19,6 +19,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from quicksat import u
 from quicksat.dataflow.report import tabulate
 from quicksat.utils.mission import Mission
 from quicksat.utils.parser_helpers import DataRateQty, FractionQty, TimeQty
@@ -223,7 +224,7 @@ class DataBudget:
         -------
         duration : Quantity
         """
-        duty = self.model.generation.duty_cycle.to("dimensionless")
+        duty = self.model.generation.duty_cycle.to(u.dimensionless_unscaled)
         return (duty * self.mission.period).to("s")
 
     @property
@@ -299,7 +300,7 @@ class DataBudget:
             Dimensionless, so 0.12 is a 12% margin
         """
         return (self.downlinked_per_day / self.generated_per_day - 1).to(
-            "dimensionless"
+            u.dimensionless_unscaled
         )
 
     def storage_required(self, orbits_without_contact: float | None = None):

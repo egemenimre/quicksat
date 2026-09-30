@@ -16,9 +16,9 @@ The fixture is the sample satellite, in a 500 km orbit of 5677 s:
 """
 
 import pytest
-from pint.testing import assert_allclose
+from astropy.tests.helper import assert_quantity_allclose
 
-from quicksat import Q_
+from quicksat import Q_, u
 from quicksat.dataflow.budget import DataBudget, DataFlowModel
 from quicksat.utils.mission import Mission
 
@@ -65,18 +65,20 @@ def budget():
     ],
 )
 def test_chain(budget, attribute, unit, expected):
-    assert_allclose(getattr(budget, attribute), Q_(expected, unit), rtol=1e-4)
+    assert_quantity_allclose(getattr(budget, attribute), Q_(expected, unit), rtol=1e-4)
 
 
 def test_margin(budget):
-    assert_allclose(budget.margin, Q_(0.12, "dimensionless"), rtol=1e-4)
+    assert_quantity_allclose(
+        budget.margin, Q_(0.12, u.dimensionless_unscaled), rtol=1e-4
+    )
 
 
 def test_the_two_periods_are_consistent(budget):
     """Per-day and per-orbit differ by exactly the orbit count, on both sides."""
     n = budget.mission.orbits_per_day
-    assert_allclose(budget.generated_per_orbit * n, budget.generated_per_day)
-    assert_allclose(budget.downlinked_per_orbit * n, budget.downlinked_per_day)
+    assert_quantity_allclose(budget.generated_per_orbit * n, budget.generated_per_day)
+    assert_quantity_allclose(budget.downlinked_per_orbit * n, budget.downlinked_per_day)
 
 
 def test_margin_is_independent_of_the_byte_convention(budget):
@@ -88,26 +90,26 @@ def test_margin_is_independent_of_the_byte_convention(budget):
     """
     decimal = budget.downlinked_per_day.to("GB") / budget.generated_per_day.to("GB")
     binary = budget.downlinked_per_day.to("GiB") / budget.generated_per_day.to("GiB")
-    assert_allclose(decimal, binary)
+    assert_quantity_allclose(decimal, binary)
 
 
 def test_compression_divides_the_raw_rate(budget):
     raw = budget.model.generation.raw_datarate
     ratio = budget.model.generation.compression_ratio
-    assert_allclose(budget.effective_datarate * ratio, raw)
+    assert_quantity_allclose(budget.effective_datarate * ratio, raw)
 
 
 # --- storage -----------------------------------------------------------------
 
 
 def test_storage_defaults_to_the_configured_orbits(budget):
-    assert_allclose(budget.storage_required(), budget.generated_per_orbit * 3)
+    assert_quantity_allclose(budget.storage_required(), budget.generated_per_orbit * 3)
 
 
 def test_storage_scales_with_its_argument(budget):
     one = budget.storage_required(1)
-    assert_allclose(budget.storage_required(6), 6 * one)
-    assert_allclose(budget.storage_required(0), Q_(0.0, "GB"))
+    assert_quantity_allclose(budget.storage_required(6), 6 * one)
+    assert_quantity_allclose(budget.storage_required(0), Q_(0.0, "GB"))
 
 
 # --- the case the tool exists to catch ---------------------------------------
@@ -115,19 +117,19 @@ def test_storage_scales_with_its_argument(budget):
 
 def test_a_negative_margin_when_generation_outruns_downlink():
     budget = build(model=MODEL.replace("duty_cycle: 5 %", "duty_cycle: 10 %"))
-    assert budget.margin.magnitude < 0
+    assert budget.margin.value < 0
     assert budget.generated_per_day > budget.downlinked_per_day
 
 
 def test_margin_responds_to_each_side():
     """More contacts helps; a faster instrument hurts."""
-    base = build().margin.magnitude
+    base = build().margin.value
     more_contacts = build(
         model=MODEL.replace("contacts_per_day: 7", "contacts_per_day: 9")
     )
     faster = build(model=MODEL.replace("raw_datarate: 1000", "raw_datarate: 1200"))
-    assert more_contacts.margin.magnitude > base
-    assert faster.margin.magnitude < base
+    assert more_contacts.margin.value > base
+    assert faster.margin.value < base
 
 
 # --- validation --------------------------------------------------------------
@@ -137,6 +139,10 @@ def test_margin_responds_to_each_side():
     "old, new, expected",
     [
         ("raw_datarate: 1000 Mbit/s", "raw_datarate: 500 km", "data rate dimensions"),
+        # the bit is a unit, so a frequency is not a data rate
+        ("raw_datarate: 1000 Mbit/s", "raw_datarate: 800 MHz", "data rate dimensions"),
+        # and bps is not a unit at all, rather than being read as baud
+        ("raw_datarate: 1000 Mbit/s", "raw_datarate: 800 Mbps", "Mbps"),
         (
             "raw_datarate: 1000 Mbit/s",
             "raw_datarate: -10 Mbit/s",
@@ -176,7 +182,9 @@ def test_input_files_load(data_dir):
     budget = DataBudget.from_yaml_file(
         data_dir / "pl_dataflow_model.yaml", data_dir / "mission.yaml"
     )
-    assert_allclose(budget.margin, Q_(0.12, "dimensionless"), rtol=1e-3)
+    assert_quantity_allclose(
+        budget.margin, Q_(0.12, u.dimensionless_unscaled), rtol=1e-3
+    )
 
 
 # --- the report --------------------------------------------------------------
@@ -186,9 +194,11 @@ def test_report_rows_match_the_properties(budget):
     frame = budget.tabulated_data().data
     value = lambda item: frame.loc[frame["item"] == item, "value"].iloc[0]  # noqa: E731
 
-    assert value("Margin") == pytest.approx(budget.margin.magnitude * 100)
-    assert_allclose(Q_(value("Storage required"), "GB"), budget.storage_required())
-    assert_allclose(
+    assert value("Margin") == pytest.approx(budget.margin.value * 100)
+    assert_quantity_allclose(
+        Q_(value("Storage required"), "GB"), budget.storage_required()
+    )
+    assert_quantity_allclose(
         Q_(value("Data generation rate"), "Mbit/s"), budget.effective_datarate
     )
 

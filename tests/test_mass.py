@@ -26,7 +26,7 @@ The fixture is deliberately small enough to check by hand:
 import itertools
 
 import pytest
-from pint.testing import assert_allclose
+from astropy.tests.helper import assert_quantity_allclose
 
 from quicksat import Q_
 from quicksat.mass.budget import MassBudget
@@ -93,7 +93,7 @@ def budget(tmp_path):
 )
 def test_four_mass_cases(budget, in_orbit, propellant, expected):
     total = budget.total_mass(in_orbit=in_orbit, propellant=propellant)
-    assert_allclose(total, Q_(expected, "kg"))
+    assert_quantity_allclose(total, Q_(expected, "kg"))
 
 
 @pytest.mark.parametrize(
@@ -102,7 +102,9 @@ def test_four_mass_cases(budget, in_orbit, propellant, expected):
 )
 def test_propellant_depletes_linearly(budget, propellant, expected):
     """The 5 kg load burns off in proportion; the endpoints are wet and dry mass."""
-    assert_allclose(budget.in_orbit_mass(propellant=propellant), Q_(expected, "kg"))
+    assert_quantity_allclose(
+        budget.in_orbit_mass(propellant=propellant), Q_(expected, "kg")
+    )
 
 
 def test_propellant_percentage_is_range_checked(budget):
@@ -121,7 +123,9 @@ def test_case_presets_match_the_generic_method(budget):
 
 def test_launcher_hardware_dropped_in_orbit(budget):
     """On-ground less in-orbit mass is exactly the launcher-side hardware."""
-    assert_allclose(budget.on_ground_mass() - budget.in_orbit_mass(), Q_(4.0, "kg"))
+    assert_quantity_allclose(
+        budget.on_ground_mass() - budget.in_orbit_mass(), Q_(4.0, "kg")
+    )
 
 
 # --- the margin flags ----------------------------------------------------------
@@ -139,7 +143,7 @@ def test_launcher_hardware_dropped_in_orbit(budget):
 def test_margin_flags(budget, sys_margin, eqpt_margin, expected):
     """Each margin layer can be switched off independently, including sys-only."""
     total = budget.total_mass(sys_margin=sys_margin, eqpt_margin=eqpt_margin)
-    assert_allclose(total, Q_(expected, "kg"))
+    assert_quantity_allclose(total, Q_(expected, "kg"))
 
 
 def test_propellant_is_never_margined(budget):
@@ -164,7 +168,7 @@ def test_groupings_reconcile(budget, flags):
         budget.by_responsibility(**flags),
         budget.by_subsystem(**flags),
     ):
-        assert_allclose(Q_(view["mass"].sum(), "kg"), expected)
+        assert_quantity_allclose(Q_(view["mass"].sum(), "kg"), expected)
 
 
 def test_harness_takes_its_location_responsibility(budget):
@@ -199,10 +203,10 @@ def test_platform_and_payload_split_the_total(budget):
     """With no mixed responsibilities the two axes agree, and they partition."""
     platform = budget.platform_mass()
     payload = budget.payload_mass()
-    assert_allclose(platform, Q_(30.32, "kg"))  # 24 + 1.32 + 5 propellant
-    assert_allclose(payload, Q_(30.0, "kg"))
-    assert_allclose(platform + payload, budget.in_orbit_mass())
-    assert_allclose(budget.platform_mass(by_responsibility=True), platform)
+    assert_quantity_allclose(platform, Q_(30.32, "kg"))  # 24 + 1.32 + 5 propellant
+    assert_quantity_allclose(payload, Q_(30.0, "kg"))
+    assert_quantity_allclose(platform + payload, budget.in_orbit_mass())
+    assert_quantity_allclose(budget.platform_mass(by_responsibility=True), platform)
 
 
 def test_mixed_responsibility_splits_the_two_axes(tmp_path):
@@ -212,24 +216,30 @@ def test_mixed_responsibility_splits_the_two_axes(tmp_path):
         "tracker,Star tracker,Payload,Platform,ADCS,10 kg,0,1,equipment,",
     ]
     budget = MassBudget.from_csv(*write_budget(tmp_path, rows))
-    assert_allclose(budget.payload_mass(), Q_(40.0, "kg"))
-    assert_allclose(budget.payload_mass(by_responsibility=True), Q_(30.0, "kg"))
-    assert_allclose(budget.platform_mass(by_responsibility=True), Q_(10.0, "kg"))
+    assert_quantity_allclose(budget.payload_mass(), Q_(40.0, "kg"))
+    assert_quantity_allclose(
+        budget.payload_mass(by_responsibility=True), Q_(30.0, "kg")
+    )
+    assert_quantity_allclose(
+        budget.platform_mass(by_responsibility=True), Q_(10.0, "kg")
+    )
 
 
 def test_subsystem_mass_carries_no_system_margin(budget):
     """Platform's 20% must not reach a subsystem sum."""
-    assert_allclose(budget.subsystem_mass("ADCS"), Q_(20.0, "kg"))
-    assert_allclose(budget.subsystem_mass("ADCS", eqpt_margin=False), Q_(10.0, "kg"))
+    assert_quantity_allclose(budget.subsystem_mass("ADCS"), Q_(20.0, "kg"))
+    assert_quantity_allclose(
+        budget.subsystem_mass("ADCS", eqpt_margin=False), Q_(10.0, "kg")
+    )
 
 
 def test_subsystem_mass_picks_up_propellant(budget):
     """Propulsion reports wet because the propellant row names it as its subsystem."""
-    assert_allclose(budget.subsystem_mass("Propulsion"), Q_(5.0, "kg"))
+    assert_quantity_allclose(budget.subsystem_mass("Propulsion"), Q_(5.0, "kg"))
 
 
 def test_propellant_mass(budget):
-    assert_allclose(budget.propellant_mass(), Q_(5.0, "kg"))
+    assert_quantity_allclose(budget.propellant_mass(), Q_(5.0, "kg"))
 
 
 # --- the tabulated report ------------------------------------------------------
@@ -250,7 +260,9 @@ def test_tabulated_wet_total_matches_the_scalar_api(budget, in_orbit, expected_t
 
 def test_tabulated_propellant_row(budget):
     report = budget.tabulated_mass().data
-    assert_allclose(Q_(row_value(report, "propellant"), "kg"), budget.propellant_mass())
+    assert_quantity_allclose(
+        Q_(row_value(report, "propellant"), "kg"), budget.propellant_mass()
+    )
 
 
 def test_tabulated_dry_plus_propellant_is_wet(budget):
@@ -347,7 +359,7 @@ def test_units_are_converted(tmp_path):
     """A mass entered in grams lands in the frame as kilograms."""
     rows = ["imu,IMU,Payload,Payload,ADCS,750 g,0,2,equipment,"]
     budget = MassBudget.from_csv(*write_budget(tmp_path, rows))
-    assert_allclose(budget.total_mass(), Q_(1.5, "kg"))
+    assert_quantity_allclose(budget.total_mass(), Q_(1.5, "kg"))
 
 
 def test_zero_units_contributes_nothing(tmp_path):
@@ -356,13 +368,13 @@ def test_zero_units_contributes_nothing(tmp_path):
         "spare,Spare,Payload,Payload,Optics,99 kg,0,0,equipment,",
     ]
     budget = MassBudget.from_csv(*write_budget(tmp_path, rows))
-    assert_allclose(budget.total_mass(), Q_(30.0, "kg"))
+    assert_quantity_allclose(budget.total_mass(), Q_(30.0, "kg"))
 
 
 def test_blank_mass_class_defaults_to_equipment(tmp_path):
     rows = ["box_b,Box B,Payload,Payload,Optics,20 kg,50,1,,"]
     budget = MassBudget.from_csv(*write_budget(tmp_path, rows))
-    assert_allclose(budget.total_mass(), Q_(30.0, "kg"))
+    assert_quantity_allclose(budget.total_mass(), Q_(30.0, "kg"))
 
 
 @pytest.mark.parametrize(
@@ -370,6 +382,10 @@ def test_blank_mass_class_defaults_to_equipment(tmp_path):
     [
         ("star tracker,Box,Payload,Payload,ADCS,1 kg,0,1,equipment,", "equipment_id"),
         ("box,Box,Payload,Payload,ADCS,100 W,0,1,equipment,", "mass dimensions"),
+        # not a quantity at all: astropy raises TypeError, reported as a bad row
+        ("box,Box,Payload,Payload,ADCS,heavy,0,1,equipment,", "row 2"),
+        # SI units only: imperial units do not parse
+        ("box,Box,Payload,Payload,ADCS,2.4 lb,0,1,equipment,", "lb"),
         ("box,Box,Payload,Payload,ADCS,1 kg,-5,1,equipment,", "eqpt_margin"),
         ("box,Box,Payload,Payload,ADCS,1 kg,0,-1,equipment,", "number_of_units"),
         ("box,Box,Payload,Payload,ADCS,1 kg,0,1,ballast,", "mass_class"),

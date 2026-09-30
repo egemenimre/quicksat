@@ -10,30 +10,27 @@ Basic satellite sizing tool.
 
 __version__ = "0.1.0"
 
-import pint
+from astropy import constants
+from astropy import units as u
+from astropy.units import Quantity
 
-u = pint.UnitRegistry()
-"""The shared unit registry.
+__all__ = ["MU_EARTH", "Q_", "R_EARTH", "u"]
 
-Every `Quantity` in quicksat must originate from this registry — pint refuses to
-combine quantities built by different registries.
+Q_ = Quantity
+"""Shorthand for astropy's `Quantity`, exported the way opticks exports it.
+
+The package builds quantities with the constructor, `Q_(123, "m")`, and parses
+text with `Q_("123 m")`; the notebooks write `123 * u.m` instead.
 """
 
-# make this the registry pint falls back on (e.g. when unpickling)
-pint.set_application_registry(u)
+# astropy.constants creates its constants at import, so pyright cannot see them
+R_EARTH = constants.R_earth  # pyright: ignore[reportAttributeAccessIssue]
+"""Earth equatorial radius: astropy's default, the IAU 2015 nominal 6378.1 km."""
 
-Q_ = u.Quantity
-"""Shorthand for the registry-bound Quantity class."""
+MU_EARTH = constants.GM_earth  # pyright: ignore[reportAttributeAccessIssue]
+"""Earth gravitational parameter: astropy's default, the IAU 2015 nominal GM.
 
-# pint carries standard_gravity, which the rocket equation needs, but no Earth
-# constants. `earth_mu` is the measured GM rather than gravitational_constant x
-# earth_mass: GM is known to about nine significant figures where G is known to
-# five, so deriving it would throw four of them away.
-u.define("earth_radius = 6378.137 km = R_earth")  # WGS-84 equatorial
-u.define("earth_mu = 398600.4418 km**3 / s**2 = GM_earth")  # EGM96
-
-R_EARTH = Q_(1, "earth_radius")
-"""Earth equatorial radius, WGS-84."""
-
-MU_EARTH = Q_(1, "earth_mu")
-"""Earth gravitational parameter, EGM96."""
+A GM rather than G times astropy's `M_earth`. GM is the measured quantity, known
+to about nine significant figures where G is known to about five, and astropy
+derives `M_earth` from the two anyway.
+"""

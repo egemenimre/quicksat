@@ -6,11 +6,11 @@ build-backend = "flit_core.buildapi"
 name = "quicksat"
 version = "0.1.0"
 dependencies = [
+    "astropy",
     "numpy",
     # output-formatting brings jinja2, which pandas Styler needs -- every report.py
     # returns one
     "pandas[output-formatting]",
-    "pint",
     "pydantic>=2.0",
     "pyyaml",
 ]
@@ -69,8 +69,8 @@ known-first-party = ["quicksat"]
 [tool.pyright]
 # The quantity types in utils/parser_helpers are built by a factory, so they are
 # function return values rather than statically visible aliases, and pyright will
-# not accept one in a type expression. pint's own Quantity alias trips the same
-# rule. Nothing else here writes a type expression this rule would catch.
+# not accept one in a type expression. Nothing else here writes a type expression
+# this rule would catch.
 reportInvalidTypeForm = "none"
 
 [tool.pytest.ini_options]

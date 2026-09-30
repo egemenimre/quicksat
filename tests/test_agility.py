@@ -20,7 +20,7 @@ spacecraft handed in directly, so they stay pinned whatever the mass budget says
 """
 
 import pytest
-from pint.testing import assert_allclose
+from astropy.tests.helper import assert_quantity_allclose
 
 from quicksat import Q_
 from quicksat.agility.budget import AgilityBudget, AgilityConfig, Axis, Profile
@@ -125,33 +125,45 @@ def bus(tmp_path):
 
 
 def test_inertia_of_the_box_with_its_appendage_uplift(budget):
-    assert_allclose(budget.inertia, Q_(264.7, "kg * m**2"), atol=0.1)
+    assert_quantity_allclose(
+        budget.inertia, Q_(264.7, "kg * m**2"), atol=Q_(0.1, "kg * m**2")
+    )
 
 
 def test_projection_onto_an_in_plane_axis(budget):
     """Into the pyramid base plane, then onto roll within it."""
-    assert budget.projection.magnitude == pytest.approx(0.633, abs=1e-3)
+    assert budget.projection.value == pytest.approx(0.633, abs=1e-3)
 
 
 def test_axis_capability(budget):
-    assert_allclose(budget.axis_momentum(), Q_(3.372, "N * m * s"), atol=1e-3)
-    assert_allclose(budget.axis_torque(), Q_(0.380, "N * m"), atol=1e-3)
+    assert_quantity_allclose(
+        budget.axis_momentum(), Q_(3.372, "N * m * s"), atol=Q_(1e-3, "N * m * s")
+    )
+    assert_quantity_allclose(
+        budget.axis_torque(), Q_(0.380, "N * m"), atol=Q_(1e-3, "N * m")
+    )
 
 
 def test_yaw_is_the_weak_axis(budget):
     """Reported rather than slewed, but it is what a yaw manoeuvre lives within."""
-    assert_allclose(budget.yaw_momentum, Q_(2.38, "N * m * s"), atol=0.01)
+    assert_quantity_allclose(
+        budget.yaw_momentum, Q_(2.38, "N * m * s"), atol=Q_(0.01, "N * m * s")
+    )
     assert budget.yaw_momentum < budget.axis_momentum()
 
 
 def test_derived_limits(budget):
-    assert_allclose(budget.max_rate(), Q_(0.730, "deg / s"), atol=1e-3)
-    assert_allclose(
+    assert_quantity_allclose(
+        budget.max_rate(), Q_(0.730, "deg / s"), atol=Q_(1e-3, "deg / s")
+    )
+    assert_quantity_allclose(
         budget.max_acceleration().to("rad / s**2"),
         Q_(0.001434, "rad / s**2"),
-        atol=1e-6,
+        atol=Q_(1e-6, "rad / s**2"),
     )
-    assert_allclose(budget.crossover_angle(), Q_(6.48, "deg"), atol=0.01)
+    assert_quantity_allclose(
+        budget.crossover_angle(), Q_(6.48, "deg"), atol=Q_(0.01, "deg")
+    )
 
 
 # --- the slew profile --------------------------------------------------------
@@ -159,14 +171,16 @@ def test_derived_limits(budget):
 
 @pytest.mark.parametrize("angle, expected", [(a, t[0]) for a, t in SLEW_TIMES.items()])
 def test_slew_times(budget, angle, expected):
-    assert_allclose(budget.slew_time(Q_(angle, "deg")), Q_(expected, "s"), atol=0.05)
+    assert_quantity_allclose(
+        budget.slew_time(Q_(angle, "deg")), Q_(expected, "s"), atol=Q_(0.05, "s")
+    )
 
 
 @pytest.mark.parametrize("angle, expected", [(a, t[1]) for a, t in SLEW_TIMES.items()])
 def test_slew_times_with_one_wheel_failed(budget, angle, expected):
     """Halved momentum and torque about the same axis, not a different mounting."""
     time = budget.slew_time(Q_(angle, "deg"), degraded=True)
-    assert_allclose(time, Q_(expected, "s"), atol=0.05)
+    assert_quantity_allclose(time, Q_(expected, "s"), atol=Q_(0.05, "s"))
 
 
 def test_the_profile_flips_at_the_crossover(budget):
@@ -178,10 +192,10 @@ def test_the_profile_flips_at_the_crossover(budget):
 
 def test_momentum_is_fully_used_past_the_crossover(budget):
     """Which is what momentum limited means."""
-    used = budget.momentum_used(Q_(5, "deg")).magnitude
+    used = budget.momentum_used(Q_(5, "deg")).value
     assert used == pytest.approx(0.878, abs=1e-3)
     for angle in (10, 40, 90):
-        assert budget.momentum_used(Q_(angle, "deg")).magnitude == pytest.approx(1.0)
+        assert budget.momentum_used(Q_(angle, "deg")).value == pytest.approx(1.0)
 
 
 def test_a_degraded_slew_is_never_faster(budget):
@@ -196,21 +210,25 @@ def test_a_degraded_slew_is_never_faster(budget):
 def test_the_requirement_case(budget):
     """40 degrees plus settling, against the operation's target duration."""
     angle = Q_(40, "deg")
-    assert_allclose(budget.total_time(angle), Q_(83.7, "s"), atol=0.05)
-    margin = budget.time_margin(angle, TARGET_DURATION).magnitude
+    assert_quantity_allclose(
+        budget.total_time(angle), Q_(83.7, "s"), atol=Q_(0.05, "s")
+    )
+    margin = budget.time_margin(angle, TARGET_DURATION).value
     assert margin == pytest.approx(0.350, abs=1e-3)
 
 
 def test_the_largest_slew_that_fits(budget):
-    assert_allclose(
-        budget.achievable_angle(TARGET_DURATION), Q_(61.4, "deg"), atol=0.05
+    assert_quantity_allclose(
+        budget.achievable_angle(TARGET_DURATION), Q_(61.4, "deg"), atol=Q_(0.05, "deg")
     )
 
 
 def test_achievable_angle_inverts_the_slew_time(budget):
     """The inverse solve and the forward solve have to agree."""
     achievable = budget.achievable_angle(TARGET_DURATION)
-    assert_allclose(budget.total_time(achievable), TARGET_DURATION, atol=1e-6)
+    assert_quantity_allclose(
+        budget.total_time(achievable), TARGET_DURATION, atol=Q_(1e-6, "s")
+    )
 
 
 def test_a_tighter_target_allows_a_smaller_slew(budget):
@@ -218,12 +236,14 @@ def test_a_tighter_target_allows_a_smaller_slew(budget):
     assert budget.achievable_angle(Q_(60, "s")) < budget.achievable_angle(
         TARGET_DURATION
     )
-    assert budget.time_margin(Q_(40, "deg"), Q_(60, "s")).magnitude < 0
+    assert budget.time_margin(Q_(40, "deg"), Q_(60, "s")).value < 0
 
 
 def test_ground_track_ties_the_slew_to_the_orbit(budget):
     """A slew time means something because it is swath given up."""
-    assert_allclose(budget.ground_distance(TARGET_DURATION), Q_(797.7, "km"), atol=0.1)
+    assert_quantity_allclose(
+        budget.ground_distance(TARGET_DURATION), Q_(797.7, "km"), atol=Q_(0.1, "km")
+    )
 
 
 # --- the inertia cases -------------------------------------------------------
@@ -232,14 +252,14 @@ def test_ground_track_ties_the_slew_to_the_orbit(budget):
 def test_a_stated_case_gives_its_inertia_verbatim(config, mission):
     """And needs no mass at all: inertia is the only route mass takes in."""
     budget = AgilityBudget(config, mission, Axis.ROLL, "stated")
-    assert_allclose(budget.inertia, Q_(300.0, "kg * m**2"))
+    assert_quantity_allclose(budget.inertia, Q_(300.0, "kg * m**2"))
     assert budget.mass_budget is None
-    assert budget.slew_time(Q_(40, "deg")).magnitude > 0
+    assert budget.slew_time(Q_(40, "deg")).value > 0
 
 
 def test_a_stated_case_is_per_axis(config, mission):
     pitch = AgilityBudget(config, mission, Axis.PITCH, "stated")
-    assert_allclose(pitch.inertia, Q_(340.0, "kg * m**2"))
+    assert_quantity_allclose(pitch.inertia, Q_(340.0, "kg * m**2"))
 
 
 def test_an_envelope_case_needs_a_mass_from_somewhere(config, mission):
@@ -263,8 +283,10 @@ def test_an_explicit_mass_wins_over_the_attached_budget(config, mission, bus):
     budget = AgilityBudget(
         config, mission, Axis.ROLL, "workbook", mass_budget=bus, mass=WORKBOOK_MASS
     )
-    assert_allclose(budget.mass, WORKBOOK_MASS)
-    assert_allclose(budget.inertia, Q_(264.7, "kg * m**2"), atol=0.1)
+    assert_quantity_allclose(budget.mass, WORKBOOK_MASS)
+    assert_quantity_allclose(
+        budget.inertia, Q_(264.7, "kg * m**2"), atol=Q_(0.1, "kg * m**2")
+    )
 
 
 def test_cases_give_different_answers(config, mission):
@@ -381,4 +403,6 @@ def test_input_files_load(data_dir):
         Axis.ROLL,
         "measured_bol",
     )
-    assert_allclose(budget.inertia, Q_(264.7, "kg * m**2"), atol=0.1)
+    assert_quantity_allclose(
+        budget.inertia, Q_(264.7, "kg * m**2"), atol=Q_(0.1, "kg * m**2")
+    )

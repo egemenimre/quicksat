@@ -27,11 +27,21 @@ def _parse_quantity(v):
     Returns
     -------
     quantity : Quantity
-        The parsed quantity, bound to the shared registry
+        The parsed quantity
+
+    Raises
+    ------
+    ValueError
+        If the text is not a number followed by a unit. astropy raises a
+        `TypeError` when the text does not start with a number, which Pydantic
+        would not report as a validation error
     """
     if isinstance(v, u.Quantity):
         return v
-    return Q_(str(v).replace("_", ""))
+    try:
+        return Q_(str(v).replace("_", ""))
+    except TypeError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def _serialize_quantity(v) -> str:
@@ -46,19 +56,20 @@ def _serialize_quantity(v) -> str:
     Returns
     -------
     text : str
-        The quantity as text, magnitude and unit
+        The quantity as text, value and unit
     """
     return str(v)
 
 
-def non_negative_quantity(dimension: str, label: str):
+def non_negative_quantity(unit, label: str):
     """
     Builds an Annotated Quantity type restricted to one dimension and to non-negative values.
 
     Parameters
     ----------
-    dimension : str
-        Dimensionality the value must have, in pint's notation (`"[mass]"`)
+    unit : Unit
+        Any unit of the required dimension (`u.kg` for a mass); the value must be
+        convertible to it
     label : str
         Name of the quantity, used in the error messages
 
@@ -69,7 +80,7 @@ def non_negative_quantity(dimension: str, label: str):
     """
 
     def _validate(v):
-        if not v.check(dimension):
+        if not v.unit.is_equivalent(unit):
             raise ValueError(f"Value must have {label} dimensions, got '{v}'")
         if v < 0:
             raise ValueError(f"{label.capitalize()} must not be negative, got '{v}'")
@@ -83,22 +94,21 @@ def non_negative_quantity(dimension: str, label: str):
     ]
 
 
-MassQty = non_negative_quantity("[mass]", "mass")
+MassQty = non_negative_quantity(u.kg, "mass")
 """Annotated Quantity type restricted to non-negative masses.
 
 Rejects a dimensionally wrong entry such as '100 W' in a mass column, which a
 plain float would have silently accepted.
 """
 
-LengthQty = non_negative_quantity("[length]", "length")
+LengthQty = non_negative_quantity(u.m, "length")
 """Annotated Quantity type restricted to non-negative lengths."""
 
-AngleQty = non_negative_quantity("", "angle")
+AngleQty = non_negative_quantity(u.deg, "angle")
 """Annotated Quantity type for angles.
 
-pint treats radians as dimensionless, so this checks only that the value carries
-no other dimension: it rejects `500 km` but cannot tell `97.4 deg` from a bare
-`97.4`.
+astropy gives angles a dimension of their own, so this rejects `500 km` and a
+bare `97.4` alike: an inclination must say whether it is in degrees or radians.
 """
 
 
@@ -113,34 +123,36 @@ For a column whose dimension depends on another field, where the check has to be
 a model validator rather than a field one.
 """
 
-DataRateQty = non_negative_quantity("1/[time]", "data rate")
+DataRateQty = non_negative_quantity(u.bit / u.s, "data rate")
 """Annotated Quantity type for data rates.
 
-Bits are dimensionless in pint, so a data rate has the dimensionality of a
-frequency. This rejects `500 km` but cannot tell `800 Mbit/s` from `800 MHz`.
+astropy treats the bit as a unit of its own, so a data rate is information over
+time: this rejects `800 MHz` as well as `500 km`. `800 Mbps` does not parse at
+all -- write `800 Mbit/s`.
 """
 
-TimeQty = non_negative_quantity("[time]", "time")
+TimeQty = non_negative_quantity(u.s, "time")
 """Annotated Quantity type restricted to non-negative durations."""
 
-FractionQty = non_negative_quantity("", "fraction")
+FractionQty = non_negative_quantity(u.dimensionless_unscaled, "fraction")
 """Annotated Quantity type for dimensionless fractions, written as percentages.
 
-pint reads `5 %` as 0.05, so a duty cycle can be entered either way.
+astropy reads `5 %` as 5 percent, which converts to 0.05 of one, so a duty cycle
+can be entered either way.
 """
 
 NoSpaceStr = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\S+$")]
 """String field that must not contain whitespace, used for the grouping axes."""
 
-MomentumQty = non_negative_quantity("[mass] * [length]**2 / [time]", "angular momentum")
+MomentumQty = non_negative_quantity(u.N * u.m * u.s, "angular momentum")
 """Annotated Quantity type for angular momentum, as a wheel stores it (`4 N*m*s`)."""
 
-TorqueQty = non_negative_quantity("[mass] * [length]**2 / [time]**2", "torque")
+TorqueQty = non_negative_quantity(u.N * u.m, "torque")
 """Annotated Quantity type for torque.
 
-Torque and energy share a dimensionality, so this rejects `4 N*m*s` but cannot
-tell `0.2 N*m` from `0.2 J` -- the same limitation as `DataRateQty`.
+Torque and energy share a dimension, so this rejects `4 N*m*s` but cannot tell
+`0.2 N*m` from `0.2 J`.
 """
 
-InertiaQty = non_negative_quantity("[mass] * [length]**2", "moment of inertia")
+InertiaQty = non_negative_quantity(u.kg * u.m**2, "moment of inertia")
 """Annotated Quantity type for a moment of inertia (`264.7 kg*m**2`)."""

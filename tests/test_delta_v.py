@@ -18,9 +18,10 @@ The fixture flies from the sample 500 km orbit, where the circular velocity is
 import math
 
 import pytest
-from pint.testing import assert_allclose
+from astropy.constants import g0  # pyright: ignore[reportAttributeAccessIssue]
+from astropy.tests.helper import assert_quantity_allclose
 
-from quicksat import Q_
+from quicksat import Q_, u
 from quicksat.delta_v.budget import (
     DeltaVBudget,
     DeltaVConfig,
@@ -80,7 +81,7 @@ def test_hohmann_hop_of_200_m():
     """The pair of impulses for a 200 m raise from the sample orbit."""
     mission = Mission.from_yaml_text(MISSION)
     hop = hohmann_deltav(mission.radius, mission.radius + Q_(200, "m"))
-    assert_allclose(hop, Q_(0.1107, "m/s"), atol=1e-4)
+    assert_quantity_allclose(hop, Q_(0.1107, "m/s"), atol=Q_(1e-4, "m/s"))
 
 
 def test_hohmann_is_symmetric():
@@ -88,15 +89,15 @@ def test_hohmann_is_symmetric():
     mission = Mission.from_yaml_text(MISSION)
     up = hohmann_deltav(mission.radius, mission.radius + Q_(10, "km"))
     down = hohmann_deltav(mission.radius + Q_(10, "km"), mission.radius)
-    assert_allclose(up, down)
+    assert_quantity_allclose(up, down)
 
 
 def test_deorbit_to_the_surface():
     mission = Mission.from_yaml_text(MISSION)
     from quicksat import R_EARTH
 
-    assert_allclose(
-        deorbit_deltav(mission.radius, R_EARTH), Q_(144.95, "m/s"), atol=0.01
+    assert_quantity_allclose(
+        deorbit_deltav(mission.radius, R_EARTH), Q_(144.95, "m/s"), atol=Q_(0.01, "m/s")
     )
 
 
@@ -124,9 +125,8 @@ def test_a_longer_mission_costs_more_only_through_the_recurring_rows(tmp_path):
         )
     )
     recurring = seven.resolve().set_index("manoeuvre_id").loc["cam", "deltav_total"]
-    assert_allclose(
-        fourteen.total_deltav(),
-        seven.total_deltav() + Q_(recurring * 1.05, "m/s"),
+    assert_quantity_allclose(
+        fourteen.total_deltav(), seven.total_deltav() + Q_(recurring * 1.05, "m/s")
     )
 
 
@@ -134,9 +134,8 @@ def test_a_longer_mission_costs_more_only_through_the_recurring_rows(tmp_path):
 
 
 def test_margin_applies_once_to_the_total(budget):
-    assert_allclose(
-        budget.total_deltav(margin=True),
-        budget.total_deltav(margin=False) * 1.05,
+    assert_quantity_allclose(
+        budget.total_deltav(margin=True), budget.total_deltav(margin=False) * 1.05
     )
 
 
@@ -144,8 +143,12 @@ def test_margin_applies_once_to_the_total(budget):
 def test_groupings_reconcile(budget, margin):
     """Both axes sum to the grand total, with or without the margin."""
     expected = budget.total_deltav(margin)
-    assert_allclose(Q_(budget.by_phase(margin)["deltav"].sum(), "m/s"), expected)
-    assert_allclose(Q_(budget.by_type(margin)["deltav"].sum(), "m/s"), expected)
+    assert_quantity_allclose(
+        Q_(budget.by_phase(margin)["deltav"].sum(), "m/s"), expected
+    )
+    assert_quantity_allclose(
+        Q_(budget.by_type(margin)["deltav"].sum(), "m/s"), expected
+    )
 
 
 # --- the collision avoidance policy ------------------------------------------
@@ -174,7 +177,7 @@ def test_an_avoidance_hop_is_two_transfers(budget):
     mission = Mission.from_yaml_text(MISSION)
     one_way = hohmann_deltav(mission.radius, mission.radius + Q_(200, "m"))
     frame = budget.resolve().set_index("manoeuvre_id")
-    assert_allclose(Q_(frame.loc["cam", "deltav_each"], "m/s"), 2 * one_way)
+    assert_quantity_allclose(Q_(frame.loc["cam", "deltav_each"], "m/s"), 2 * one_way)
 
 
 # --- the rocket equation -----------------------------------------------------
@@ -192,16 +195,20 @@ def test_propellant_from_dry_mass(tmp_path):
         *write_budget(tmp_path, rows, config=CONFIG.replace("margin: 5", "margin: 0"))
     )
     propellant = budget.propellant_mass(Q_(450, "kg"))
-    assert_allclose(propellant, Q_(17.00, "kg"), atol=0.01)
+    assert_quantity_allclose(propellant, Q_(17.00, "kg"), atol=Q_(0.01, "kg"))
 
 
 def test_propellant_satisfies_the_rocket_equation(budget):
     """Wet over dry is exp(dv/ve), which is the equation the figure came from."""
     dry = Q_(450, "kg")
     propellant = budget.propellant_mass(dry)
-    exhaust = budget.config.propulsion.isp * Q_(1, "standard_gravity")
-    expected = math.exp((budget.total_deltav() / exhaust).to("dimensionless").magnitude)
-    assert_allclose((dry + propellant) / dry, Q_(expected, "dimensionless"))
+    exhaust = budget.config.propulsion.isp * g0
+    expected = math.exp(
+        (budget.total_deltav() / exhaust).to(u.dimensionless_unscaled).value
+    )
+    assert_quantity_allclose(
+        (dry + propellant) / dry, Q_(expected, u.dimensionless_unscaled)
+    )
 
 
 def test_more_deltav_needs_more_propellant(budget):
@@ -220,6 +227,7 @@ def test_more_deltav_needs_more_propellant(budget):
         ("x,X,Ops,given,200 m,1,false,", "needs a velocity"),
         ("x,X,Ops,altitude_change,8 m/s,1,false,", "needs a length"),
         ("x,X,Ops,inclination_change,5 km,1,false,", "needs an angle"),
+        ("x,X,Ops,inclination_change,5,1,false,", "needs an angle"),
         ("x,X,Ops,deorbit,3 kg,1,false,", "needs a length"),
         ("a b,X,Ops,given,8 m/s,1,false,", "manoeuvre_id"),
         ("x,X,Ops,given,8 m/s,-1,false,", "greater than or equal to 0"),
@@ -244,7 +252,9 @@ def test_input_files_load(data_dir):
         data_dir / "delta_v_config.yaml",
         data_dir / "mission.yaml",
     )
-    assert_allclose(budget.total_deltav(), Q_(116.5, "m/s"), atol=0.5)
+    assert_quantity_allclose(
+        budget.total_deltav(), Q_(116.5, "m/s"), atol=Q_(0.5, "m/s")
+    )
 
 
 def test_config_missing_file():
@@ -269,14 +279,14 @@ def test_report_totals_match_the_budget(budget):
     total = frame.loc[frame["row_type"] == "total", "deltav"].iloc[0]
     subtotal = frame.loc[frame["row_type"] == "subtotal", "deltav"].iloc[0]
 
-    assert_allclose(Q_(total, "m/s"), budget.total_deltav(margin=True))
-    assert_allclose(Q_(subtotal, "m/s"), budget.total_deltav(margin=False))
+    assert_quantity_allclose(Q_(total, "m/s"), budget.total_deltav(margin=True))
+    assert_quantity_allclose(Q_(subtotal, "m/s"), budget.total_deltav(margin=False))
 
 
 def test_report_phase_subtotals_sum_to_the_budget(budget):
     frame = budget.tabulated_deltav().data
     phases = frame.loc[frame["row_type"] == "phase_subtotal", "deltav"]
-    assert_allclose(Q_(phases.sum(), "m/s"), budget.total_deltav(margin=False))
+    assert_quantity_allclose(Q_(phases.sum(), "m/s"), budget.total_deltav(margin=False))
 
 
 def test_report_hides_columns_without_dropping_them(budget):
@@ -326,8 +336,8 @@ def test_loss_factor_scales_the_manoeuvre(tmp_path):
     budget = DeltaVBudget.from_csv(*write_budget(tmp_path, rows, header=LOSS_HEADER))
     ideal = hohmann_deltav(budget.mission.radius, budget.mission.radius + Q_(1, "km"))
     frame = budget.resolve().set_index("manoeuvre_id")
-    assert_allclose(Q_(frame.loc["hop", "deltav_each"], "m/s"), ideal * 1.03)
-    assert_allclose(
+    assert_quantity_allclose(Q_(frame.loc["hop", "deltav_each"], "m/s"), ideal * 1.03)
+    assert_quantity_allclose(
         Q_(frame.loc["trim", "deltav_each"], "m/s"),
         plane_change_deltav(budget.mission.velocity, Q_(0.05, "deg")),
     )
@@ -390,7 +400,7 @@ def test_propellant_mass_falls_back_to_the_attached_budget(tmp_path, mass_budget
     paths = write_budget(tmp_path)
     attached = DeltaVBudget.from_csv(*paths, mass_budget=mass_budget)
     loose = DeltaVBudget.from_csv(*paths)
-    assert_allclose(
+    assert_quantity_allclose(
         attached.propellant_mass(),
         loose.propellant_mass(mass_budget.in_orbit_mass(propellant=0)),
     )
@@ -406,5 +416,5 @@ def test_the_mass_budget_is_not_required(tmp_path):
     """Every other query works without one, so the coupling stays optional."""
     budget = DeltaVBudget.from_csv(*write_budget(tmp_path))
     assert budget.mass_budget is None
-    assert budget.total_deltav().magnitude > 0
+    assert budget.total_deltav().value > 0
     assert not budget.by_phase().empty

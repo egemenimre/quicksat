@@ -98,7 +98,7 @@ def _assemble(frame: pd.DataFrame, target_duration=None) -> pd.DataFrame:
     report["profile"] = report["profile"].map(_LIMIT_LABELS)  # pyright: ignore[reportArgumentType]
     columns = [name for name in _COLUMNS if name not in ("margin", "verdict")]
     if target_duration is not None:
-        seconds = target_duration.to("s").magnitude
+        seconds = target_duration.to_value("s")
         report["margin"] = (seconds - report["total_time"]) / report["total_time"]
         report["verdict"] = [
             "PASS" if fits else "FAILS" for fits in report["margin"] >= 0

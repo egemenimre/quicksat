@@ -155,7 +155,7 @@ def _assemble(
                     item.manoeuvre_name,
                     "manoeuvre",
                     type=item.manoeuvre_type,
-                    value=f"{item.value:~.6g}",
+                    value=f"{item.value:.6g}",
                     loss_factor=item.loss_factor,
                     each=item.deltav_each,
                     occurrences=item.occurrences,

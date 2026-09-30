@@ -29,7 +29,7 @@ import pandas as pd
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from quicksat import Q_
+from quicksat import Q_, u
 from quicksat.agility.report import tabulate
 
 if TYPE_CHECKING:  # a type annotation only, so quicksat.mass stays unimported
@@ -382,7 +382,7 @@ class AgilityBudget:
             return self._mass
         if self.mass_budget is not None:
             return self.mass_budget.in_orbit_mass(
-                propellant=self.case.propellant.to("percent").magnitude
+                propellant=self.case.propellant.to_value("percent")
             )
         raise ValueError(
             f"Case '{self.case_name}' estimates its inertia from an envelope, so "
@@ -471,10 +471,7 @@ class AgilityBudget:
             Dimensionless
         """
         elevation = self.config.wheels.elevation
-        # numpy stubs do not know pint, though the ufunc dispatches fine at runtime
-        return (np.cos(elevation) * np.cos(Q_(45, "deg"))).to(  # pyright: ignore[reportCallIssue, reportArgumentType]
-            "dimensionless"
-        )
+        return (np.cos(elevation) * np.cos(Q_(45, "deg"))).to(u.dimensionless_unscaled)
 
     @property
     def usable_momentum_per_wheel(self):
@@ -584,7 +581,11 @@ class AgilityBudget:
         rate : Quantity
             In deg/s
         """
-        return (self.axis_momentum(degraded) / self.inertia).to("deg / s")
+        # momentum over inertia is 1/s; the radian is implied, and astropy wants
+        # that said rather than assumed
+        return (self.axis_momentum(degraded) / self.inertia).to(
+            "deg / s", equivalencies=u.dimensionless_angles()
+        )
 
     def max_acceleration(self, degraded: bool = False):
         """
@@ -600,7 +601,9 @@ class AgilityBudget:
         acceleration : Quantity
             In deg/s**2
         """
-        return (self.axis_torque(degraded) / self.inertia).to("deg / s**2")
+        return (self.axis_torque(degraded) / self.inertia).to(
+            "deg / s**2", equivalencies=u.dimensionless_angles()
+        )
 
     def crossover_angle(self, degraded: bool = False):
         """
@@ -703,8 +706,10 @@ class AgilityBudget:
         fraction : Quantity
             Dimensionless
         """
-        peak = (self.inertia * self.peak_rate(angle, degraded)).to("N * m * s")
-        return (peak / self.axis_momentum(degraded)).to("dimensionless")
+        peak = (self.inertia * self.peak_rate(angle, degraded)).to(
+            "N * m * s", equivalencies=u.dimensionless_angles()
+        )
+        return (peak / self.axis_momentum(degraded)).to(u.dimensionless_unscaled)
 
     def slew_table(self, angles=None, degraded: bool = False) -> pd.DataFrame:
         """
@@ -726,12 +731,14 @@ class AgilityBudget:
             angles = [Q_(value, "deg") for value in DEFAULT_SLEW_ANGLES]
         records = [
             {
-                "angle": angle.to("deg").magnitude,
+                "angle": angle.to_value("deg"),
                 "profile": self.profile(angle, degraded).value,
-                "slew_time": self.slew_time(angle, degraded).to("s").magnitude,
-                "total_time": self.total_time(angle, degraded).to("s").magnitude,
-                "peak_rate": self.peak_rate(angle, degraded).to("deg / s").magnitude,
-                "momentum_used": self.momentum_used(angle, degraded).magnitude,
+                "slew_time": self.slew_time(angle, degraded).to_value("s"),
+                "total_time": self.total_time(angle, degraded).to_value("s"),
+                "peak_rate": self.peak_rate(angle, degraded).to_value("deg / s"),
+                "momentum_used": self.momentum_used(angle, degraded).to_value(
+                    u.dimensionless_unscaled
+                ),
             }
             for angle in angles
         ]
@@ -779,7 +786,7 @@ class AgilityBudget:
             Dimensionless; negative when the manoeuvre does not fit
         """
         needed = self.total_time(angle, degraded)
-        return ((target_duration - needed) / needed).to("dimensionless")
+        return ((target_duration - needed) / needed).to(u.dimensionless_unscaled)
 
     def achievable_angle(self, target_duration, degraded: bool = False):
         """

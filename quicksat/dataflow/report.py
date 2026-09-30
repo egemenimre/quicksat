@@ -23,6 +23,8 @@ from typing import TYPE_CHECKING
 import pandas as pd
 from pandas.io.formats.style import Styler
 
+from quicksat import u
+
 if TYPE_CHECKING:
     from quicksat.dataflow.budget import DataBudget
 
@@ -108,42 +110,48 @@ def _assemble(budget: "DataBudget") -> pd.DataFrame:
         budget.model.generation,
         budget.model.downlink,
     )
-    margin = budget.margin.magnitude
+    margin = budget.margin.to_value(u.dimensionless_unscaled)
 
     rows = [
         _row(
             "Orbital period",
-            mission.period.to("min").magnitude,
+            mission.period.to_value("min"),
             "min",
-            f"{mission.altitude:~.0f} circular",
+            f"{mission.altitude:.0f} circular",
             "input",
         ),
-        _row("Orbits per day", mission.orbits_per_day.magnitude, "-", "", "derived"),
+        _row(
+            "Orbits per day",
+            mission.orbits_per_day.to_value(u.dimensionless_unscaled),
+            "-",
+            "",
+            "derived",
+        ),
         _row(
             "Data generation rate",
-            budget.effective_datarate.magnitude,
+            budget.effective_datarate.to_value("Mbit/s"),
             "Mbit/s",
-            f"{generation.raw_datarate:~.0f} raw, {generation.compression_ratio}x compression",
+            f"{generation.raw_datarate:.0f} raw, {generation.compression_ratio}x compression",
             "input",
         ),
         _row(
             "Data generation duration",
-            budget.generation_duration.magnitude,
+            budget.generation_duration.to_value("s"),
             "s/orbit",
-            f"{generation.duty_cycle:~} duty cycle",
+            f"{generation.duty_cycle:g} duty cycle",
             "input",
         ),
         _row(
             "Data generated",
-            budget.generated_per_orbit.magnitude,
+            budget.generated_per_orbit.to_value("GB"),
             "GB/orbit",
             "",
             "derived",
         ),
-        _row("", budget.generated_per_day.magnitude, "GB/day", "", "derived"),
+        _row("", budget.generated_per_day.to_value("GB"), "GB/day", "", "derived"),
         _row(
             "Data downlink rate",
-            downlink.rate.to("Mbit/s").magnitude,
+            downlink.rate.to_value("Mbit/s"),
             "Mbit/s",
             "achieved throughput",
             "input",
@@ -152,24 +160,24 @@ def _assemble(budget: "DataBudget") -> pd.DataFrame:
             "Contacts",
             downlink.contacts_per_day,
             "per day",
-            f"{downlink.avg_contact_duration:~.0f} average duration",
+            f"{downlink.avg_contact_duration:.0f} average duration",
             "input",
         ),
         _row(
             "Data downlink duration",
-            budget.contact_per_day.magnitude,
+            budget.contact_per_day.to_value("min"),
             "min/day",
             "",
             "derived",
         ),
         _row(
             "Data downlinked",
-            budget.downlinked_per_orbit.magnitude,
+            budget.downlinked_per_orbit.to_value("GB"),
             "GB/orbit",
             "",
             "derived",
         ),
-        _row("", budget.downlinked_per_day.magnitude, "GB/day", "", "derived"),
+        _row("", budget.downlinked_per_day.to_value("GB"), "GB/day", "", "derived"),
         _row(
             "Margin",
             margin * 100,
@@ -179,7 +187,7 @@ def _assemble(budget: "DataBudget") -> pd.DataFrame:
         ),
         _row(
             "Storage required",
-            budget.storage_required().magnitude,
+            budget.storage_required().to_value("GB"),
             "GB",
             f"{budget.model.storage.orbits_without_contact:g} orbits without contact",
             "storage",

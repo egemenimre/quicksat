@@ -62,7 +62,7 @@ locations:
     harness_margin: 25    # percent, the harness's own contingency
 ```
 
-Masses are entered with their units and parsed with [pint](https://pint.readthedocs.io/), so `750 g` is converted on load and `100 W` in a mass column is rejected rather than quietly becoming a number. Harness is not typed in but derived, one row per location. Margins come in two layers — a per-item contingency and a per-location system margin — and propellant is exempt from both.
+Masses are entered with their units and parsed with [astropy](https://docs.astropy.org/en/stable/units/), so `750 g` is converted on load and `100 W` in a mass column is rejected rather than quietly becoming a number. Harness is not typed in but derived, one row per location. Margins come in two layers — a per-item contingency and a per-location system margin — and propellant is exempt from both.
 
 Then ask the budget things. Every query takes the same four flags — `propellant`, `sys_margin`, `eqpt_margin`, `in_orbit` — all defaulting to the satellite as it flies at the start of life, so the usual question is a bare call and each deviation is one explicit switch.
 
@@ -225,6 +225,14 @@ Split along [Diátaxis](https://diataxis.fr/) lines: the sample is there to be f
 | Data | [`sample/data_budget.ipynb`](sample/data_budget.ipynb) | [`docs/data_budget_ref.ipynb`](docs/data_budget_ref.ipynb) |
 | Delta-V | [`sample/delta_v_budget.ipynb`](sample/delta_v_budget.ipynb) | [`docs/delta_v_ref.ipynb`](docs/delta_v_ref.ipynb) |
 | Agility | [`sample/agility_roll.ipynb`](sample/agility_roll.ipynb), [`sample/agility_pitch.ipynb`](sample/agility_pitch.ipynb) | [`docs/agility_ref.ipynb`](docs/agility_ref.ipynb) |
+
+Three Markdown documents sit beside the notebooks. They cover the project as a whole rather than one budget.
+
+| Document | What it holds |
+|---|---|
+| [`docs/explanations/decisions.md`](docs/explanations/decisions.md) | The decisions that shaped quicksat, and the reasons for each. Newest first. Read it to learn why the code is built the way it is. |
+| [`docs/reference/conventions.md`](docs/reference/conventions.md) | The rules the code and the notebooks follow: how to handle units and constants, and how to write tests. Read it before changing the code. |
+| [`docs/guides/how_to.md`](docs/guides/how_to.md) | Guides for getting a specific task done. There are none yet. |
 
 The sample notebooks work each budget through against one sample satellite — a small Earth observation platform in a 500 km sun-synchronous orbit — in the order you would actually do it. The reference notebooks sit behind them and say why each piece behaves as it does: the data model, unit handling, the input files field by field, how the derived quantities and the margin layers are worked out, and where each budget stops.
 
