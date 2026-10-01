@@ -28,7 +28,7 @@ duration: 7 yr             # design life
 ```python
 from quicksat.utils.mission import Mission
 
-mission = Mission.from_yaml_file("sample/data/mission.yaml")
+mission = Mission.from_yaml_file("sample/sizing/data/mission.yaml")
 
 mission.period.to("min")  # 94.6 min
 mission.orbits_per_day    # 15.22
@@ -69,7 +69,7 @@ Then ask the budget things. Every query takes the same four flags — `propellan
 ```python
 from quicksat.mass.budget import MassBudget
 
-budget = MassBudget.from_csv("sample/data/equipment.csv", "sample/data/mass_budget_config.yaml")
+budget = MassBudget.from_csv("sample/sizing/data/equipment.csv", "sample/sizing/data/mass_budget_config.yaml")
 
 budget.in_orbit_mass()               # 470.62 kg  - separated wet mass
 budget.on_ground_mass(propellant=0)  # 465.34 kg  - dry mass at launch
@@ -101,7 +101,7 @@ storage:
 ```python
 from quicksat.dataflow.budget import DataBudget
 
-budget = DataBudget.from_yaml_file("sample/data/pl_dataflow_model.yaml", "sample/data/mission.yaml")
+budget = DataBudget.from_yaml_file("sample/sizing/data/pl_dataflow_model.yaml", "sample/sizing/data/mission.yaml")
 
 budget.generated_per_day    # 225.00 GB
 budget.downlinked_per_day   # 252.00 GB
@@ -131,11 +131,11 @@ The closed forms are impulsive. `loss_factor` is where you say they are not: a m
 from quicksat.delta_v.budget import DeltaVBudget
 from quicksat.mass.budget import MassBudget
 
-spacecraft = MassBudget.from_csv("sample/data/equipment.csv", "sample/data/mass_budget_config.yaml")
+spacecraft = MassBudget.from_csv("sample/sizing/data/equipment.csv", "sample/sizing/data/mass_budget_config.yaml")
 budget = DeltaVBudget.from_csv(
-    "sample/data/manoeuvres.csv",
-    "sample/data/delta_v_config.yaml",
-    "sample/data/mission.yaml",
+    "sample/sizing/data/manoeuvres.csv",
+    "sample/sizing/data/delta_v_config.yaml",
+    "sample/sizing/data/mission.yaml",
     mass_budget=spacecraft,
 )
 
@@ -190,10 +190,10 @@ from quicksat import u
 from quicksat.agility.budget import AgilityBudget, Axis
 from quicksat.mass.budget import MassBudget
 
-spacecraft = MassBudget.from_csv("sample/data/equipment.csv", "sample/data/mass_budget_config.yaml")
+spacecraft = MassBudget.from_csv("sample/sizing/data/equipment.csv", "sample/sizing/data/mass_budget_config.yaml")
 roll = AgilityBudget.from_yaml_file(
-    "sample/data/agility_config.yaml",
-    "sample/data/mission.yaml",
+    "sample/sizing/data/agility_config.yaml",
+    "sample/sizing/data/mission.yaml",
     Axis.ROLL,
     "first_guess",
     mass_budget=spacecraft,
@@ -216,15 +216,17 @@ Roll and pitch run identical machinery, because the pyramid's symmetry axis is a
 
 ## Documentation
 
-Split along [Diátaxis](https://diataxis.fr/) lines: the sample is there to be followed, the docs to be understood. Files under `docs/` take a `_ref` suffix, so the two halves of a topic cannot be confused, and each half reads its own input files — `sample/data/` and `docs/data/` — so that retuning a tutorial cannot quietly falsify a figure quoted in a reference.
+Split along [Diátaxis](https://diataxis.fr/) lines: the sample is there to be followed, the docs to be understood. Files under `docs/` take a `_ref` suffix, so the two halves of a topic cannot be confused, and each half reads its own input files — `sample/sizing/data/` and `docs/sizing/data/` — so that retuning a tutorial cannot quietly falsify a figure quoted in a reference.
+
+The notebooks and their data are grouped by domain. `sizing` covers the mission, mass, data, delta-V and agility budgets below. `power` will hold power generation, which describes the satellite differently and so has its own files. The tests follow the same split, under `tests/sizing/` and `tests/power/`.
 
 | | tutorial and how-to | explanation and reference |
 |---|---|---|
-| Mission | — | [`docs/mission_ref.ipynb`](docs/mission_ref.ipynb) |
-| Mass | [`sample/mass_budget.ipynb`](sample/mass_budget.ipynb) | [`docs/mass_budget_ref.ipynb`](docs/mass_budget_ref.ipynb) |
-| Data | [`sample/data_budget.ipynb`](sample/data_budget.ipynb) | [`docs/data_budget_ref.ipynb`](docs/data_budget_ref.ipynb) |
-| Delta-V | [`sample/delta_v_budget.ipynb`](sample/delta_v_budget.ipynb) | [`docs/delta_v_ref.ipynb`](docs/delta_v_ref.ipynb) |
-| Agility | [`sample/agility_roll.ipynb`](sample/agility_roll.ipynb), [`sample/agility_pitch.ipynb`](sample/agility_pitch.ipynb) | [`docs/agility_ref.ipynb`](docs/agility_ref.ipynb) |
+| Mission | — | [`docs/sizing/mission_ref.ipynb`](docs/sizing/mission_ref.ipynb) |
+| Mass | [`sample/sizing/mass_budget.ipynb`](sample/sizing/mass_budget.ipynb) | [`docs/sizing/mass_budget_ref.ipynb`](docs/sizing/mass_budget_ref.ipynb) |
+| Data | [`sample/sizing/data_budget.ipynb`](sample/sizing/data_budget.ipynb) | [`docs/sizing/data_budget_ref.ipynb`](docs/sizing/data_budget_ref.ipynb) |
+| Delta-V | [`sample/sizing/delta_v_budget.ipynb`](sample/sizing/delta_v_budget.ipynb) | [`docs/sizing/delta_v_ref.ipynb`](docs/sizing/delta_v_ref.ipynb) |
+| Agility | [`sample/sizing/agility_roll.ipynb`](sample/sizing/agility_roll.ipynb), [`sample/sizing/agility_pitch.ipynb`](sample/sizing/agility_pitch.ipynb) | [`docs/sizing/agility_ref.ipynb`](docs/sizing/agility_ref.ipynb) |
 
 Three Markdown documents sit beside the notebooks. They cover the project as a whole rather than one budget.
 
@@ -232,7 +234,7 @@ Three Markdown documents sit beside the notebooks. They cover the project as a w
 |---|---|
 | [`docs/explanations/decisions.md`](docs/explanations/decisions.md) | The decisions that shaped quicksat, and the reasons for each. Newest first. Read it to learn why the code is built the way it is. |
 | [`docs/reference/conventions.md`](docs/reference/conventions.md) | The rules the code and the notebooks follow: how to handle units and constants, and how to write tests. Read it before changing the code. |
-| [`docs/guides/`](docs/guides/) | Guides for getting a specific task done. Start with [how to initialise a satellite](docs/guides/initialise_a_satellite.md). |
+| [`docs/guides/`](docs/guides/) | Guides for getting a specific task done. Start with [how to initialise a satellite](docs/guides/sizing/initialise_a_satellite.md). |
 
 The sample notebooks work each budget through against one sample satellite — a small Earth observation platform in a 500 km sun-synchronous orbit — in the order you would actually do it. The reference notebooks sit behind them and say why each piece behaves as it does: the data model, unit handling, the input files field by field, how the derived quantities and the margin layers are worked out, and where each budget stops.
 

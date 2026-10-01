@@ -10,6 +10,36 @@ lost is most of the value.
 
 ---
 
+## 9. Sizing and power are separate domains, each with its own files
+
+**2026-10-01. Settled.**
+
+The notebooks, their input files and the tests are split into two domains.
+`sizing` holds the current four budgets: mass, data, delta-V and agility.
+`power` holds power generation. Each domain has the same three folders:
+
+- `sample/<domain>/` for the worked examples, with their data in `data/`.
+- `docs/<domain>/` for the reference notebooks, with their data in `data/`.
+- `tests/<domain>/` for the tests, with their fixtures in `data/`.
+
+The how-to guides follow the same split, under `docs/guides/<domain>/`.
+Project-wide documents stay at the top of `docs/`: this file and
+`reference/conventions.md`.
+
+The reason is that the two domains describe the satellite differently. Sizing
+uses a circular orbit and a flat equipment list. Power needs an epoch, a
+local time of the ascending node, a TLE or an ephemeris, and solar panels on
+named faces. One set of files cannot serve both without one domain carrying
+fields it never reads.
+
+**The domains do not share input files.** The rule in entry 2 applies within
+a domain: a fact that more than one module in that domain uses goes in that
+domain's shared file. The two domains may share code, such as the orbit and
+sun geometry in `quicksat/orbit/`, but not data. The three copies in entry 5
+are kept once per domain.
+
+---
+
 ## 8. Earth constants are astropy's defaults
 
 **2026-09-30. Settled. Replaces WGS-84 and EGM96, which the project used from
@@ -127,8 +157,8 @@ are in [conventions.md](../reference/conventions.md).
 
 **2025-09. Settled.**
 
-`sample/data/` belongs to the worked examples, `docs/data/` to the reference
-notebooks, `tests/data/` is a fixture. Before the split, retuning the sample to
+`sample/sizing/data/` belongs to the worked examples, `docs/sizing/data/` to the reference
+notebooks, `tests/sizing/data/` is a fixture. Before the split, retuning the sample to
 make a budget close would silently move a test's expected figure. The cost is
 that a schema change has to be applied three times, and missing one leaves a
 reference documenting a column its own example file does not have.

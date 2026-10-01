@@ -13,13 +13,13 @@ You need quicksat installed first. The README has the steps, under
 
 ## 1. Copy the sample data
 
-Copy the `sample/data` folder and give the copy your own name:
+Copy the `sample/sizing/data` folder and give the copy your own name:
 
 ```bash
-cp -r sample/data my_satellite
+cp -r sample/sizing/data my_satellite
 ```
 
-Then edit the files in `my_satellite/`. Do not edit `sample/data/` itself. The
+Then edit the files in `my_satellite/`. Do not edit `sample/sizing/data/` itself. The
 sample notebooks read it, and the figures in them depend on its contents.
 
 The folder can go anywhere. The code below assumes it is called `my_satellite`
@@ -58,7 +58,7 @@ budget can use stays in that budget's own file.
 All three values are required. The design life, `duration`, scales every
 delta-V manoeuvre that recurs each year.
 
-Details: [`mission_ref.ipynb`](../mission_ref.ipynb), section "The file".
+Details: [`mission_ref.ipynb`](../../sizing/mission_ref.ipynb), section "The file".
 
 ### `equipment.csv`
 
@@ -71,7 +71,7 @@ group the report.
 Mark propellant with `mass_class` set to `propellant`. Propellant is exempt from
 the margins. Leave the field blank for all other items.
 
-Details: [`mass_budget_ref.ipynb`](../mass_budget_ref.ipynb), section "The
+Details: [`mass_budget_ref.ipynb`](../../sizing/mass_budget_ref.ipynb), section "The
 equipment file".
 
 ### `mass_budget_config.yaml`
@@ -83,7 +83,7 @@ say whether the hardware stays with the satellite after separation.
 Every location in the CSV needs an entry here. If one is missing, loading stops
 with an error that names it.
 
-Details: [`mass_budget_ref.ipynb`](../mass_budget_ref.ipynb), section "The
+Details: [`mass_budget_ref.ipynb`](../../sizing/mass_budget_ref.ipynb), section "The
 config file".
 
 ### `pl_dataflow_model.yaml`
@@ -96,7 +96,7 @@ number of orbits the satellite must survive without a contact.
 The contact numbers are inputs, taken from a mission analysis. The budget does
 not work them out.
 
-Details: [`data_budget_ref.ipynb`](../data_budget_ref.ipynb), section "The
+Details: [`data_budget_ref.ipynb`](../../sizing/data_budget_ref.ipynb), section "The
 files".
 
 ### `manoeuvres.csv`
@@ -109,7 +109,7 @@ it is an angle. For a manoeuvre you have already worked out, type `given`, and
 Set `recurring` to `true` when `count` is per year. The budget then multiplies
 it by the mission duration.
 
-Details: [`delta_v_ref.ipynb`](../delta_v_ref.ipynb), section "The manoeuvre
+Details: [`delta_v_ref.ipynb`](../../sizing/delta_v_ref.ipynb), section "The manoeuvre
 file".
 
 ### `delta_v_config.yaml`
@@ -118,7 +118,7 @@ Three settings: the specific impulse of the engine, one margin for the whole
 delta-V total, and whether a collision avoidance hop returns to the original
 orbit.
 
-Details: [`delta_v_ref.ipynb`](../delta_v_ref.ipynb), sections "The margin" and
+Details: [`delta_v_ref.ipynb`](../../sizing/delta_v_ref.ipynb), sections "The margin" and
 "The rocket equation, and the sizing loop".
 
 ### `agility_config.yaml`
@@ -134,7 +134,7 @@ The case names are yours. You pick one by name when you build the budget.
 The file holds no mass and no target slew time. The mass comes from the mass
 budget, and the target time is given when you ask a question.
 
-Details: [`agility_ref.ipynb`](../agility_ref.ipynb), sections "The config
+Details: [`agility_ref.ipynb`](../../sizing/agility_ref.ipynb), sections "The config
 file" and "Inertia cases, and why the two shapes are kept apart".
 
 ## 3. Load the satellite
@@ -221,8 +221,8 @@ in an `equipment_id` or `manoeuvre_id`, and a missing `duration` in
 The README shows the main calls for each budget. The sample notebooks work
 through each budget from start to finish:
 
-- [`sample/mass_budget.ipynb`](../../sample/mass_budget.ipynb)
-- [`sample/data_budget.ipynb`](../../sample/data_budget.ipynb)
-- [`sample/delta_v_budget.ipynb`](../../sample/delta_v_budget.ipynb)
-- [`sample/agility_roll.ipynb`](../../sample/agility_roll.ipynb) and
-  [`sample/agility_pitch.ipynb`](../../sample/agility_pitch.ipynb)
+- [`sample/sizing/mass_budget.ipynb`](../../../sample/sizing/mass_budget.ipynb)
+- [`sample/sizing/data_budget.ipynb`](../../../sample/sizing/data_budget.ipynb)
+- [`sample/sizing/delta_v_budget.ipynb`](../../../sample/sizing/delta_v_budget.ipynb)
+- [`sample/sizing/agility_roll.ipynb`](../../../sample/sizing/agility_roll.ipynb) and
+  [`sample/sizing/agility_pitch.ipynb`](../../../sample/sizing/agility_pitch.ipynb)
