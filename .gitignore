@@ -146,7 +146,7 @@ quicksat/temp
 /docs/_themes/
 
 # other project config
-opticks.code-workspace
+quicksat.code-workspace
 
 # AI helpers
 .claude/
