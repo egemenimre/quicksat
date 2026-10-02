@@ -151,3 +151,6 @@ quicksat.code-workspace
 # AI helpers
 .claude/
 .kimi/
+
+# prototype codes
+/prototypes/
