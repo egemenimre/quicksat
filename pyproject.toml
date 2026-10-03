@@ -7,12 +7,18 @@ name = "quicksat"
 version = "0.1.0"
 dependencies = [
     "astropy",
+    # static plots: the scenario's Gantt chart and ground track maps
+    "matplotlib",
     "numpy",
     # output-formatting brings jinja2, which pandas Styler needs -- every report.py
     # returns one
     "pandas[output-formatting]",
+    # time intervals: eclipses and activities are both portion intervals
+    "portion",
     "pydantic>=2.0",
     "pyyaml",
+    # SGP4 propagation of a TLE
+    "sgp4",
 ]
 
 requires-python = ">=3.12"

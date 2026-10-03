@@ -1,0 +1,48 @@
+# The sample scenario: five hours in a 510 km sun-synchronous orbit.
+#
+# The scenario notebook reads this file and shows the activity table, a Gantt
+# chart and two ground track maps. Edit this file and run the notebook again.
+# The notebook never writes it.
+
+orbit:
+  # The orbit is given one of two ways. Here, a TLE file with exactly one TLE. A
+  # relative path is taken from the folder of this file. The TLE is a 510 km
+  # orbit at 10:30 LTAN, with its epoch at the start time below.
+  tle_file: sso_510km.tle
+  # Or a sun-synchronous orbit, for which quicksat builds the TLE, with its epoch
+  # at the start time. The altitude is averaged over one orbit. Write the LTAN in
+  # quotes: YAML reads an unquoted 10:30 as the number 630.
+  # sso: {altitude: 510 km, ltan: "10:30"}
+
+# UTC. YAML turns an unquoted ISO time into a datetime, and that is accepted.
+start: 2026-10-01T00:00:00
+duration: 3 orbits
+# The orbit and the eclipses are evaluated on this grid. The default is 10 s.
+step: 10 s
+
+# The body axes that each attitude points. Attitude changes are instant for now.
+attitudes:
+  # +z points at the Earth and -y runs along the orbit normal. The body axes then
+  # match LVLH: x along the track, y minus the orbit normal and z nadir.
+  nadir: {nadir_axis: +z, orbit_normal: -y}
+  # -z points at the sun. The -y axis stays along the orbit normal, so the body
+  # stays still over an orbit. Use constrain_to_nadir to keep one axis facing the
+  # Earth instead, which spins fast when the sun is close to the nadir line.
+  sun pointing: {sun_axis: -z, constrain_to_orbit_normal: -y}
+
+# One repeat of the list. The run repeats it until the duration ends, and cuts
+# the last activity there. Each activity is a chain link: it starts where the one
+# before it ends. The fields are
+#   the trigger that ends it: a duration such as 20 min, or an event, which is
+#     eclipse entry or eclipse exit, the next one after the activity starts
+#   the attitude: nadir or sun pointing
+#   the mode: any name
+#   the constraint, optional: sunlit or eclipse, the illumination it expects
+activities:
+  - [eclipse entry, sun pointing, idle, sunlit]
+  - [eclipse exit, nadir, idle, eclipse]
+  - [35 min, sun pointing, idle, sunlit]
+  - [10 min, nadir, imaging, sunlit]
+  - [10 min, nadir, downlink]
+  # - [5 min, nadir, idle]
+
