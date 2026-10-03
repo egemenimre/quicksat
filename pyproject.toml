@@ -15,7 +15,7 @@ dependencies = [
     "pyyaml",
 ]
 
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 authors = [{ name = "Egemen Imre" }]
 
@@ -36,7 +36,6 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -53,7 +52,7 @@ test = ["pytest", "coverage", "pytest-xdist"]
 
 [tool.ruff]
 line-length = 88
-target-version = "py314"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "C", "I"]
