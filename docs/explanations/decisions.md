@@ -10,6 +10,53 @@ lost is most of the value.
 
 ---
 
+## 10. Scenario is its own domain, and power depends on it
+
+**2026-10-02. Settled.**
+
+A third domain, `scenario`, sits next to `sizing` and `power`. It follows the
+layout in entry 9: `sample/scenario/`, `docs/scenario/`, `tests/scenario/` and
+`docs/guides/scenario/`, with the code in `quicksat/scenario/`.
+
+The scenario holds the orbit, the start time, the duration and a list of
+activities. Each activity has an end trigger, an attitude, a mode and an
+optional constraint. The scenario file is `scenario.yaml`. The scenario notebook
+checks the activities against the orbit, for example their eclipse constraints.
+
+**The dependency runs one way.** The scenario imports nothing from power. Power
+imports the scenario. The workflow follows from that:
+
+1. Define the scenario.
+2. Define a baseline power sizing: the solar panels and the batteries.
+3. Verify that the sizing supports the scenario.
+
+The reason is that a scenario of modes and attitudes is useful without a power
+model. Other domains may use it later, such as thermal, or agility along the
+scenario's real attitudes.
+
+**Power keeps its own copies of the scenario files.** Power imports the scenario
+code, but it does not read the scenario domain's files. Each power data folder
+holds the scenario files it needs, so `sample/power/data/` never reads
+`sample/scenario/data/`. This keeps the rule in entry 9 that the domains do not
+share input files. One power setup can be checked against more than one
+scenario, such as winter and summer, so a power data folder may hold several
+scenario files.
+
+**The scenario names the modes, and power defines them.** An activity says
+`idle` or `firing`. The power files say how much each mode draws. Power checks that every
+mode in the scenario has a consumption entry.
+
+**An unsupported scenario is a power result.** A battery that runs flat is
+reported by power. It is not a scenario error. The scenario is invalid only for
+its own reasons, such as a violated constraint.
+
+**Visualisation is not a domain.** Plots that compute a result stay in the
+notebook of the domain that owns the data. A scenario viewer is a separate front
+end. It reads a timeline file written by the library and, optionally, the power
+results. Which technology it uses is decided elsewhere.
+
+---
+
 ## 9. Sizing and power are separate domains, each with its own files
 
 **2026-10-01. Settled.**
