@@ -61,7 +61,7 @@ PALETTE = (
 )
 """The colours that values take, in this order."""
 
-STYLE = {
+STYLE = {  # noqa: V107
     "axes.spines.top": False,
     "axes.spines.right": False,
     "axes.edgecolor": AXIS,

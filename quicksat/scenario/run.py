@@ -452,7 +452,7 @@ class ScenarioRun:
     state: SkyCoord
     latitude: Quantity
     longitude: Quantity
-    beta: Quantity
+    beta: Quantity  # noqa: V107
     eclipses: P.Interval
     sunlit: P.Interval
     illumination: P.IntervalDict
@@ -473,7 +473,7 @@ class ScenarioRun:
         return activity_summary(self.occurrences)
 
 
-def run_scenario(scenario: Scenario) -> ScenarioRun:
+def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
     """
     Run a scenario.
 

@@ -70,7 +70,7 @@ def scenario_colours(scenario: Scenario) -> dict[str, str]:
     )
 
 
-def gantt_chart(
+def gantt_chart(  # noqa: V103
     run: ScenarioRun, colours: dict[str, str] | None = None, ax: Axes | None = None
 ) -> Axes:
     """
@@ -163,7 +163,7 @@ def gantt_chart(
     return ax
 
 
-def ground_track_map(
+def ground_track_map(  # noqa: V103
     run: ScenarioRun,
     row: P.IntervalDict,
     title: str,
