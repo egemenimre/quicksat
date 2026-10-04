@@ -6,9 +6,10 @@
 """
 Running a scenario: the orbit, the eclipses and the repeated activities.
 
-`run_scenario` evaluates the orbit on the time grid and finds the eclipses. It
-repeats the list of activities until the duration ends and checks each
-constraint. All the results come back in one `ScenarioRun`.
+`run_scenario` evaluates the orbit on the time grid and finds the eclipses, and
+the latitude crossings that the triggers name. It repeats the list of activities
+until the duration ends and checks each constraint. All the results come back in
+one `ScenarioRun`.
 
 Every time interval is closed at its start and open at its end. Every bound goes
 through `round_time`. So the pieces of a run fit together with no gaps and no
@@ -16,12 +17,13 @@ overlaps.
 
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 import portion as P
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import CartesianRepresentation, SkyCoord
 from astropy.units import Quantity
 
 from quicksat import Q_, u
@@ -34,13 +36,24 @@ from quicksat.orbit.geometry import (
 )
 from quicksat.orbit.sso import sso_tle
 from quicksat.orbit.tle import Tle, read_tle_file, tle_states, warn_if_far_from_epoch
-from quicksat.scenario.config import Activity, OrbitCount, Scenario, Trigger
+from quicksat.scenario.config import (
+    LATITUDE_CROSSING,
+    Activity,
+    OrbitCount,
+    Scenario,
+    Trigger,
+)
 from quicksat.utils.intervals import (
     TimeArray,
     duration,
+    intervals_where,
     next_start,
     round_time,
 )
+
+Events = dict[tuple, tuple[P.Interval, ...]]
+"""The events of a run, by `Trigger.event_key`. Each event is the start of a
+piece of one of the intervals."""
 
 OUTSIDE_CONSTRAINT = "outside constraint"
 """Status: the activity spends some time outside its constraint."""
@@ -201,8 +214,91 @@ def run_length(scenario: Scenario, tle: Tle) -> Quantity:
     return length
 
 
+def next_event(intervals: tuple[P.Interval, ...], after: TimeArray) -> TimeArray | None:
+    """
+    The first event strictly after a given time.
+
+    Each event is the start of a piece of one of the intervals. A latitude
+    crossing in either direction has two intervals: the time above the latitude,
+    whose starts are the northward crossings, and the time below it.
+
+    Parameters
+    ----------
+    intervals : tuple of portion.Interval
+        The intervals whose starts are the events
+    after : Time
+        A single time
+
+    Returns
+    -------
+    event : Time or None
+        The first event after `after`, or None if there is none
+    """
+    starts = [next_start(piece, after) for piece in intervals]
+    found = [start for start in starts if start is not None]
+    return min(found) if found else None
+
+
+def find_events(
+    activities: list[Activity],
+    interval: P.Interval,
+    eclipses: P.Interval,
+    sunlit: P.Interval,
+    time_above: Callable[[Quantity], P.Interval],
+) -> Events:
+    """
+    The events that the activities' triggers name, as the intervals they start.
+
+    An eclipse entry is the start of an eclipse, and an eclipse exit is the start
+    of a sunlit piece. A northward crossing of a latitude is the start of the time
+    above it, and a southward crossing is the start of the time below it. The time
+    above each latitude is found once, whichever directions the triggers name.
+
+    Parameters
+    ----------
+    activities : list of Activity
+        One repeat of the list
+    interval : portion.Interval
+        The run, closed at its start and open at its end
+    eclipses, sunlit : portion.Interval
+        The illumination intervals
+    time_above : callable
+        Gives the time at or above a geodetic latitude, as intervals over the run
+
+    Returns
+    -------
+    events : dict
+        For the `event_key` of each event trigger, the intervals whose starts are
+        its events
+    """
+    events: Events = {}
+    above: dict[float, P.Interval] = {}
+    for activity in activities:
+        trigger = activity.trigger
+        key = trigger.event_key
+        if key is None or key in events:
+            continue
+        if trigger.event == "eclipse entry":
+            events[key] = (eclipses,)
+        elif trigger.event == "eclipse exit":
+            events[key] = (sunlit,)
+        else:
+            assert trigger.event == LATITUDE_CROSSING
+            assert trigger.latitude is not None  # a latitude crossing has one
+            degrees = key[1]
+            if degrees not in above:
+                above[degrees] = time_above(trigger.latitude)
+            northward, southward = above[degrees], interval - above[degrees]
+            events[key] = {
+                "ascending": (northward,),
+                "descending": (southward,),
+                None: (northward, southward),
+            }[trigger.direction]
+    return events
+
+
 def _trigger_end(
-    trigger: Trigger, start: TimeArray, events: dict[str, P.Interval]
+    trigger: Trigger, start: TimeArray, events: Events
 ) -> TimeArray | None:
     """
     When a trigger ends an activity that starts at a given time.
@@ -214,26 +310,29 @@ def _trigger_end(
     start : Time
         When the activity starts, on the 1 ms grid
     events : dict
-        By the name of each event trigger, the intervals whose starts are its
-        events
+        The events of the run, from `find_events`
 
     Returns
     -------
     end : Time or None
         A duration trigger ends the activity that long after `start`. An event
-        trigger ends it at the first such event strictly after `start`. If there
-        is none, the result is None.
+        trigger ends it at the first such event strictly after `start`, moved by
+        the offset if there is one. If there is no such event, the result is None.
     """
     if trigger.duration is not None:
         return round_time(start + trigger.duration)
-    assert trigger.event is not None  # a trigger has a duration or an event
-    return next_start(events[trigger.event], start)
+    key = trigger.event_key
+    assert key is not None  # a trigger has a duration or an event
+    event = next_event(events[key], start)
+    if event is None or trigger.offset is None:
+        return event
+    return round_time(event + trigger.offset)
 
 
 def resolve_activities(
     activities: list[Activity],
     interval: P.Interval,
-    events: dict[str, P.Interval],
+    events: Events,
     allowed: dict[str, P.Interval],
 ) -> list[Occurrence]:
     """
@@ -242,10 +341,10 @@ def resolve_activities(
     The first activity starts at the start of the run. Each later one starts
     where the one before it ends. A duration trigger ends the activity that long
     after its start. An event trigger ends it at the first such event strictly
-    after its start. An activity that would end after the end of the run is cut
-    there. So is one whose event happens in the run, but not again before the end.
-    If the event never happens in the run at all, the activity runs to the end and
-    is flagged that its event never came.
+    after its start, moved by its offset. An activity that would end after the end
+    of the run is cut there. So is one whose event happens in the run, but not
+    again before the end. If the event never happens in the run at all, the
+    activity runs to the end and is flagged that its event never came.
 
     A constraint holds when the activity has no time outside the intervals that
     the constraint allows.
@@ -257,9 +356,7 @@ def resolve_activities(
     interval : portion.Interval
         The run, closed at its start and open at its end
     events : dict
-        By the name of each event trigger, the intervals whose starts are its
-        events: the eclipses for `eclipse entry`, the sunlit time for
-        `eclipse exit`
+        The events of the run, from `find_events`
     allowed : dict
         The intervals that each constraint allows, by the name of the constraint
 
@@ -267,6 +364,11 @@ def resolve_activities(
     -------
     occurrences : list of Occurrence
         Every occurrence, in order, from the start of the run to its end
+
+    Raises
+    ------
+    ValueError
+        If a negative offset ends an activity at or before its start
     """
     run_end: TimeArray = interval.upper
     occurrences = []
@@ -274,16 +376,25 @@ def resolve_activities(
     index, repeat = 0, 1
     while start < run_end:
         activity = activities[index]
-        end = _trigger_end(activity.trigger, start, events)
+        trigger = activity.trigger
+        end = _trigger_end(trigger, start, events)
         if end is None:
             # an event trigger with no such event after the start
-            assert activity.trigger.event is not None  # only events can be missing
-            never_came = (
-                next_start(events[activity.trigger.event], interval.lower) is None
-            )
+            key = trigger.event_key
+            assert key is not None  # only an event can be missing
+            never_came = next_event(events[key], interval.lower) is None
             cut = not never_came
             end = run_end
         else:
+            if end <= start:
+                # only a negative offset can do this
+                raise ValueError(
+                    f"Activity {index + 1} of repeat {repeat}, '{trigger.text}', ends "
+                    f"{(start - end).to_value(u.s):.3f} s before it starts. It starts "
+                    f"at {start.utc.isot} and would end at {end.utc.isot}. Its "
+                    "offset takes the end back to the start or before it. Shorten "
+                    "the offset, or add an activity before this one."
+                )
             never_came = False
             cut = bool(end > run_end)
             if cut:
@@ -430,6 +541,9 @@ class ScenarioRun:
         duration. Every time is on the 1 ms grid.
     state : SkyCoord
         The satellite's position and velocity on the grid, in GCRS
+    sun : CartesianRepresentation
+        The position of the sun relative to the centre of the Earth on the grid,
+        in GCRS, in km
     latitude, longitude : Quantity
         Geodetic latitude and longitude of the ground track on the grid, with the
         longitude from -180 to 180 degrees
@@ -450,6 +564,7 @@ class ScenarioRun:
     interval: P.Interval
     times: TimeArray
     state: SkyCoord
+    sun: CartesianRepresentation
     latitude: Quantity
     longitude: Quantity
     beta: Quantity  # noqa: V107
@@ -479,9 +594,10 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
 
     The orbit comes from the TLE file, or from a TLE built for the
     sun-synchronous orbit. It is evaluated on the time grid with SGP4. The eclipse
-    entries and exits are then located between the grid steps. The activities are then
-    repeated over the run and checked against the eclipses. The run gets a
-    warning if it starts more than 7 days from the epoch of the TLE.
+    entries and exits are then located between the grid steps, and so are the
+    latitude crossings that the triggers name. The activities are then repeated
+    over the run and checked against the eclipses. The run gets a warning if it
+    starts more than 7 days from the epoch of the TLE.
 
     Parameters
     ----------
@@ -492,6 +608,11 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
     -------
     result : ScenarioRun
         The orbit, the eclipses, the activities and the checks
+
+    Raises
+    ------
+    ValueError
+        If a negative offset ends an activity at or before its start
     """
     tle = scenario_tle(scenario)
     start = round_time(scenario.start)
@@ -514,10 +635,17 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
     sunlit = interval - eclipses
     latitude, longitude = geodetic(state)
 
+    def time_above(limit: Quantity) -> P.Interval:
+        def above_at(at: TimeArray) -> np.ndarray:
+            return np.asarray(geodetic(positions_at(at))[0] >= limit)
+
+        return intervals_where(times, np.asarray(latitude >= limit), above_at)
+
+    events = find_events(scenario.activities, interval, eclipses, sunlit, time_above)
     occurrences = resolve_activities(
         scenario.activities,
         interval,
-        {"eclipse entry": eclipses, "eclipse exit": sunlit},
+        events,
         {"sunlit": sunlit, "eclipse": eclipses},
     )
     illumination, attitude, mode = gantt_rows(sunlit, eclipses, occurrences)
@@ -528,6 +656,7 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
         interval=interval,
         times=times,
         state=state,
+        sun=sun,
         latitude=latitude,
         longitude=longitude,
         beta=beta_angle(state, sun),

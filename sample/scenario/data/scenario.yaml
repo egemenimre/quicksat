@@ -1,4 +1,4 @@
-# The sample scenario: five hours in a 510 km sun-synchronous orbit.
+# The sample scenario: three orbits of a 510 km sun-synchronous orbit.
 #
 # The scenario notebook reads this file and shows the activity table, a Gantt
 # chart and two ground track maps. Edit this file and run the notebook again.
@@ -33,8 +33,11 @@ attitudes:
 # One repeat of the list. The run repeats it until the duration ends, and cuts
 # the last activity there. Each activity is a chain link: it starts where the one
 # before it ends. The fields are
-#   the trigger that ends it: a duration such as 20 min, or an event, which is
-#     eclipse entry or eclipse exit, the next one after the activity starts
+#   the trigger that ends it: a duration such as 20 min, or the next event after
+#     the activity starts. The events are eclipse entry, eclipse exit, ascending
+#     node, descending node, and latitude crossings such as latitude 30 deg
+#     ascending, latitude -30 deg descending, or latitude 45 deg for either
+#     direction. An event can take an offset, such as eclipse entry + 2 min
 #   the attitude: nadir or sun pointing
 #   the mode: any name
 #   the constraint, optional: sunlit or eclipse, the illumination it expects

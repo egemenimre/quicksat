@@ -14,7 +14,9 @@ grid removes that problem, so plain portion is enough.
 
 The helpers here round a time and add up the length of an interval. They also
 look up the value of an `IntervalDict` at every time of a `Time` array, and find
-when the next piece of an interval begins.
+when the next piece of an interval begins. `intervals_where` finds where a
+condition holds, such as the shadow or a latitude limit, with its edges located
+between the steps of a time grid.
 
 Every interval in quicksat is closed at its start and open at its end, made with
 `P.closedopen`. So touching intervals join. The pieces of a run then fit together
@@ -22,6 +24,7 @@ without gaps or overlaps.
 
 """
 
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -160,3 +163,67 @@ def next_start(intervals: P.Interval, after: TimeArray) -> TimeArray | None:
         if piece.left == P.CLOSED:
             return piece.lower
     return None
+
+
+def intervals_where(
+    times: TimeArray,
+    flags: np.ndarray,
+    flags_at: Callable[[TimeArray], np.ndarray],
+) -> P.Interval:
+    """
+    Where a condition holds over the span of a time grid, as portion intervals.
+
+    Wherever the flag changes between two grid steps, one edge lies between them.
+    All the brackets are halved together by bisection. Each midpoint evaluates
+    the condition again, with `flags_at`, so the result does not depend on the
+    step. The search stops once every bracket is shorter than 1 ms. It then takes
+    the midpoint and rounds it with `round_time`.
+
+    It assumes that no bracket holds two edges. That holds for any step far
+    shorter than the time the condition holds or fails. A spell shorter than one
+    step can be missed.
+
+    Each piece is closed at its start and open at its end. A piece already under
+    way at the first time begins there, and one still under way at the last time
+    ends there. These cut ends are not edges, and `next_start` never takes them
+    for an event.
+
+    Parameters
+    ----------
+    times : Time
+        The grid times, in order, rounded with `round_time`
+    flags : ndarray
+        Whether the condition holds at each grid time, as an array of bools
+    flags_at : callable
+        Gives the same flags for any `Time` array
+
+    Returns
+    -------
+    intervals : portion.Interval
+        Where the condition holds, between the first and the last time of the grid
+    """
+    changed = np.flatnonzero(flags[:-1] != flags[1:])
+    rises = ~flags[changed]
+    epoch = times[0]
+    low = (times[changed] - epoch).to_value(u.s)
+    high = (times[changed + 1] - epoch).to_value(u.s)
+    tolerance = TIME_GRID.to(u.s).value
+    while changed.size and (high - low).max() >= tolerance:
+        middle = 0.5 * (low + high)
+        mid_flags = flags_at(epoch + Q_(middle, "s"))
+        # a rise is false at the low end and true at the high end, a fall the reverse
+        move_high = mid_flags == rises
+        high = np.where(move_high, middle, high)
+        low = np.where(move_high, low, middle)
+    edges = round_time(epoch + Q_(0.5 * (low + high), "s"))
+
+    begins = list(edges[rises])
+    ends = list(edges[~rises])
+    if flags[0]:
+        begins.insert(0, times[0])
+    if flags[-1]:
+        ends.append(times[-1])
+    holds = P.empty()
+    for begin, end in zip(begins, ends, strict=True):
+        holds |= P.closedopen(begin, end)
+    return holds

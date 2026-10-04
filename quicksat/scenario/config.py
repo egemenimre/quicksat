@@ -36,6 +36,7 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
+    PrivateAttr,
     ValidationInfo,
     field_validator,
     model_validator,
@@ -51,11 +52,20 @@ Axis = Literal["+x", "-x", "+y", "-y", "+z", "-z"]
 Illumination = Literal["sunlit", "eclipse"]
 """The states of the illumination, and so the constraints an activity may have."""
 
-EventName = Literal["eclipse entry", "eclipse exit"]
-"""The events that can end an activity."""
+EventName = Literal["eclipse entry", "eclipse exit", "latitude crossing"]
+"""The kinds of event that can end an activity."""
 
-EVENT_TRIGGERS: tuple[str, ...] = get_args(EventName)
-"""The event triggers, as written in the scenario file."""
+LATITUDE_CROSSING = "latitude crossing"
+"""The event of a latitude trigger, and of the node triggers."""
+
+Direction = Literal["ascending", "descending"]
+"""The direction of a latitude crossing: northward or southward."""
+
+NODES: dict[str, Direction] = {
+    "ascending node": "ascending",
+    "descending node": "descending",
+}
+"""The node triggers, and the direction of their crossing of the equator."""
 
 NADIR = "nadir"
 """Name of the attitude that points one body axis at the nadir."""
@@ -414,10 +424,10 @@ class Orbit(BaseModel):
 
 class Trigger(BaseModel):
     """
-    What ends an activity: a duration, or an event.
+    What ends an activity: a duration, or an event with an optional offset.
 
-    Build one with `parse_trigger`. Offsets and other events, such as a latitude
-    crossing, come later. They will add fields here and forms to the parser.
+    Build one with `parse_trigger`. The umbra edges come with the penumbra. They
+    will add events here and forms to the parser.
 
     Parameters
     ----------
@@ -426,7 +436,18 @@ class Trigger(BaseModel):
     duration : Quantity, optional
         The length of the activity, for a duration trigger
     event : str, optional
-        The event that ends the activity, for an event trigger
+        The kind of event that ends the activity, for an event trigger:
+        `eclipse entry`, `eclipse exit` or `latitude crossing`. The node triggers
+        are latitude crossings of 0 degrees.
+    latitude : Quantity, optional
+        The geodetic latitude crossed, from -90 to 90 degrees, for a latitude
+        crossing
+    direction : str, optional
+        `ascending` for a northward crossing, `descending` for a southward one,
+        or None for either. Only for a latitude crossing.
+    offset : Quantity, optional
+        Time added to the event, negative to end the activity before it. Only for
+        an event trigger.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
@@ -434,13 +455,55 @@ class Trigger(BaseModel):
     text: str
     duration: PlainQty | None = None
     event: EventName | None = None
+    latitude: PlainQty | None = None
+    direction: Direction | None = None
+    offset: PlainQty | None = None
 
     @model_validator(mode="after")
-    def _duration_or_event(self):
-        """Checks that the trigger has a duration or an event, and not both."""
+    def _consistent(self):
+        """Checks that the fields given suit a duration or an event."""
         if (self.duration is None) == (self.event is None):
             raise ValueError("a trigger has either a duration or an event")
+        if (self.event == LATITUDE_CROSSING) != (self.latitude is not None):
+            raise ValueError(
+                "a latitude is given with a latitude crossing, and only then"
+            )
+        if self.direction is not None and self.event != LATITUDE_CROSSING:
+            raise ValueError("only a latitude crossing has a direction")
+        if self.offset is not None and self.event is None:
+            raise ValueError("only an event trigger has an offset")
         return self
+
+    @property
+    def event_key(self) -> tuple | None:
+        """
+        What the event is, without the offset, as a key for a lookup table.
+
+        Returns
+        -------
+        key : tuple or None
+            The kind of event, then the latitude in degrees and the direction for
+            a latitude crossing. None for a duration trigger.
+        """
+        if self.event is None:
+            return None
+        if self.event == LATITUDE_CROSSING:
+            assert self.latitude is not None  # checked when the trigger is built
+            return (self.event, float(self.latitude.to(u.deg).value), self.direction)
+        return (self.event,)
+
+
+_NUMBER = r"(?:\d+(?:\.\d*)?|\.\d+)"
+"""A number without a sign, such as `30`, `2.5` or `.5`."""
+
+_EVENT_TRIGGER = re.compile(
+    r"(?P<event>eclipse entry|eclipse exit|ascending node|descending node"
+    rf"|latitude (?P<latitude>[+-]?{_NUMBER} ?[a-z]+)"
+    r"(?: (?P<direction>ascending|descending))?)"
+    rf"(?: ?(?P<sign>[+-]) ?(?P<offset>{_NUMBER}.*))?",
+    re.IGNORECASE,
+)
+"""An event trigger, with an optional offset, in text whose spaces are tidied."""
 
 
 def _trigger_forms() -> str:
@@ -452,17 +515,103 @@ def _trigger_forms() -> str:
     forms : str
         The forms in one sentence
     """
-    events = " and ".join(f"'{event}'" for event in EVENT_TRIGGERS)
-    return f"a positive duration with a unit, such as '20 min', or one of {events}"
+    return (
+        "a positive duration with a unit, such as '20 min', or an event: "
+        "'eclipse entry', 'eclipse exit', 'ascending node', 'descending node', or a "
+        "latitude crossing such as 'latitude 30 deg ascending'. An event can take "
+        "an offset, such as 'eclipse entry + 2 min'"
+    )
+
+
+def _parse_latitude(text: str, trigger: str) -> Quantity:
+    """
+    Read the latitude of a latitude trigger.
+
+    Parameters
+    ----------
+    text : str
+        An angle with a unit, such as `30 deg` or `-45.5 deg`
+    trigger : str
+        The whole trigger, for the error message
+
+    Returns
+    -------
+    latitude : Quantity
+        The latitude, in degrees
+
+    Raises
+    ------
+    ValueError
+        If the text is not an angle, or is not from -90 to 90 degrees
+    """
+    try:
+        latitude = Q_(text)
+    except (TypeError, ValueError):
+        latitude = None
+    if latitude is None or not cast(u.UnitBase, latitude.unit).is_equivalent(u.deg):
+        raise ValueError(
+            f"trigger '{trigger}' needs a latitude with an angle unit, such as "
+            "'latitude 30 deg ascending'"
+        )
+    latitude = latitude.to(u.deg)
+    if abs(latitude) > Q_(90, "deg"):
+        raise ValueError(
+            f"trigger '{trigger}' needs a latitude from -90 to 90 deg, got {latitude}"
+        )
+    return latitude
+
+
+def _parse_offset(sign: str, text: str, trigger: str) -> Quantity:
+    """
+    Read the offset of an event trigger.
+
+    Parameters
+    ----------
+    sign : str
+        `+` or `-`
+    text : str
+        A time with a unit and no sign, such as `2 min`
+    trigger : str
+        The whole trigger, for the error message
+
+    Returns
+    -------
+    offset : Quantity
+        The offset, negative for `-`
+
+    Raises
+    ------
+    ValueError
+        If the text is not a time with a unit
+    """
+    try:
+        offset = Q_(text)
+    except (TypeError, ValueError):
+        offset = None
+    if offset is None or not cast(u.UnitBase, offset.unit).is_equivalent(u.s):
+        raise ValueError(
+            f"trigger '{trigger}' has an offset that is not a time with a unit. "
+            "Write it such as 'eclipse entry + 2 min'"
+        )
+    return -offset if sign == "-" else offset
 
 
 def parse_trigger(text: str) -> Trigger:
     """
     Read a trigger, the first field of an activity.
 
-    The accepted forms are a positive duration with a unit, such as `20 min`, and
-    the events `eclipse entry` and `eclipse exit`. A duration must be at least as
-    long as the 1 ms time grid.
+    The accepted forms are:
+
+    - a positive duration with a unit, such as `20 min`. It must be at least as
+      long as the 1 ms time grid.
+    - the events `eclipse entry` and `eclipse exit`;
+    - a latitude crossing, such as `latitude 30 deg ascending`, `latitude -30 deg
+      descending`, or `latitude 45 deg` for either direction;
+    - `ascending node` and `descending node`, the crossings of 0 degrees;
+    - any of these events with an offset, such as `eclipse entry + 2 min` or
+      `descending node - 30 s`.
+
+    The words may be in any case.
 
     Parameters
     ----------
@@ -482,9 +631,37 @@ def parse_trigger(text: str) -> Trigger:
     if not isinstance(text, str):
         raise ValueError(f"trigger {text!r} is not text. Use {_trigger_forms()}")
     tidy = " ".join(text.split())
-    for event in get_args(EventName):
-        if tidy.lower() == event:
-            return Trigger(text=tidy, event=event)
+
+    match = _EVENT_TRIGGER.fullmatch(tidy)
+    if match:
+        name = match["event"].lower()
+        offset = None
+        if match["sign"]:
+            offset = _parse_offset(match["sign"], match["offset"], tidy)
+        if name in NODES:
+            return Trigger(
+                text=tidy,
+                event=LATITUDE_CROSSING,
+                latitude=Q_(0, "deg"),
+                direction=NODES[name],
+                offset=offset,
+            )
+        if match["latitude"]:
+            direction = match["direction"]
+            return Trigger(
+                text=tidy,
+                event=LATITUDE_CROSSING,
+                latitude=_parse_latitude(match["latitude"], tidy),
+                direction=cast(Direction, direction.lower()) if direction else None,
+                offset=offset,
+            )
+        return Trigger(text=tidy, event=cast(EventName, name), offset=offset)
+    if tidy.lower().startswith("latitude"):
+        raise ValueError(
+            f"trigger '{tidy}' is not understood. Write a latitude crossing such as "
+            "'latitude 30 deg ascending', 'latitude -30 deg descending' or "
+            "'latitude 30 deg' for either direction"
+        )
 
     try:
         duration = Q_(tidy)
@@ -675,6 +852,34 @@ class Scenario(BaseModel):
     attitudes: Attitudes
     activities: list[Activity]
 
+    _source_file: Path | None = PrivateAttr(None)
+    _source_text: str | None = PrivateAttr(None)
+
+    @property
+    def source_file(self) -> Path | None:
+        """
+        The file the scenario was read from.
+
+        Returns
+        -------
+        path : Path or None
+            The path given to `from_yaml_file`, or None if the scenario was not
+            read from a file
+        """
+        return self._source_file
+
+    @property
+    def source_text(self) -> str | None:
+        """
+        The YAML text the scenario was read from, as written.
+
+        Returns
+        -------
+        text : str or None
+            The text, or None if the scenario was not read from YAML text
+        """
+        return self._source_text
+
     @classmethod
     def from_yaml_file(cls, file_path: str | Path) -> "Scenario":
         """
@@ -699,7 +904,9 @@ class Scenario(BaseModel):
         else:
             path = Path(file_path)
             with open(path, "rt") as file:
-                return cls.from_yaml_text(file.read(), base_dir=path.parent)
+                scenario = cls.from_yaml_text(file.read(), base_dir=path.parent)
+            scenario._source_file = path
+            return scenario
 
     @classmethod
     def from_yaml_text(
@@ -726,7 +933,9 @@ class Scenario(BaseModel):
         data = yaml.safe_load(yaml_text)
         if not isinstance(data, dict):
             raise ValueError("A scenario file must be a mapping of keys to values.")
-        return cls.model_validate(data, context={"base_dir": base_dir})
+        scenario = cls.model_validate(data, context={"base_dir": base_dir})
+        scenario._source_text = yaml_text
+        return scenario
 
     @field_validator("step")
     @classmethod

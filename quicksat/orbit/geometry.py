@@ -33,6 +33,7 @@ from typing import cast
 import numpy as np
 import portion as P
 from astropy.coordinates import (
+    GCRS,
     ITRS,
     CartesianDifferential,
     CartesianRepresentation,
@@ -42,7 +43,7 @@ from astropy.coordinates import (
 )
 
 from quicksat import Q_, R_EARTH, u
-from quicksat.utils.intervals import TIME_GRID, TimeArray, round_time
+from quicksat.utils.intervals import TimeArray, intervals_where
 
 
 def sun_positions(times: TimeArray) -> CartesianRepresentation:
@@ -119,14 +120,10 @@ def eclipse_intervals(
     """
     The eclipses over the span of a time grid, as portion intervals.
 
-    Wherever the shadow flag changes between two grid steps, one edge lies
-    between them. All the brackets are halved together by bisection. Each
-    midpoint evaluates the orbit and the sun again, so the result does not depend
-    on the step. The search stops once every bracket is shorter than 1 ms. It then
-    takes the midpoint and rounds it with `round_time`.
-
-    It assumes that no bracket holds two edges. That holds for any step far
-    shorter than the eclipse. A shadow shorter than one step can be missed.
+    `intervals_where` locates each shadow edge between the grid steps, to 1 ms.
+    Each midpoint of its search evaluates the orbit and the sun again, so the
+    result does not depend on the step. A shadow shorter than one step can be
+    missed.
 
     Each eclipse is closed at its entry and open at its exit. An eclipse already
     under way at the first time begins there, and one still under way at the last
@@ -151,32 +148,11 @@ def eclipse_intervals(
     eclipses : portion.Interval
         The eclipses, between the first and the last time of the grid
     """
-    changed = np.flatnonzero(shadow[:-1] != shadow[1:])
-    is_entry = ~shadow[changed]
-    epoch = times[0]
-    low = (times[changed] - epoch).to_value(u.s)
-    high = (times[changed + 1] - epoch).to_value(u.s)
-    tolerance = TIME_GRID.to(u.s).value
-    while changed.size and (high - low).max() >= tolerance:
-        middle = 0.5 * (low + high)
-        mid_times = epoch + Q_(middle, "s")
-        mid_shadow = in_shadow(state_at(mid_times), sun_at(mid_times))
-        # an entry is lit at the low end and dark at the high end, an exit the reverse
-        move_high = mid_shadow == is_entry
-        high = np.where(move_high, middle, high)
-        low = np.where(move_high, low, middle)
-    edges = round_time(epoch + Q_(0.5 * (low + high), "s"))
 
-    begins = list(edges[is_entry])
-    ends = list(edges[~is_entry])
-    if shadow[0]:
-        begins.insert(0, times[0])
-    if shadow[-1]:
-        ends.append(times[-1])
-    eclipses = P.empty()
-    for begin, end in zip(begins, ends, strict=True):
-        eclipses |= P.closedopen(begin, end)
-    return eclipses
+    def shadow_at(at: TimeArray) -> np.ndarray:
+        return in_shadow(state_at(at), sun_at(at))
+
+    return intervals_where(times, shadow, shadow_at)
 
 
 def geodetic(state: SkyCoord):
@@ -237,3 +213,34 @@ def beta_angle(state: SkyCoord, sun: CartesianRepresentation):
     normal = normal / normal.norm()
     sine = np.clip(normal.dot(sun / sun.norm()).to_value(u.one), -1, 1)
     return Q_(np.arcsin(sine), "rad").to(u.deg)
+
+
+def earth_rotations(times: TimeArray) -> np.ndarray:
+    """
+    The orientation of the Earth: rotations from ITRS, fixed to the Earth, into
+    GCRS.
+
+    The three axes of ITRS are each transformed into GCRS by astropy. That
+    includes the Earth's turn, precession, nutation and polar motion. Both frames
+    are centred on the Earth, so the transform is a pure rotation.
+
+    Parameters
+    ----------
+    times : Time
+        The times, as an array
+
+    Returns
+    -------
+    rotations : ndarray
+        Matrices that turn ITRS vectors into GCRS, shape (n, 3, 3). Column i is
+        ITRS axis i, seen in GCRS.
+    """
+    count = len(times)
+    # the three axes at every time, shape (3, n)
+    axes = np.broadcast_to(np.eye(3)[:, :, None], (3, 3, count))
+    itrs = ITRS(CartesianRepresentation(Q_(axes, "km"), xyz_axis=0), obstime=times)
+    gcrs = cast(
+        CartesianRepresentation, itrs.transform_to(GCRS(obstime=times)).cartesian
+    )
+    # xyz has shape (3 components, 3 axes, n): move to (n, components, axes)
+    return np.moveaxis(gcrs.xyz.to_value(u.km), -1, 0)
