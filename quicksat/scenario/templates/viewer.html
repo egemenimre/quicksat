@@ -1,0 +1,2265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>quicksat Scenario Viewer</title>
+<!--
+  Quicksat Scenario Viewer. This is the source: build_page.py puts the
+  libraries and the coastlines in place. The built page holds no run data. It
+  reads scenario.js, and power.js if there is one, from its own folder.
+  Libraries: three.js (MIT), uPlot (MIT). Coastlines: Natural Earth (public
+  domain).
+-->
+<style>/*@uplot-css@*/</style>
+<style>
+:root {
+  --bg: #08111f;
+  --panel: #0c1829;
+  --panel-2: #102037;
+  --line: #1a2e4a;
+  --line-2: #24405f;
+  --text: #cdd9ea;
+  --muted: #7d93b3;
+  --dim: #4f6789;
+  --accent: #22d3ee;
+  --accent-soft: rgba(34, 211, 238, 0.12);
+  --amber: #f5b13d;
+  --red: #f87171;
+  --green: #34d399;
+  --ok-bg: #0b2a22;
+  --ok-line: #1f7a5a;
+  --warn-bg: #2b2310;
+  --warn-line: #8a6a1f;
+  --fail-bg: #2d1418;
+  --fail-line: #8f3341;
+  --mono: ui-monospace, "JetBrains Mono", "SF Mono", "Cascadia Mono", Menlo, Consolas,
+    "DejaVu Sans Mono", monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.45 var(--mono);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+button, select, input { font: inherit; color: inherit; }
+
+/* Header and page tabs */
+.top {
+  display: flex; align-items: stretch; gap: 16px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(#0d1b2f, #0a1526);
+  min-width: 0;
+}
+.top > * { align-self: center; }
+.brand { color: var(--accent); font-weight: 700; letter-spacing: 0.1em; white-space: nowrap; }
+.brand::before { content: "\25C6  "; }
+.brand span { color: var(--muted); font-weight: 400; margin-left: 6px; }
+.subtitle { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.subtitle b { color: var(--text); font-weight: 400; }
+.spacer { flex: 1; }
+.chip {
+  border: 1px solid var(--line-2); border-radius: 3px; padding: 3px 9px;
+  color: var(--accent); background: var(--panel); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.tabs { display: flex; align-self: stretch; }
+.tabs button {
+  background: none; border: 0; border-bottom: 2px solid transparent;
+  padding: 11px 14px 9px; color: var(--muted); cursor: pointer;
+  text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; white-space: nowrap;
+}
+.tabs button:hover { color: var(--text); }
+.tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Pages */
+main { min-height: 0; display: grid; }
+.page { display: none; min-height: 0; min-width: 0; }
+.page.active { display: grid; }
+
+/* Scenario page: orbit, body and the current data on top, ground track and
+   charts below */
+#page-scenario {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(170px, 0.28fr);
+  grid-template-rows: minmax(0, 1.1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px 8px 0;
+}
+#vp-orbit { grid-area: 1 / 1; }
+#vp-body { grid-area: 1 / 2; }
+#vp-data { grid-area: 1 / 3; }
+#vp-ground { grid-area: 2 / 1; }
+#charts { grid-area: 2 / 2 / 3 / 4; }
+.controls { grid-area: 3 / 1 / 4 / 4; }
+
+.viewport { position: relative; border: 1px solid var(--line); border-radius: 3px; background: #050c18; overflow: hidden; min-height: 0; }
+.viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.vp-title {
+  position: absolute; top: 8px; left: 10px; pointer-events: none;
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; font-size: 10.5px;
+}
+.vp-title b { color: var(--text); font-weight: 600; }
+.legend, .vp-readout {
+  position: absolute;
+  background: rgba(8, 17, 31, 0.82); border: 1px solid var(--line); border-radius: 3px;
+  padding: 4px 8px; font-size: 10.5px;
+}
+.legend { top: 28px; left: 10px; }
+.legend div { white-space: nowrap; }
+.legend .choose { display: flex; gap: 4px; margin: 1px 0 4px; }
+.vp-readout { pointer-events: none; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vp-readout b { color: var(--text); font-weight: 400; }
+.vp-readout .head { text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; }
+.vp-readout.top-right { top: 6px; right: 8px; }
+.vp-readout.bottom-left { bottom: 8px; left: 10px; }
+.swatch { width: 14px; height: 3px; border-radius: 2px; display: inline-block; margin-right: 6px; vertical-align: 3px; }
+.toggles { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.toggle {
+  background: rgba(8, 17, 31, 0.88); border: 1px solid var(--line-2); color: var(--muted);
+  border-radius: 3px; padding: 2px 7px; font-size: 10.5px; cursor: pointer;
+}
+.toggle.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.label3d {
+  position: absolute; left: 0; top: 0; font-size: 10.5px; white-space: nowrap; will-change: transform;
+  text-shadow: 0 0 3px #000, 0 0 2px #000, 0 0 1px #000;
+}
+.vp-message { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 20px; text-align: center; }
+
+/* The current data: the state of the run at the time cursor */
+.data-panel {
+  position: relative; border: 1px solid var(--line); border-radius: 3px; background: #050c18;
+  min-height: 0; min-width: 0; overflow: auto; padding: 34px 12px 10px;
+}
+.now { margin: 0; }
+.now dt { color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; margin-top: 14px; }
+.now dt:first-child { margin-top: 0; }
+.now dd {
+  margin: 4px 0 0; font-size: 14px; display: flex; align-items: center; gap: 8px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.now .fill { width: 12px; height: 12px; border-radius: 2px; flex: none; }
+/* Explanations: a box that appears when the pointer rests on a title, a value
+   or a button with a data-help key. A small "i" marks each title that has one. */
+[data-help] { cursor: help; }
+button[data-help], select[data-help], input[data-help] { cursor: pointer; }
+.vp-title[data-help], .vp-readout[data-help] { pointer-events: auto; }
+.vp-title[data-help]::after, .chart-head .title[data-help]::after {
+  content: "i"; display: inline-block; width: 11px; height: 11px; margin-left: 6px;
+  border: 1px solid var(--dim); border-radius: 50%; color: var(--muted);
+  font: 600 8px/10px var(--mono); text-align: center; text-transform: none; letter-spacing: 0; vertical-align: 1px;
+}
+.help {
+  position: fixed; z-index: 20; max-width: 320px; padding: 8px 10px;
+  background: #0c1829; border: 1px solid var(--line-2); border-radius: 3px;
+  color: var(--text); font-size: 11px; line-height: 1.5; pointer-events: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); white-space: normal;
+}
+.help b {
+  display: block; margin-bottom: 3px; color: var(--accent); font-weight: 600; font-size: 10.5px;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.now-activity { color: var(--muted); font-size: 10.5px; margin: 16px 0 0; padding-top: 8px; border-top: 1px solid var(--line); }
+
+.charts {
+  border: 1px solid var(--line); border-radius: 3px; background: #070f1d;
+  padding: 4px 8px 2px; min-height: 0; min-width: 0;
+  display: grid; grid-template-rows: auto 84px auto minmax(0, 1fr) auto minmax(0, 1fr);
+}
+.charts.no-power { grid-template-rows: auto minmax(0, 1fr); }
+.charts.no-power > :nth-child(n + 3) { display: none; }
+.chart-head { display: flex; gap: 14px; align-items: baseline; font-size: 10.5px; padding: 3px 0 1px; white-space: nowrap; overflow: hidden; }
+.chart-head .title { color: var(--text); font-weight: 600; letter-spacing: 0.08em; }
+.chart-head .unit, .chart-head .key { color: var(--muted); }
+.chart-head .key b { color: var(--text); font-weight: 400; font-variant-numeric: tabular-nums; }
+.zooms { margin-left: auto; display: flex; gap: 4px; }
+.chart-body { min-height: 0; min-width: 0; }
+.uplot, .uplot * { font-family: var(--mono); }
+.u-select { background: rgba(34, 211, 238, 0.12); }
+
+.controls { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-top: 1px solid var(--line); min-width: 0; }
+.play {
+  width: 32px; height: 26px; border: 1px solid var(--accent); color: var(--accent);
+  background: var(--accent-soft); border-radius: 3px; cursor: pointer;
+}
+select.speed { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 3px; padding: 3px 5px; }
+#slider { flex: 1; min-width: 120px; accent-color: var(--accent); }
+.readout { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.readout .dim { color: var(--muted); }
+.dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 6px; }
+
+/* Blocks on the other pages */
+.block { border: 1px solid var(--line); background: var(--panel); border-radius: 3px; padding: 12px 14px; min-width: 0; }
+.section-title { color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; font-size: 10.5px; margin: 0 0 8px; }
+.section-title b { color: var(--text); font-weight: 400; text-transform: none; letter-spacing: 0; }
+.note { color: var(--muted); font-size: 11px; margin: 8px 0 0; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+pre.file {
+  margin: 0; padding: 10px 12px; background: #070f1d; border: 1px solid var(--line); border-radius: 3px;
+  overflow: auto; font: 11.5px/1.5 var(--mono); color: var(--text);
+}
+pre.file .comment { color: var(--dim); }
+
+#page-activities.active, #page-inputs.active, #page-results.active { display: block; overflow: auto; padding: 12px; }
+.blocks {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 12px;
+  max-width: 1300px; margin: 0 auto; align-items: start;
+}
+.blocks > .wide { grid-column: 1 / -1; }
+#inputs { grid-template-columns: repeat(auto-fit, minmax(600px, 1fr)); }
+.stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.summary-line { margin: 0 0 10px; }
+table.list { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.list th {
+  color: var(--dim); font-weight: 400; text-align: left; font-size: 10.5px; padding: 4px 8px;
+  text-transform: uppercase; white-space: nowrap; position: sticky; top: -12px; background: var(--panel);
+  border-bottom: 1px solid var(--line-2);
+}
+table.list td { padding: 4px 8px; border-top: 1px solid var(--line); white-space: nowrap; }
+table.list .num { text-align: right; }
+table.list tbody tr { cursor: pointer; }
+table.list tbody tr:hover td { background: rgba(255, 255, 255, 0.03); }
+table.list tr.current td { background: var(--accent-soft); }
+table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
+.status-ok { color: var(--green); }
+.status-fail { color: var(--red); }
+.status-warn { color: var(--amber); }
+.status-plain { color: var(--muted); }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.card { border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 3px; padding: 7px 10px; }
+.card .label { color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; }
+.card .value { color: var(--accent); font-size: 22px; font-weight: 700; line-height: 1.25; }
+.card .value small { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 4px; }
+.check { border: 1px solid; border-radius: 3px; padding: 7px 9px; margin-bottom: 6px; }
+.check:last-child { margin-bottom: 0; }
+.check .head { font-weight: 700; }
+.check .detail { opacity: 0.85; font-size: 11px; white-space: pre-line; }
+.check.ok { background: var(--ok-bg); border-color: var(--ok-line); }
+.check.ok .head { color: var(--green); }
+.check.ok .head::before { content: "\2713  "; }
+.check.warn { background: var(--warn-bg); border-color: var(--warn-line); }
+.check.warn .head { color: var(--amber); }
+.check.warn .head::before { content: "!  "; }
+.check.fail { background: var(--fail-bg); border-color: var(--fail-line); }
+.check.fail .head { color: var(--red); }
+.check.fail .head::before { content: "\2715  "; }
+
+.empty { display: grid; place-items: center; height: 100vh; color: var(--muted); padding: 24px; text-align: center; }
+.empty div { max-width: 640px; }
+
+@media (max-width: 1000px) {
+  body { overflow: auto; height: auto; }
+  .top { flex-wrap: wrap; }
+  #page-scenario { grid-template-columns: minmax(0, 1fr); grid-template-rows: 420px 360px auto 320px 420px auto; }
+  #vp-orbit { grid-area: 1 / 1; }
+  #vp-body { grid-area: 2 / 1; }
+  #vp-data { grid-area: 3 / 1; }
+  #vp-ground { grid-area: 4 / 1; }
+  #charts { grid-area: 5 / 1; }
+  .controls { grid-area: 6 / 1; flex-wrap: wrap; }
+  .blocks, #inputs { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">QUICKSAT<span>SCENARIO VIEWER</span></div>
+  <nav class="tabs" id="page-tabs">
+    <button class="active" data-page="scenario" data-help="tabScenario">Scenario</button>
+    <button data-page="activities" data-help="tabActivities">Activities</button>
+    <button data-page="inputs" data-help="tabInputs">Inputs</button>
+    <button data-page="results" data-help="tabResults">Results</button>
+  </nav>
+  <div class="subtitle" id="subtitle"></div>
+  <div class="spacer"></div>
+  <div class="chip" id="clock">T+ 0m 00s</div>
+</header>
+
+<main>
+  <section class="page active" id="page-scenario">
+    <div class="viewport" id="vp-orbit">
+      <canvas></canvas>
+      <div class="vp-title" data-help="orbit"><b>Orbit</b> · GCRS</div>
+      <div class="legend" id="orbit-legend"></div>
+      <div class="vp-readout top-right" id="orbit-readout" data-help="beta"></div>
+      <div class="toggles" id="orbit-toggles"></div>
+    </div>
+    <div class="viewport" id="vp-body">
+      <canvas></canvas>
+      <div class="vp-title" id="body-title" data-help="body"></div>
+      <div class="vp-readout bottom-left" id="body-readout"></div>
+      <div class="toggles" id="body-toggles"></div>
+    </div>
+    <div class="data-panel" id="vp-data">
+      <div class="vp-title" data-help="current"><b>Current data</b></div>
+      <dl class="now" id="now"></dl>
+      <p class="now-activity" id="now-activity" data-help="activity"></p>
+    </div>
+    <div class="viewport" id="vp-ground">
+      <canvas></canvas>
+      <div class="vp-title" id="ground-title" data-help="ground"></div>
+      <div class="vp-readout top-right" id="ground-readout" data-help="position"></div>
+    </div>
+    <div class="charts" id="charts">
+      <div class="chart-head"><span class="title" data-help="timeline">TIMELINE</span><span class="zooms" id="zooms"></span></div>
+      <div class="chart-body" id="chart-gantt"></div>
+      <div class="chart-head" id="head-power"></div>
+      <div class="chart-body" id="chart-power"></div>
+      <div class="chart-head" id="head-soc"></div>
+      <div class="chart-body" id="chart-soc"></div>
+    </div>
+    <div class="controls">
+      <button class="play" id="play" data-help="play">&#9654;</button>
+      <button class="toggle" id="reset" data-help="start">Reset</button>
+      <select class="speed" id="speed" data-help="speed"></select>
+      <input type="range" id="slider" min="0" value="0" step="1" data-help="slider">
+      <span class="readout" id="readout"></span>
+    </div>
+  </section>
+
+  <section class="page" id="page-activities">
+    <div class="blocks">
+      <div class="block wide">
+        <div class="section-title">Activities · <b id="activities-file"></b></div>
+        <p class="summary-line" id="activity-summary"></p>
+        <table class="list">
+          <thead><tr>
+            <th class="num">Repeat</th><th class="num">#</th><th>Start, UTC</th><th>End, UTC</th>
+            <th class="num">Length</th><th>Trigger</th><th>Attitude</th><th>Mode</th><th>Constraint</th>
+            <th class="num">Outside</th><th>Status</th>
+          </tr></thead>
+          <tbody id="activity-rows"></tbody>
+        </table>
+        <p class="note">Every occurrence of every activity, in time order. Click a row to see it on the Scenario page.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="page-inputs">
+    <div class="blocks" id="inputs"></div>
+  </section>
+
+  <section class="page" id="page-results">
+    <div class="blocks" id="results"></div>
+  </section>
+</main>
+
+<!-- The run data, from this page's own folder. A missing file fires its
+     error event, and the page carries on without it. -->
+<script src="scenario.js"></script>
+<script src="power.js"></script>
+<script id="coastlines" type="application/json">@coastlines@</script>
+<script>/*@three@*/</script>
+<script>/*@uplot@*/</script>
+<script>
+"use strict";
+
+// ---------------------------------------------------------------- Data and its checks
+
+const PAGE_VERSION = 2;
+
+function stop(message) {
+  document.body.innerHTML = "";
+  document.body.append(element("div", { class: "empty" }, [element("div", { text: message })]));
+  throw new Error(message);
+}
+
+const DATA = window.quicksat || {};
+const scenario = DATA.scenario;
+if (!scenario) {
+  stop("This folder has no scenario.js, so there is nothing to show. The page reads its data from the " +
+    "files next to it. Run the notebook that writes this folder again.");
+}
+if (scenario.format !== "quicksat-scenario" || !Number.isInteger(scenario.version)) {
+  stop("scenario.js is not a quicksat scenario file.");
+}
+if (scenario.version > PAGE_VERSION) {
+  stop(`scenario.js is version ${scenario.version}, but this page reads version ${PAGE_VERSION} and older. ` +
+    "Run the notebook again: it copies a matching page into the folder.");
+}
+if (typeof THREE === "undefined" || typeof uPlot === "undefined") {
+  stop("This is the page's source, without its libraries. Build the page with build_page.py.");
+}
+
+/** The power data, if power.js is here and belongs to this scenario.js, and why not otherwise. */
+function checkPower(power) {
+  if (!power) return [null, ""];
+  if (power.format !== "quicksat-power" || !Number.isInteger(power.version)) {
+    return [null, "power.js is not a quicksat power file."];
+  }
+  if (power.version > PAGE_VERSION) {
+    return [null, `power.js is version ${power.version}, newer than this page, which reads version ${PAGE_VERSION}.`];
+  }
+  if (power.scenario_id !== scenario.id) {
+    return [null, "power.js was written with another scenario.js, so it may not match this run."];
+  }
+  const n = scenario.grid.t_s.length;
+  const grid = power.grid;
+  const lengths = [grid.generated_w, grid.consumed_w, grid.soc, ...grid.sun_cos].map((a) => a.length);
+  if (lengths.some((length) => length !== n)) {
+    return [null, "power.js has a different number of time steps from scenario.js."];
+  }
+  return [power, ""];
+}
+const [power, powerNote] = checkPower(DATA.power);
+
+const THEME = {
+  accent: "#22d3ee",
+  text: "#cdd9ea",
+  muted: "#7d93b3",
+  dim: "#4f6789",
+  grid: "rgba(36, 64, 95, 0.55)",
+  tick: "rgba(36, 64, 95, 0.9)",
+  chartBg: "#070f1d",
+  eclipseBand: "rgba(47, 61, 85, 0.45)",
+  generated: "#2dd4bf",
+  generatedFill: "rgba(45, 212, 191, 0.13)",
+  consumed: "#f5b13d",
+  soc: "#22d3ee",
+  socFill: "rgba(34, 211, 238, 0.12)",
+  limit: "#f87171",
+  critical: "#f87171",
+  warning: "#f5b13d",
+};
+const MUTED_VALUE = "#898781"; // the notebook's colour for a value past its palette
+const VECTOR_COLOURS = { velocity: "#7fd1ff", nadir: "#ff8c42", orbitNormal: "#c084fc", sun: "#ffd23f", normal: "#2dd4bf" };
+const AXIS_COLOURS = ["#f87171", "#4ade80", "#60a5fa"];
+const SPEEDS = [10, 30, 60, 120, 300, 600, 1200];
+const D2R = Math.PI / 180;
+
+const GRID = scenario.grid;
+const T = GRID.t_s;
+const N = T.length;
+const T_END = T[N - 1];
+const STEP = T[1] - T[0];
+const R = GRID.r_km;
+const V = GRID.v_km_s;
+const S = GRID.sun;
+const Q_BODY = GRID.q_body;
+const Q_EARTH = GRID.q_earth;
+const LAT = GRID.lat_deg;
+const LON = GRID.lon_deg;
+const BETA = GRID.beta_deg;
+// The fraction of the sun's disk seen, from version 2 of scenario.js
+const LIGHT = GRID.light;
+const MINUTES = T.map((t) => t / 60);
+const PERIOD = scenario.orbit.nodal_period_s;
+const R_E = scenario.earth_radius_km;
+const START_MS = Date.parse(scenario.start + "Z");
+const TRACKS = scenario.tracks;
+// The eclipses, each from its entry to its exit. The illumination track splits
+// an eclipse into penumbra, umbra and penumbra, so touching shadow pieces join.
+const ECLIPSES = TRACKS.illumination
+  .filter((piece) => piece.value !== "sunlit")
+  .reduce((joined, piece) => {
+    const last = joined[joined.length - 1];
+    if (last && last.end_s === piece.start_s) last.end_s = piece.end_s;
+    else joined.push({ start_s: piece.start_s, end_s: piece.end_s });
+    return joined;
+  }, []);
+const ROWS = [
+  ["illumination", "ILLUMINATION"],
+  ["attitude", "ATTITUDE"],
+  ["mode", "MODE"],
+];
+const OCCURRENCES = scenario.occurrences;
+// A scenario read from text, not a file, has no file name
+const SCENARIO_FILE = scenario.scenario_file || "the scenario";
+const COLOURS = scenario.colours;
+// Without power.js there are no panels, and the body is a plain cube
+const PANELS = power ? power.spacecraft.panels : [];
+const BODY = power ? power.spacecraft.body_m : [0.6, 0.6, 0.6];
+const MONO = getComputedStyle(document.body).fontFamily;
+
+// ---------------------------------------------------------------- Helpers
+
+const $ = (selector) => document.querySelector(selector);
+const pad = (value) => String(value).padStart(2, "0");
+const clamp = (x, lo, hi) => Math.min(Math.max(x, lo), hi);
+const colourOf = (value) => COLOURS[value] || MUTED_VALUE;
+
+const coastlines = (() => {
+  try {
+    return JSON.parse($("#coastlines").textContent);
+  } catch (error) {
+    return [];
+  }
+})();
+
+/** White text on a dark fill, and near-black on a light one, as the notebook's plots do. */
+function textOn(fill) {
+  const n = parseInt(fill.slice(1), 16);
+  const luminance = (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+  return luminance < 0.5 ? "#ffffff" : "#0b0b0b";
+}
+
+function clockText(seconds) {
+  const s = Math.round(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return (h ? `${h}h ${pad(m)}m ` : `${m}m `) + `${pad(s % 60)}s`;
+}
+
+/** UTC as start plus the seconds. A browser's clock ignores leap seconds. */
+function utcText(seconds, withDate = true) {
+  const text = new Date(START_MS + seconds * 1000).toISOString().replace("T", " ");
+  return withDate ? text.slice(0, 19) : text.slice(11, 19);
+}
+
+function numberText(x, digits = 3) {
+  return String(Number(x.toFixed(digits)));
+}
+
+function element(tag, attributes = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attributes)) {
+    if (key === "text") node.textContent = value;
+    else if (key === "class") node.className = value;
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else node.setAttribute(key, value);
+  }
+  for (const child of children) node.append(child);
+  return node;
+}
+
+function setText(node, text) {
+  if (node.textContent !== text) node.textContent = text;
+}
+
+/** The last item of a list sorted by `start_s` that starts at or before `time`. */
+function pieceIndexAt(list, time) {
+  let lo = 0;
+  let hi = list.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (list[mid].start_s <= time) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
+
+function pieceAt(list, time) {
+  return list[pieceIndexAt(list, time)];
+}
+
+/** The text a track piece shows. A slew names the attitude it turns into. */
+const pieceText = (piece) => (piece.value === "slew" && piece.target ? `${piece.target} (slewing)` : piece.value);
+
+/** The grid step that holds `time`, and how far `time` is along it. */
+function sampleAt(time) {
+  const t = clamp(time, 0, T_END);
+  let i = clamp(Math.floor(t / STEP), 0, N - 2);
+  while (i > 0 && T[i] > t) i--;
+  while (i < N - 2 && T[i + 1] <= t) i++;
+  return [i, clamp((t - T[i]) / (T[i + 1] - T[i]), 0, 1)];
+}
+
+/** The nearest grid index to `time`. */
+function indexAt(time) {
+  const [i, f] = sampleAt(time);
+  return f < 0.5 ? i : i + 1;
+}
+
+function vectorAt(array, i, f, out) {
+  const a = 3 * i;
+  return out.set(
+    array[a] + (array[a + 3] - array[a]) * f,
+    array[a + 1] + (array[a + 4] - array[a + 1]) * f,
+    array[a + 2] + (array[a + 5] - array[a + 2]) * f,
+  );
+}
+
+/** A quaternion between two grid steps, the short way round. */
+function quaternionAt(array, i, f, out) {
+  const a = 4 * i;
+  const sign = array[a] * array[a + 4] + array[a + 1] * array[a + 5] + array[a + 2] * array[a + 6] + array[a + 3] * array[a + 7] < 0 ? -1 : 1;
+  return out
+    .set(
+      array[a] + (sign * array[a + 4] - array[a]) * f,
+      array[a + 1] + (sign * array[a + 5] - array[a + 1]) * f,
+      array[a + 2] + (sign * array[a + 6] - array[a + 2]) * f,
+      array[a + 3] + (sign * array[a + 7] - array[a + 3]) * f,
+    )
+    .normalize();
+}
+
+function angleBetween(a, b, f) {
+  return a + (((b - a + 540) % 360) - 180) * f;
+}
+
+/** LVLH to GCRS: x along track, y minus the orbit normal, z nadir. */
+function lvlhMatrix(r, v, out) {
+  const z = r.clone().negate().normalize();
+  const y = r.clone().cross(v).negate().normalize();
+  const x = y.clone().cross(z);
+  return out.makeBasis(x, y, z);
+}
+
+// ---------------------------------------------------------------- State
+
+const state = {
+  t: 0,
+  playing: false,
+  speed: 300,
+  page: "scenario",
+  colourBy: "mode",
+  r: new THREE.Vector3(),
+  v: new THREE.Vector3(),
+  sun: new THREE.Vector3(),
+  qBody: new THREE.Quaternion(),
+  qEarth: new THREE.Quaternion(),
+  lat: 0,
+  lon: 0,
+  beta: 0,
+  light: 1,
+  k: 0,
+};
+const dirty = { orbit: true, body: true, ground: true, charts: true, readouts: true };
+const markAll = () => Object.keys(dirty).forEach((key) => (dirty[key] = true));
+
+function updateState() {
+  const [i, f] = sampleAt(state.t);
+  vectorAt(R, i, f, state.r);
+  vectorAt(V, i, f, state.v);
+  vectorAt(S, i, f, state.sun).normalize();
+  // An attitude change without a slew is instant. Where one falls inside this
+  // step, keep the attitude of the side the time is on, rather than turning
+  // across the step. A slew turns the body smoothly, so across its edges the
+  // page interpolates as anywhere else.
+  const next = pieceAt(TRACKS.attitude, T[i + 1]);
+  const here = pieceAt(TRACKS.attitude, T[i]);
+  const instant = next.start_s > T[i] && next.value !== "slew" && here.value !== "slew";
+  if (instant) quaternionAt(Q_BODY, i, state.t < next.start_s ? 0 : 1, state.qBody);
+  else quaternionAt(Q_BODY, i, f, state.qBody);
+  quaternionAt(Q_EARTH, i, f, state.qEarth);
+  state.lat = LAT[i] + (LAT[i + 1] - LAT[i]) * f;
+  state.lon = ((angleBetween(LON[i], LON[i + 1], f) + 540) % 360) - 180;
+  state.beta = BETA[i] + (BETA[i + 1] - BETA[i]) * f;
+  state.light = lightFraction(state.t, i);
+  state.k = f < 0.5 ? i : i + 1;
+  markAll();
+}
+
+function setTime(time) {
+  state.t = clamp(time, 0, T_END);
+  updateState();
+}
+
+const lightAt = (time) => pieceAt(TRACKS.illumination, time).value;
+
+/**
+ * The fraction of the sun's disk seen at `time`, in grid step `i`. It follows
+ * the illumination track: exactly 1 when sunlit and 0 in the umbra. In the
+ * penumbra it runs straight between the grid values inside the penumbra and its
+ * edges, where it is 1 on the sunlit side and 0 on the umbra side. A plain line
+ * between grid values would not do: a 10 s step can jump a whole 9 s penumbra,
+ * and would then show part of the sun at a time that is sunlit.
+ */
+function lightFraction(time, i) {
+  const pieces = TRACKS.illumination;
+  const index = pieceIndexAt(pieces, time);
+  const piece = pieces[index];
+  if (piece.value === "sunlit") return 1;
+  if (piece.value === "umbra" || !LIGHT) return 0;
+  const edge = (neighbour) => (!neighbour ? null : neighbour.value === "sunlit" ? 1 : neighbour.value === "umbra" ? 0 : null);
+  const before = edge(pieces[index - 1]);
+  const after = edge(pieces[index + 1]);
+  let [t0, v0] = [T[i], LIGHT[i]];
+  let [t1, v1] = [T[i + 1], LIGHT[i + 1]];
+  if (t0 < piece.start_s && before !== null) [t0, v0] = [piece.start_s, before];
+  if (t1 > piece.end_s && after !== null) [t1, v1] = [piece.end_s, after];
+  return clamp(t1 > t0 ? v0 + ((v1 - v0) * (time - t0)) / (t1 - t0) : v0, 0, 1);
+}
+const occurrenceAt = (time) => pieceAt(OCCURRENCES, time);
+
+// ---------------------------------------------------------------- Spacecraft model
+
+function buildSpacecraft(detailed) {
+  const group = new THREE.Group();
+  const body = new THREE.BoxGeometry(...BODY);
+  group.add(new THREE.Mesh(body, new THREE.MeshStandardMaterial({ color: 0xc6ccd6, metalness: 0.35, roughness: 0.55 })));
+  const panelMaterial = new THREE.MeshStandardMaterial({ color: 0x1b3d85, emissive: 0x050f24, metalness: 0.4, roughness: 0.35 });
+  const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x9fc4ee, transparent: true, opacity: 0.55 });
+  const cellMaterial = new THREE.LineBasicMaterial({ color: 0x5fa8ff, transparent: true, opacity: 0.3 });
+  if (detailed) group.add(new THREE.LineSegments(new THREE.EdgesGeometry(body), edgeMaterial));
+
+  for (const panel of PANELS) {
+    const inPlane = [0, 1, 2].filter((k) => k !== panel.axis);
+    const extent = [0.02, 0.02, 0.02];
+    extent[inPlane[0]] = panel.size_m[0];
+    extent[inPlane[1]] = panel.size_m[1];
+    const geometry = new THREE.BoxGeometry(...extent);
+    const mesh = new THREE.Mesh(geometry, panelMaterial);
+    mesh.position.set(...panel.centre_m);
+    group.add(mesh);
+    if (!detailed) continue;
+
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMaterial);
+    edges.position.copy(mesh.position);
+    group.add(edges);
+    // Cell lines on the face the normal points out of
+    const points = [];
+    const face = panel.centre_m.slice();
+    face[panel.axis] += panel.normal[panel.axis] * 0.011;
+    for (const [along, across] of [[0, 1], [1, 0]]) {
+      const a = inPlane[along];
+      const b = inPlane[across];
+      const count = Math.max(1, Math.round(panel.size_m[along] / 0.125));
+      for (let j = 1; j < count; j++) {
+        const p = face.slice();
+        const q = face.slice();
+        p[a] = q[a] = face[a] - panel.size_m[along] / 2 + (j * panel.size_m[along]) / count;
+        p[b] = face[b] - panel.size_m[across] / 2;
+        q[b] = face[b] + panel.size_m[across] / 2;
+        points.push(...p, ...q);
+      }
+    }
+    const cells = new THREE.BufferGeometry();
+    cells.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
+    group.add(new THREE.LineSegments(cells, cellMaterial));
+    group.add(
+      new THREE.ArrowHelper(new THREE.Vector3(...panel.normal), new THREE.Vector3(...face), 0.55, VECTOR_COLOURS.normal, 0.12, 0.06),
+    );
+  }
+
+  if (detailed) {
+    AXIS_COLOURS.forEach((colour, k) => {
+      const axis = new THREE.Vector3().setComponent(k, 1);
+      group.add(new THREE.ArrowHelper(axis, new THREE.Vector3(), 0.75, colour, 0.1, 0.05));
+    });
+  }
+  return group;
+}
+
+function makeRenderer(viewport) {
+  try {
+    const renderer = new THREE.WebGLRenderer({ canvas: viewport.querySelector("canvas"), antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x050c18);
+    return renderer;
+  } catch (error) {
+    viewport.append(element("div", { class: "vp-message", text: "This browser could not start WebGL, so the 3D view is off." }));
+    return null;
+  }
+}
+
+function addToggles(container, items) {
+  const buttons = {};
+  for (const item of items) {
+    const button = element("button", { class: "toggle" + (item.on ? " on" : ""), text: item.label, "data-help": item.help });
+    button.addEventListener("click", () => {
+      item.on = !item.on;
+      button.classList.toggle("on", item.on);
+      item.set(item.on);
+    });
+    container.append(button);
+    item.set(item.on);
+    buttons[item.label] = button;
+  }
+  return buttons;
+}
+
+/** Text that follows points in a 3D view. Each label sits over its point after a render. */
+function labelLayer(viewport) {
+  const layer = element("div", { class: "labels" });
+  viewport.querySelector("canvas").after(layer);
+  const labels = [];
+  const projected = new THREE.Vector3();
+  return {
+    add(text, colour, offset = [0, 0]) {
+      const label = { node: element("div", { class: "label3d", text, style: `color:${colour}` }), position: new THREE.Vector3(), visible: true, offset };
+      layer.append(label.node);
+      labels.push(label);
+      return label;
+    },
+    place(camera, width, height) {
+      for (const label of labels) {
+        projected.copy(label.position).project(camera);
+        const visible = label.visible && projected.z < 1 && Math.abs(projected.x) < 1.05 && Math.abs(projected.y) < 1.05;
+        label.node.style.display = visible ? "" : "none";
+        if (!visible) continue;
+        const x = ((projected.x + 1) / 2) * width + label.offset[0];
+        const y = ((1 - projected.y) / 2) * height + label.offset[1];
+        label.node.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------- Track colours
+
+/** The rows the tracks can be coloured by, and the views that redraw on a change. */
+const trackColours = (() => {
+  const listeners = [];
+  const choices = [["mode", "Mode"], ["attitude", "Attitude"], ["illumination", "Illumination"]];
+  const box = $("#orbit-legend");
+  const buttons = choices.map(([key, label]) =>
+    element("button", { class: "toggle", text: label, "data-help": "colourBy", onclick: () => choose(key) }),
+  );
+  const rows = element("div");
+  box.append(element("div", { class: "choose" }, buttons), rows);
+
+  function choose(key) {
+    state.colourBy = key;
+    buttons.forEach((button, j) => button.classList.toggle("on", choices[j][0] === key));
+    const shown = new Set(TRACKS[key].map((piece) => piece.value));
+    const values = [...Object.keys(COLOURS).filter((v) => shown.has(v)), ...[...shown].filter((v) => !(v in COLOURS))];
+    rows.replaceChildren(
+      ...values.map((value) => element("div", {}, [element("span", { class: "swatch", style: `background:${colourOf(value)}` }), value])),
+    );
+    const label = choices.find(([k]) => k === key)[1].toLowerCase();
+    $("#ground-title").innerHTML = `<b>Ground track</b> · by ${label}`;
+    listeners.forEach((listener) => listener());
+  }
+  return {
+    onChange(listener) {
+      listeners.push(listener);
+    },
+    start() {
+      choose(state.colourBy);
+    },
+  };
+})();
+
+// ---------------------------------------------------------------- Orbit view
+
+const orbitView = (() => {
+  const viewport = $("#vp-orbit");
+  const renderer = makeRenderer(viewport);
+  const MM = 1 / 1000; // the scene is in Mm, so that the numbers stay small
+  const RE = R_E * MM;
+  const world = new THREE.Scene();
+  // The near plane is as far out as the closest zoom allows, for depth precision
+  const camera = new THREE.PerspectiveCamera(36, 1, 0.3, 4000);
+  camera.up.set(0, 0, 1);
+  const controls = renderer ? new THREE.OrbitControls(camera, renderer.domElement) : null;
+
+  // The Earth, drawn in ITRS and turned into GCRS by q_earth
+  const earth = new THREE.Group();
+  earth.add(
+    new THREE.Mesh(
+      new THREE.SphereGeometry(RE, 96, 64),
+      new THREE.MeshPhongMaterial({ color: 0x1f63b3, emissive: 0x06172d, specular: 0x1b2a40, shininess: 10 }),
+    ),
+  );
+  const xyz = (lon, lat, radius) => [
+    radius * Math.cos(lat * D2R) * Math.cos(lon * D2R),
+    radius * Math.cos(lat * D2R) * Math.sin(lon * D2R),
+    radius * Math.sin(lat * D2R),
+  ];
+  const lines = (points, colour, opacity) => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
+    return new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity }));
+  };
+  const gridPoints = [];
+  for (let lon = -180; lon < 180; lon += 30) {
+    for (let lat = -90; lat < 90; lat += 3) gridPoints.push(...xyz(lon, lat, RE * 1.0015), ...xyz(lon, lat + 3, RE * 1.0015));
+  }
+  for (let lat = -60; lat <= 60; lat += 30) {
+    for (let lon = -180; lon < 180; lon += 3) gridPoints.push(...xyz(lon, lat, RE * 1.0015), ...xyz(lon + 3, lat, RE * 1.0015));
+  }
+  const grid = lines(gridPoints, 0x7cc4ff, 0.2);
+  const coastPoints = [];
+  for (const line of coastlines) {
+    for (let j = 0; j + 3 < line.length; j += 2) {
+      coastPoints.push(...xyz(line[j], line[j + 1], RE * 1.003), ...xyz(line[j + 2], line[j + 3], RE * 1.003));
+    }
+  }
+  const coast = lines(coastPoints, 0xcfeaff, 0.75);
+  earth.add(grid, coast);
+  world.add(earth);
+  world.add(
+    new THREE.Mesh(
+      new THREE.SphereGeometry(RE * 1.035, 64, 48),
+      new THREE.MeshBasicMaterial({ color: 0x3aa0ff, transparent: true, opacity: 0.07, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false }),
+    ),
+  );
+
+  // Stars, from a fixed seed so that they are the same on every load
+  let seed = 12345;
+  const random = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+  const starPoints = [];
+  for (let j = 0; j < 1500; j++) {
+    const z = 2 * random() - 1;
+    const a = 2 * Math.PI * random();
+    const s = Math.sqrt(1 - z * z);
+    starPoints.push(1500 * s * Math.cos(a), 1500 * s * Math.sin(a), 1500 * z);
+  }
+  const starGeometry = new THREE.BufferGeometry();
+  starGeometry.setAttribute("position", new THREE.Float32BufferAttribute(starPoints, 3));
+  world.add(new THREE.Points(starGeometry, new THREE.PointsMaterial({ color: 0x9fb4d6, size: 1.3, sizeAttenuation: false })));
+
+  // The orbit, coloured by the chosen row
+  const trackGeometry = new THREE.LineGeometry();
+  trackGeometry.setPositions(R.map((x) => x * MM));
+  const trackMaterial = new THREE.LineMaterial({ linewidth: 2.2, vertexColors: true, worldUnits: false });
+  const track = new THREE.Line2(trackGeometry, trackMaterial);
+  world.add(track);
+  function colourTrack() {
+    const colours = [];
+    const colour = new THREE.Color();
+    for (let i = 0; i < N; i++) {
+      colour.set(colourOf(pieceAt(TRACKS[state.colourBy], T[i]).value));
+      colours.push(colour.r, colour.g, colour.b);
+    }
+    trackGeometry.setColors(colours);
+    dirty.orbit = true;
+  }
+  trackColours.onChange(colourTrack);
+
+  // The spacecraft, far larger than life, and a marker to find it by. The
+  // marker keeps the same size on screen: zoomed out it shows around the
+  // model, and zoomed in the model hides it.
+  const satellite = new THREE.Group();
+  const model = buildSpacecraft(false);
+  model.scale.setScalar(0.12); // 0.12 Mm, or 120 km, to the metre
+  const marker = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: 0xff4d4d }));
+  satellite.add(model, marker);
+  world.add(satellite);
+  let viewHeight = 600;
+
+  // The sun's direction and the Earth's shadow
+  const sunArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), RE * 2.6, VECTOR_COLOURS.sun, RE * 0.12, RE * 0.06);
+  const sunBall = new THREE.Mesh(new THREE.SphereGeometry(1.6, 32, 16), new THREE.MeshBasicMaterial({ color: 0xffd23f }));
+  // The Earth's shadow: a dark umbra cone that narrows away from the Earth,
+  // inside a lighter penumbra cone that widens. Their half-angles come from the
+  // radii of the sun and the Earth at 1 au, about 0.26 and 0.27 degrees, as in
+  // shadow_cones in quicksat/orbit/geometry.py. In low orbit the two walls are
+  // a few tens of km apart, so the cones look like one. At a geostationary
+  // orbit's distance, the penumbra is about 200 km wide on each side.
+  //
+  // Both are black. The penumbra is the lighter of the two, and where the two
+  // overlap, the shadow is as dark as a single cone of 0.35 would be. Against
+  // the near-black sky the ring at GEO is faint, but shows when zoomed in.
+  //
+  // Both cones start a little wider than the Earth. At the Earth's radius their
+  // walls would meet the globe along the terminator, and the meshes would fight
+  // over which is in front, which shows as a jagged edge. They are drawn round,
+  // about the sphere the page draws, not the ellipsoid.
+  const SUN_RADIUS_KM = 695700;
+  const AU_KM = 149597870.7;
+  const shadowLength = RE * 8;
+  const shadowStart = RE * 1.004;
+  const cone = (slope, opacity) => {
+    const geometry = new THREE.CylinderGeometry(shadowStart, shadowStart + slope * shadowLength, shadowLength, 128, 1, true);
+    geometry.translate(0, -shadowLength / 2, 0);
+    const material = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false });
+    return new THREE.Mesh(geometry, material);
+  };
+  const shadow = new THREE.Group();
+  shadow.add(
+    cone(Math.tan(Math.asin((SUN_RADIUS_KM + R_E) / AU_KM)), 0.15), // the penumbra
+    cone(-Math.tan(Math.asin((SUN_RADIUS_KM - R_E) / AU_KM)), 0.25), // the umbra
+  );
+  world.add(sunArrow, sunBall, shadow);
+
+  const sunlight = new THREE.DirectionalLight(0xffffff, 2.6);
+  world.add(sunlight, new THREE.AmbientLight(0x9db4e0, 0.3));
+
+  const labels = labelLayer(viewport);
+  const sunLabel = labels.add("Sun", VECTOR_COLOURS.sun);
+  const craftLabel = labels.add("Spacecraft", THEME.text, [0, -16]);
+  let size = { width: 1, height: 1 };
+  // True when the Earth stands between the camera and `point`
+  const behindEarth = (point) => {
+    const ray = point.clone().sub(camera.position);
+    const length = ray.length();
+    ray.divideScalar(length);
+    const b = camera.position.dot(ray);
+    const discriminant = b * b - (camera.position.lengthSq() - RE * RE);
+    if (discriminant <= 0) return false;
+    const hit = -b - Math.sqrt(discriminant);
+    return hit > 0 && hit < length;
+  };
+
+  // Start 60 deg from the orbit normal, so that the orbit shows as an
+  // ellipse, and about 60 deg from the sun, so that the terminator shows
+  const r0 = new THREE.Vector3(R[0], R[1], R[2]);
+  const v0 = new THREE.Vector3(V[0], V[1], V[2]);
+  const s0 = new THREE.Vector3(S[0], S[1], S[2]);
+  const normal = r0.clone().cross(v0).normalize();
+  if (normal.dot(s0) < 0) normal.negate();
+  const towardSun = s0.clone().addScaledVector(normal, -normal.dot(s0)).normalize();
+  const across = normal.clone().cross(towardSun);
+  const eye = normal
+    .clone()
+    .multiplyScalar(0.5)
+    .addScaledVector(towardSun, 0.87 * Math.cos(65 * D2R))
+    .addScaledVector(across, 0.87 * Math.sin(65 * D2R))
+    .add(new THREE.Vector3(0, 0, 0.25))
+    .normalize();
+  // Far enough out to see the whole orbit: 4.8 Earth radii for a low orbit,
+  // and 2.6 times the orbit's radius for a higher one, such as GEO
+  let orbitRadius = 0;
+  for (let i = 0; i < N; i++) orbitRadius = Math.max(orbitRadius, Math.hypot(R[3 * i], R[3 * i + 1], R[3 * i + 2]) * MM);
+  camera.position.copy(eye.multiplyScalar(Math.max(RE * 4.8, orbitRadius * 2.6)));
+  const home = camera.position.clone();
+  if (controls) {
+    controls.minDistance = RE * 1.2;
+    controls.maxDistance = RE * 60;
+    controls.addEventListener("change", () => (dirty.orbit = true));
+    controls.update();
+  }
+
+  let follow = false;
+  const lastSatellite = new THREE.Vector3();
+  const Y = new THREE.Vector3(0, 1, 0);
+  const toggles = addToggles($("#orbit-toggles"), [
+    { label: "Track", on: true, help: "track", set: (on) => (track.visible = on) },
+    { label: "Grid", on: true, help: "grid", set: (on) => (grid.visible = on) },
+    { label: "Coast", on: true, help: "coast", set: (on) => (coast.visible = on) },
+    { label: "Shadow", on: true, help: "shadow", set: (on) => (shadow.visible = on) },
+    { label: "Follow", on: false, help: "follow", set: (on) => (follow = on) },
+  ].map((item) => ({ ...item, set: (on) => { item.set(on); dirty.orbit = true; } })));
+  $("#orbit-toggles").append(
+    element("button", {
+      class: "toggle",
+      text: "Reset view",
+      "data-help": "orbitReset",
+      onclick: () => {
+        if (follow) toggles.Follow.click();
+        camera.position.copy(home);
+        camera.up.set(0, 0, 1);
+        if (controls) {
+          controls.target.set(0, 0, 0);
+          controls.update();
+        }
+        dirty.orbit = true;
+      },
+    }),
+  );
+
+  return {
+    resize(width, height) {
+      if (!renderer) return;
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      trackMaterial.resolution.set(width, height);
+      viewHeight = height;
+      size = { width, height };
+    },
+    update() {
+      earth.quaternion.copy(state.qEarth);
+      satellite.position.copy(state.r).multiplyScalar(MM);
+      model.quaternion.copy(state.qBody);
+      sunlight.position.copy(state.sun).multiplyScalar(100);
+      sunArrow.setDirection(state.sun);
+      sunBall.position.copy(state.sun).multiplyScalar(300);
+      shadow.quaternion.setFromUnitVectors(Y, state.sun);
+      if (follow && controls) {
+        const move = satellite.position.clone().sub(lastSatellite);
+        camera.position.add(move);
+        controls.target.add(move);
+        controls.update();
+      }
+      lastSatellite.copy(satellite.position);
+      const distance = camera.position.distanceTo(satellite.position);
+      marker.scale.setScalar((6 * 2 * distance * Math.tan((camera.fov * D2R) / 2)) / viewHeight);
+      sunLabel.position.copy(state.sun).multiplyScalar(RE * 2.85);
+      craftLabel.position.copy(satellite.position);
+    },
+    render() {
+      if (!renderer) return;
+      renderer.render(world, camera);
+      sunLabel.visible = !behindEarth(sunLabel.position);
+      craftLabel.visible = !behindEarth(craftLabel.position);
+      labels.place(camera, size.width, size.height);
+    },
+  };
+})();
+
+// ---------------------------------------------------------------- Body view
+
+const bodyView = (() => {
+  const viewport = $("#vp-body");
+  const renderer = makeRenderer(viewport);
+  const world = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.01, 200);
+  const controls = renderer ? new THREE.OrbitControls(camera, renderer.domElement) : null;
+  if (controls) controls.addEventListener("change", () => (dirty.body = true));
+
+  const spacecraft = buildSpacecraft(true);
+  world.add(spacecraft);
+  // The velocity, the nadir and the orbit normal are close to the LVLH axes:
+  // x along track, z nadir, and y minus the orbit normal
+  const arrows = {};
+  for (const name of ["velocity", "nadir", "orbitNormal", "sun"]) {
+    arrows[name] = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 1.8, VECTOR_COLOURS[name], 0.15, 0.075);
+    world.add(arrows[name]);
+  }
+  const labels = labelLayer(viewport);
+  const arrowLabels = {
+    velocity: labels.add("Velocity", VECTOR_COLOURS.velocity),
+    nadir: labels.add("Nadir", VECTOR_COLOURS.nadir),
+    orbitNormal: labels.add("Orbit normal", VECTOR_COLOURS.orbitNormal),
+    sun: labels.add("Sun", VECTOR_COLOURS.sun),
+  };
+  // Points fixed in the body: just past each panel normal and body axis
+  const bodyLabels = [
+    ...PANELS.map((panel) => ({
+      label: labels.add(panel.name, VECTOR_COLOURS.normal),
+      local: new THREE.Vector3(...panel.centre_m).addScaledVector(new THREE.Vector3(...panel.normal), 0.74),
+    })),
+    ...["x", "y", "z"].map((name, k) => ({
+      label: labels.add(name, AXIS_COLOURS[k]),
+      local: new THREE.Vector3().setComponent(k, 0.92),
+    })),
+  ];
+  let size = { width: 1, height: 1 };
+
+  const sunlight = new THREE.DirectionalLight(0xfff4dc, 2.4);
+  const headlight = new THREE.DirectionalLight(0x9db4e0, 0.5);
+  camera.add(headlight);
+  world.add(sunlight, camera, new THREE.AmbientLight(0x9db4e0, 0.45));
+
+  let frame = "LVLH";
+  const lvlh = new THREE.Matrix4();
+  const toDisplay = new THREE.Quaternion();
+  const direction = new THREE.Vector3();
+  const nadir = new THREE.Vector3();
+  const orbitNormal = new THREE.Vector3();
+
+  function setFrame(name) {
+    frame = name;
+    $("#body-title").innerHTML =
+      name === "LVLH" ? "<b>Body</b> · LVLH: x along track, z nadir" : "<b>Body</b> · GCRS axes";
+    if (name === "LVLH") {
+      // From above and behind the orbit plane, so that the velocity points
+      // right, the nadir down, and the orbit normal up and to the right. Far
+      // enough out that an arrow pointing straight up keeps its label in view.
+      camera.up.set(0, 0, -1);
+      camera.position.set(3.5, 5.8, -4.8);
+    } else {
+      camera.up.set(0, 0, 1);
+      camera.position.set(5.5, -4.5, 3.2);
+    }
+    if (controls) {
+      controls.target.set(0, 0, 0);
+      controls.update();
+    }
+    dirty.body = true;
+  }
+
+  const frameButtons = ["LVLH", "GCRS"].map((name) =>
+    element("button", { class: "toggle" + (name === "LVLH" ? " on" : ""), text: name, "data-help": name === "LVLH" ? "lvlh" : "gcrs" }),
+  );
+  frameButtons.forEach((button) =>
+    button.addEventListener("click", () => {
+      frameButtons.forEach((other) => other.classList.toggle("on", other === button));
+      setFrame(button.textContent);
+    }),
+  );
+  $("#body-toggles").append(
+    ...frameButtons,
+    element("button", { class: "toggle", text: "Reset view", "data-help": "bodyReset", onclick: () => setFrame(frame) }),
+  );
+  setFrame("LVLH");
+
+  return {
+    resize(width, height) {
+      if (!renderer) return;
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      size = { width, height };
+    },
+    update() {
+      if (frame === "LVLH") {
+        toDisplay.setFromRotationMatrix(lvlhMatrix(state.r, state.v, lvlh).transpose());
+      } else {
+        toDisplay.identity();
+      }
+      spacecraft.quaternion.copy(toDisplay).multiply(state.qBody);
+      const directions = {
+        velocity: state.v,
+        nadir: nadir.copy(state.r).negate(),
+        orbitNormal: orbitNormal.copy(state.r).cross(state.v),
+        sun: state.sun,
+      };
+      for (const [name, vector] of Object.entries(directions)) {
+        direction.copy(vector).normalize().applyQuaternion(toDisplay);
+        arrows[name].setDirection(direction);
+        arrowLabels[name].position.copy(direction).multiplyScalar(2.05);
+      }
+      // The sun's direction is the last one set
+      sunlight.position.copy(direction).multiplyScalar(10);
+      sunlight.intensity = 2.4 * state.light;
+      for (const { label, local } of bodyLabels) label.position.copy(local).applyQuaternion(spacecraft.quaternion);
+    },
+    render() {
+      if (!renderer) return;
+      renderer.render(world, camera);
+      labels.place(camera, size.width, size.height);
+    },
+  };
+})();
+
+// ---------------------------------------------------------------- Ground track
+
+const groundView = (() => {
+  const viewport = $("#vp-ground");
+  const canvas = viewport.querySelector("canvas");
+  const context = canvas.getContext("2d");
+  const overlay = document.createElement("canvas");
+  const night = document.createElement("canvas");
+  night.width = 240;
+  night.height = 120;
+  const nightContext = night.getContext("2d");
+  const nightImage = nightContext.createImageData(night.width, night.height);
+  // Unit vector of each night cell, in Earth-fixed axes
+  const cells = new Float32Array(night.width * night.height * 3);
+  for (let row = 0; row < night.height; row++) {
+    const lat = (90 - ((row + 0.5) * 180) / night.height) * D2R;
+    for (let col = 0; col < night.width; col++) {
+      const lon = (((col + 0.5) * 360) / night.width - 180) * D2R;
+      const c = 3 * (row * night.width + col);
+      cells[c] = Math.cos(lat) * Math.cos(lon);
+      cells[c + 1] = Math.cos(lat) * Math.sin(lon);
+      cells[c + 2] = Math.sin(lat);
+    }
+  }
+  const sunFixed = new THREE.Vector3();
+  const toFixed = new THREE.Quaternion();
+  let ratio = 1;
+  let map = { x: 0, y: 0, w: 1, h: 1 };
+  let cssSize = null;
+  const toPixel = (lon, lat) => [map.x + ((lon + 180) / 360) * map.w, map.y + ((90 - lat) / 180) * map.h];
+
+  function drawOverlay() {
+    overlay.width = canvas.width;
+    overlay.height = canvas.height;
+    const c = overlay.getContext("2d");
+    c.scale(ratio, ratio);
+    c.lineJoin = "round";
+    c.strokeStyle = "rgba(124, 196, 255, 0.16)";
+    c.lineWidth = 1;
+    c.fillStyle = THEME.dim;
+    c.font = `10px ${MONO}`;
+    for (let lon = -180; lon <= 180; lon += 30) {
+      const [x] = toPixel(lon, 0);
+      c.beginPath();
+      c.moveTo(x, map.y);
+      c.lineTo(x, map.y + map.h);
+      c.stroke();
+      c.textAlign = "center";
+      c.fillText(String(lon), x, map.y + map.h + 12);
+    }
+    for (let lat = -90; lat <= 90; lat += 30) {
+      const [, y] = toPixel(0, lat);
+      c.beginPath();
+      c.moveTo(map.x, y);
+      c.lineTo(map.x + map.w, y);
+      c.stroke();
+      c.textAlign = "right";
+      c.fillText(String(lat), map.x - 5, y + 3);
+    }
+    c.strokeStyle = "rgba(207, 234, 255, 0.7)";
+    for (const line of coastlines) {
+      c.beginPath();
+      for (let j = 0; j < line.length; j += 2) {
+        const [x, y] = toPixel(line[j], line[j + 1]);
+        if (j === 0) c.moveTo(x, y);
+        else c.lineTo(x, y);
+      }
+      c.stroke();
+    }
+    // The track, coloured by the chosen row, and broken where it crosses the
+    // date line. Each piece runs from the step before its start to the step
+    // after its end, so that the pieces join.
+    c.lineWidth = 2;
+    for (const piece of TRACKS[state.colourBy]) {
+      const from = sampleAt(piece.start_s)[0];
+      const [i, f] = sampleAt(piece.end_s);
+      const to = f > 0 ? i + 1 : i;
+      c.strokeStyle = colourOf(piece.value);
+      c.beginPath();
+      for (let k = from; k <= to; k++) {
+        const [x, y] = toPixel(LON[k], LAT[k]);
+        if (k === from || Math.abs(LON[k] - LON[k - 1]) > 180) c.moveTo(x, y);
+        else c.lineTo(x, y);
+      }
+      c.stroke();
+    }
+  }
+  trackColours.onChange(() => {
+    if (cssSize) drawOverlay();
+    dirty.ground = true;
+  });
+
+  function drawNight() {
+    // The sun in Earth-fixed axes: turn back by the Earth's rotation
+    sunFixed.copy(state.sun).applyQuaternion(toFixed.copy(state.qEarth).invert());
+    const { x: sx, y: sy, z: sz } = sunFixed;
+    const data = nightImage.data;
+    for (let j = 0, c = 0; j < data.length; j += 4, c += 3) {
+      const cosine = cells[c] * sx + cells[c + 1] * sy + cells[c + 2] * sz;
+      data[j] = 2;
+      data[j + 1] = 6;
+      data[j + 2] = 14;
+      data[j + 3] = 170 * clamp((0.05 - cosine) / 0.15, 0, 1);
+    }
+    nightContext.putImageData(nightImage, 0, 0);
+    return [sx, sy, sz];
+  }
+
+  /** The terminator: the great circle at right angles to the sun. */
+  function drawTerminator(c, sx, sy, sz) {
+    const sun = new THREE.Vector3(sx, sy, sz);
+    const u = new THREE.Vector3(...(Math.abs(sz) < 0.9 ? [0, 0, 1] : [1, 0, 0])).cross(sun).normalize();
+    const w = sun.clone().cross(u);
+    c.save();
+    c.beginPath();
+    c.rect(map.x, map.y, map.w, map.h);
+    c.clip();
+    c.strokeStyle = "rgba(255, 224, 138, 0.85)";
+    c.lineWidth = 1.5;
+    c.setLineDash([6, 4]);
+    c.beginPath();
+    let previous = null;
+    for (let k = 0; k <= 360; k++) {
+      const a = k * D2R;
+      const x = u.x * Math.cos(a) + w.x * Math.sin(a);
+      const y = u.y * Math.cos(a) + w.y * Math.sin(a);
+      const z = u.z * Math.cos(a) + w.z * Math.sin(a);
+      const lon = Math.atan2(y, x) / D2R;
+      const [px, py] = toPixel(lon, Math.asin(clamp(z, -1, 1)) / D2R);
+      if (previous === null || Math.abs(lon - previous) > 180) c.moveTo(px, py);
+      else c.lineTo(px, py);
+      previous = lon;
+    }
+    c.stroke();
+    c.restore();
+  }
+
+  return {
+    resize(width, height) {
+      cssSize = { width, height };
+      ratio = Math.min(window.devicePixelRatio, 2);
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+      const box = { left: 36, right: 12, top: 28, bottom: 18 };
+      const w = Math.min(width - box.left - box.right, 2 * (height - box.top - box.bottom));
+      map = { x: box.left + (width - box.left - box.right - w) / 2, y: box.top, w, h: w / 2 };
+      drawOverlay();
+    },
+    render() {
+      const c = context;
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.clearRect(0, 0, canvas.width, canvas.height);
+      c.setTransform(ratio, 0, 0, ratio, 0, 0);
+      c.fillStyle = "#0a1f3a";
+      c.fillRect(map.x, map.y, map.w, map.h);
+      const [sx, sy, sz] = drawNight();
+      c.imageSmoothingEnabled = true;
+      c.drawImage(night, map.x, map.y, map.w, map.h);
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.drawImage(overlay, 0, 0);
+      c.setTransform(ratio, 0, 0, ratio, 0, 0);
+      drawTerminator(c, sx, sy, sz);
+      const [sunX, sunY] = toPixel(Math.atan2(sy, sx) / D2R, Math.asin(clamp(sz, -1, 1)) / D2R);
+      c.fillStyle = VECTOR_COLOURS.sun;
+      c.beginPath();
+      c.arc(sunX, sunY, 5, 0, 2 * Math.PI);
+      c.fill();
+      const [x, y] = toPixel(state.lon, state.lat);
+      c.lineWidth = 2;
+      c.strokeStyle = "#ffffff";
+      c.fillStyle = "#ff4d4d";
+      c.beginPath();
+      c.arc(x, y, 5.5, 0, 2 * Math.PI);
+      c.fill();
+      c.stroke();
+    },
+  };
+})();
+
+// ---------------------------------------------------------------- Charts
+
+const charts = (() => {
+  if (!power) $("#charts").classList.add("no-power");
+  const eclipses = ECLIPSES;
+  const AXIS_SIZE = 96; // the same on every chart, so that their plots line up
+  const list = [];
+  let syncing = false;
+  const px = () => uPlot.pxRatio;
+
+  const axis = {
+    stroke: THEME.muted,
+    font: `10.5px ${MONO}`,
+    labelFont: `10.5px ${MONO}`,
+    grid: { stroke: THEME.grid, width: 1 },
+    ticks: { stroke: THEME.tick, width: 1, size: 4 },
+  };
+  const hiddenX = { ...axis, size: 4, values: (u, ticks) => ticks.map(() => "") };
+  const shownX = { ...axis, size: 24, values: (u, ticks) => ticks.map((m) => `${m}m`) };
+
+  function clipped(u, draw) {
+    const c = u.ctx;
+    const box = u.bbox;
+    c.save();
+    c.beginPath();
+    c.rect(box.left, box.top, box.width, box.height);
+    c.clip();
+    draw(c, box);
+    c.restore();
+  }
+
+  const shadeEclipses = (u) =>
+    clipped(u, (c, box) => {
+      c.fillStyle = THEME.eclipseBand;
+      for (const piece of eclipses) {
+        const x0 = u.valToPos(piece.start_s / 60, "x", true);
+        c.fillRect(x0, box.top, u.valToPos(piece.end_s / 60, "x", true) - x0, box.height);
+      }
+    });
+
+  // Each row's bars, with their value on them where it fits, as in the
+  // notebook's Gantt chart. A box over all the rows marks an occurrence
+  // outside its constraint, and a dashed one an event that never came. A
+  // dashed red line marks an occurrence with a negative duration.
+  const drawTracks = (u) =>
+    clipped(u, (c, box) => {
+      const rowHeight = box.height / ROWS.length;
+      const right = box.left + box.width;
+      c.font = `${10 * px()}px ${MONO}`;
+      c.textAlign = "center";
+      c.textBaseline = "middle";
+      ROWS.forEach(([key], row) => {
+        const top = box.top + (row + 0.14) * rowHeight;
+        const height = 0.72 * rowHeight;
+        for (const piece of TRACKS[key]) {
+          const x0 = u.valToPos(piece.start_s / 60, "x", true);
+          const x1 = u.valToPos(piece.end_s / 60, "x", true);
+          if (x1 < box.left || x0 > right) continue;
+          const fill = colourOf(piece.value);
+          c.fillStyle = fill;
+          c.fillRect(x0, top, Math.max(px(), x1 - x0 - px()), height);
+          const left = Math.max(x0, box.left);
+          const end = Math.min(x1, right);
+          const text = pieceText(piece);
+          if (end - left > c.measureText(text).width + 8 * px()) {
+            c.fillStyle = textOn(fill);
+            c.fillText(text, (left + end) / 2, top + height / 2);
+          }
+        }
+      });
+      for (const occurrence of OCCURRENCES) {
+        const outside = occurrence.statuses.includes("outside constraint");
+        const neverCame = occurrence.statuses.includes("event never came");
+        if (!outside && !neverCame) continue;
+        const x0 = u.valToPos(occurrence.start_s / 60, "x", true);
+        const x1 = u.valToPos(occurrence.end_s / 60, "x", true);
+        c.strokeStyle = outside ? THEME.critical : THEME.warning;
+        c.lineWidth = 2 * px();
+        c.setLineDash(outside ? [] : [5 * px(), 3 * px()]);
+        c.strokeRect(x0 + px(), box.top + px(), x1 - x0 - 2 * px(), box.height - 2 * px());
+      }
+      // A negative duration takes no time, so it is a dashed line at its
+      // start, with a triangle on top, as in the notebook
+      c.strokeStyle = c.fillStyle = THEME.critical;
+      c.lineWidth = 2 * px();
+      c.setLineDash([5 * px(), 3 * px()]);
+      for (const occurrence of OCCURRENCES) {
+        if (!occurrence.statuses.includes("negative duration")) continue;
+        const x = u.valToPos(occurrence.start_s / 60, "x", true);
+        c.beginPath();
+        c.moveTo(x, box.top);
+        c.lineTo(x, box.top + box.height);
+        c.stroke();
+        c.beginPath();
+        c.moveTo(x - 5 * px(), box.top);
+        c.lineTo(x + 5 * px(), box.top);
+        c.lineTo(x, box.top + 8 * px());
+        c.fill();
+      }
+      c.setLineDash([]);
+    });
+
+  const cursorLine = (u) =>
+    clipped(u, (c, box) => {
+      const x = u.valToPos(state.t / 60, "x", true);
+      c.strokeStyle = "#ffffff";
+      c.lineWidth = 1.5 * px();
+      c.beginPath();
+      c.moveTo(x, box.top);
+      c.lineTo(x, box.top + box.height);
+      c.stroke();
+    });
+
+  function make(target, options, data) {
+    const host = $(target);
+    const chart = new uPlot(
+      {
+        width: Math.max(host.clientWidth, 300),
+        height: Math.max(host.clientHeight, 40),
+        legend: { show: false },
+        cursor: { sync: { key: "scenario" }, drag: { x: true, y: false }, y: false, points: { show: false } },
+        scales: { x: { time: false }, y: { range: options.range } },
+        axes: [options.xAxis, { ...axis, size: AXIS_SIZE, ...options.yAxis }],
+        series: [{}, ...options.series.map((s) => ({ width: 1.6, points: { show: false }, ...s }))],
+        hooks: {
+          drawClear: options.drawClear ? [options.drawClear] : [],
+          draw: [...(options.draw ? [options.draw] : []), cursorLine],
+          setScale: [
+            (u, key) => {
+              if (key !== "x" || syncing) return;
+              syncing = true;
+              for (const other of list) if (other !== u) other.setScale("x", { min: u.scales.x.min, max: u.scales.x.max });
+              syncing = false;
+            },
+          ],
+        },
+      },
+      [MINUTES, ...data],
+      host,
+    );
+    // A click that is not a drag moves the time cursor
+    let downAt = null;
+    chart.over.addEventListener("mousedown", (event) => (downAt = event.clientX));
+    chart.over.addEventListener("mouseup", (event) => {
+      if (downAt !== null && Math.abs(event.clientX - downAt) < 3) setTime(chart.posToVal(event.offsetX, "x") * 60);
+      downAt = null;
+    });
+    new ResizeObserver(() => {
+      if (host.clientWidth > 0 && host.clientHeight > 0) chart.setSize({ width: host.clientWidth, height: host.clientHeight });
+    }).observe(host);
+    list.push(chart);
+    return chart;
+  }
+
+  function head(target, title, unit, keys, help) {
+    const values = keys.map(() => element("b"));
+    $(target).replaceChildren(
+      element("span", { class: "title", text: title, "data-help": help }),
+      element("span", { class: "unit", text: unit }),
+      ...keys.map(([label, colour], k) =>
+        element("span", { class: "key" }, [element("span", { class: "swatch", style: `background:${colour}` }), `${label} `, values[k]]),
+      ),
+    );
+    return values;
+  }
+
+  // The Gantt chart, with one row for each track
+  const timeline = make(
+    "#chart-gantt",
+    {
+      range: () => [0, ROWS.length],
+      xAxis: power ? hiddenX : shownX,
+      yAxis: {
+        grid: { show: false },
+        ticks: { show: false },
+        splits: () => ROWS.map((_, row) => ROWS.length - row - 0.5),
+        values: (u, splits) => splits.map((s) => ROWS[Math.round(ROWS.length - 0.5 - s)][1]),
+      },
+      series: [{ stroke: "transparent" }],
+      draw: drawTracks,
+    },
+    [MINUTES.map(() => null)],
+  );
+  timeline.over.addEventListener("mousemove", (event) => {
+    const time = timeline.posToVal(event.offsetX, "x") * 60;
+    const row = clamp(Math.floor((event.offsetY / timeline.over.clientHeight) * ROWS.length), 0, ROWS.length - 1);
+    const piece = pieceAt(TRACKS[ROWS[row][0]], time);
+    const occurrence = occurrenceAt(time);
+    timeline.over.title =
+      `${pieceText(piece)}: ${clockText(piece.start_s)} to ${clockText(piece.end_s)}\n` +
+      `Activity ${occurrence.number} of repeat ${occurrence.repeat}: until ${occurrence.trigger} · ${occurrence.statuses.join(", ")}`;
+  });
+
+  const values = {};
+  if (power) {
+    const grid = power.grid;
+    make(
+      "#chart-power",
+      {
+        range: (u, lo, hi) => [0, Math.ceil(((hi || 1) * 1.1) / 50) * 50],
+        xAxis: hiddenX,
+        yAxis: {},
+        series: [
+          { stroke: THEME.generated, fill: THEME.generatedFill },
+          { stroke: THEME.consumed, paths: uPlot.paths.stepped({ align: 1 }) },
+        ],
+        drawClear: shadeEclipses,
+      },
+      [grid.generated_w, grid.consumed_w],
+    );
+    const soc = grid.soc.map((value) => 100 * value);
+    const floor = 100 * (1 - power.battery.max_depth_of_discharge);
+    const lowest = Math.floor(Math.min(floor, ...soc) - 5);
+    make(
+      "#chart-soc",
+      {
+        range: () => [lowest, 102],
+        xAxis: shownX,
+        yAxis: {},
+        series: [
+          { stroke: THEME.soc, fill: THEME.socFill },
+          { stroke: THEME.limit, dash: [6, 4], width: 1.2 },
+        ],
+        drawClear: shadeEclipses,
+      },
+      [soc, soc.map(() => floor)],
+    );
+    [values.generated, values.consumed] = head("#head-power", "POWER", "W", [["Generated", THEME.generated], ["Consumed", THEME.consumed]], "power");
+    const [socValue, limitValue] = head("#head-soc", "BATTERY", "%", [["State of charge", THEME.soc], ["Limit", THEME.limit]], "battery");
+    values.soc = socValue;
+    limitValue.textContent = `${numberText(floor)} %`;
+  }
+
+  function zoom(from, to) {
+    list[0].setScale("x", { min: clamp(from, 0, T_END / 60), max: clamp(to, 0, T_END / 60) });
+  }
+  const now = () => state.t / 60;
+  const zooms = [
+    ["Full", () => zoom(0, T_END / 60), "zoomFull"],
+    ["1 orbit", () => zoom(now() - PERIOD / 120, now() + PERIOD / 120), "zoomOrbit"],
+    ["30 min", () => zoom(now() - 15, now() + 15), "zoom30"],
+  ];
+  for (const [label, action, help] of zooms) {
+    $("#zooms").append(element("button", { class: "toggle", text: label, onclick: action, "data-help": help }));
+  }
+
+  return {
+    redraw() {
+      for (const chart of list) chart.redraw(false, false);
+    },
+    values,
+  };
+})();
+
+// ---------------------------------------------------------------- Live values
+
+const readouts = (() => {
+  const bodyValues = power ? PANELS.map(() => element("b")) : ["x", "y", "z"].map(() => element("b"));
+  $("#body-readout").dataset.help = power ? "panels" : "sunBody";
+  $("#body-readout").replaceChildren(
+    element("div", { class: "head", text: power ? "Sun on panels" : "Sun in body axes" }),
+    ...(power
+      ? PANELS.map((panel, k) => element("div", {}, [`${panel.name} `, bodyValues[k]]))
+      : ["x", "y", "z"].map((name, k) => element("div", {}, [`${name} `, bodyValues[k]]))),
+  );
+  const ground = $("#ground-readout");
+  const orbit = $("#orbit-readout");
+  const slider = $("#slider");
+  slider.max = String(N - 1);
+  const sunBody = new THREE.Vector3();
+  const inverse = new THREE.Quaternion();
+  const rows = $("#activity-rows").children; // live, so it sees the rows added later
+  let current = null;
+  // The current data: the value of each timeline row at the time cursor, with
+  // its colour from the timeline
+  const now = [
+    ["mode", "Mode"],
+    ["attitude", "Attitude"],
+    ["illumination", "Illumination"],
+  ].map(([key, label]) => {
+    const fill = element("span", { class: "fill" });
+    const value = element("span");
+    $("#now").append(element("dt", { text: label, "data-help": key }), element("dd", { "data-help": key }, [fill, value]));
+    return { key, fill, value };
+  });
+  // The fraction of the sun seen, under the illumination: a sun-coloured square
+  // that fades with it, and the percentage
+  const sunFill = element("span", { class: "fill", style: `background:${VECTOR_COLOURS.sun}` });
+  const sunValue = element("span");
+  $("#now").append(element("dt", { text: "Sunlight", "data-help": "light" }), element("dd", { "data-help": "light" }, [sunFill, sunValue]));
+
+  return function update() {
+    const k = state.k;
+    if (power) {
+      PANELS.forEach((_, j) => setText(bodyValues[j], power.grid.sun_cos[j][k].toFixed(3)));
+      setText(charts.values.generated, `${power.grid.generated_w[k].toFixed(1)} W`);
+      setText(charts.values.consumed, `${power.grid.consumed_w[k].toFixed(1)} W`);
+      setText(charts.values.soc, `${(100 * power.grid.soc[k]).toFixed(1)} %`);
+    } else {
+      sunBody.copy(state.sun).applyQuaternion(inverse.copy(state.qBody).invert());
+      ["x", "y", "z"].forEach((name, j) => setText(bodyValues[j], (sunBody[name] >= 0 ? " " : "") + sunBody[name].toFixed(3)));
+    }
+    const lat = `${Math.abs(state.lat).toFixed(1)}°${state.lat >= 0 ? "N" : "S"}`;
+    const lon = `${Math.abs(state.lon).toFixed(1)}°${state.lon >= 0 ? "E" : "W"}`;
+    setText(ground, `${lat}  ${lon}  ${(state.r.length() - R_E).toFixed(0)} km`);
+    setText(orbit, `beta ${state.beta.toFixed(1)}°`);
+    setText($("#clock"), `T+ ${clockText(state.t)}`);
+    $("#readout").innerHTML = `${clockText(state.t)} <span class="dim">/ ${clockText(T_END)} · ${utcText(state.t)} UTC</span>`;
+
+    for (const item of now) {
+      const piece = pieceAt(TRACKS[item.key], state.t);
+      const value = pieceText(piece);
+      if (item.value.textContent !== value) {
+        item.value.textContent = value;
+        item.fill.style.background = colourOf(piece.value);
+      }
+    }
+    const light = state.light;
+    setText(sunValue, light >= 1 ? "100 %" : light <= 0 ? "0 %" : `${(100 * light).toFixed(1)} %`);
+    sunFill.style.opacity = String(0.15 + 0.85 * light);
+    const occurrence = occurrenceAt(state.t);
+    setText($("#now-activity"), `Activity ${occurrence.number} of repeat ${occurrence.repeat}`);
+    if (Number(slider.value) !== k) slider.value = String(k);
+
+    const index = OCCURRENCES.indexOf(occurrence);
+    if (current !== index) {
+      if (current !== null) rows[current].classList.remove("current");
+      rows[index].classList.add("current");
+      current = index;
+    }
+  };
+})();
+
+// ---------------------------------------------------------------- Activities, inputs and results
+
+function statusClass(status) {
+  if (status === "ok") return "status-ok";
+  if (status === "outside constraint" || status === "negative duration") return "status-fail";
+  if (status === "event never came" || status === "slew starts early") return "status-warn";
+  return "status-plain";
+}
+
+function activitySummary() {
+  const count = (status) => OCCURRENCES.filter((o) => o.statuses.includes(status)).length;
+  const repeats = OCCURRENCES[OCCURRENCES.length - 1].repeat;
+  return (
+    `Occurrences: ${OCCURRENCES.length} in ${repeats} repeats. Negative duration: ${count("negative duration")}. ` +
+    `Outside constraint: ${count("outside constraint")}. ` +
+    `Event never came: ${count("event never came")}. Cut at end: ${count("cut at end")}. ` +
+    `Slew starts early: ${count("slew starts early")}.`
+  );
+}
+
+function showActivities() {
+  $("#activities-file").textContent = SCENARIO_FILE;
+  $("#activity-summary").textContent = activitySummary();
+  const swatch = (value) => [element("span", { class: "dot", style: `background:${colourOf(value)}` }), value];
+  $("#activity-rows").replaceChildren(
+    ...OCCURRENCES.map((o) =>
+      element(
+        "tr",
+        {
+          title: "Show this activity on the Scenario page",
+          onclick: () => {
+            setTime(o.start_s);
+            showPage("scenario");
+          },
+        },
+        [
+          element("td", { class: "num", text: String(o.repeat) }),
+          element("td", { class: "num", text: String(o.number) }),
+          element("td", { text: utcText(o.start_s) }),
+          element("td", { text: utcText(o.end_s) }),
+          element("td", { class: "num", text: `${((o.end_s - o.start_s) / 60).toFixed(2)} min` }),
+          element("td", { text: o.trigger }),
+          element("td", {}, swatch(o.attitude)),
+          element("td", {}, swatch(o.mode)),
+          element("td", { text: o.constraint || "" }),
+          element("td", { class: "num", text: o.outside_s === null ? "" : `${numberText(o.outside_s)} s` }),
+          element(
+            "td",
+            {},
+            o.statuses.flatMap((status, j) => [...(j ? [", "] : []), element("span", { class: statusClass(status), text: status })]),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+function kv(pairs) {
+  return element(
+    "dl",
+    { class: "kv" },
+    pairs.flatMap(([label, value]) => [element("dt", { text: label }), element("dd", { text: String(value), title: String(value) })]),
+  );
+}
+
+function block(title, children, wide = false) {
+  return element("div", { class: "block" + (wide ? " wide" : "") }, [element("div", { class: "section-title" }, title), ...children]);
+}
+
+/** A file's text, with its YAML comments dimmed. */
+function fileText(text) {
+  const pre = element("pre", { class: "file" });
+  for (const line of text.split("\n")) {
+    const match = line.match(/(^|\s)#.*$/);
+    if (match) {
+      pre.append(line.slice(0, match.index + match[1].length), element("span", { class: "comment", text: match[0].slice(match[1].length) }));
+    } else {
+      pre.append(line);
+    }
+    pre.append("\n");
+  }
+  return pre;
+}
+
+function showInputs() {
+  const name = (title, file) => [title, " · ", element("b", { text: file })];
+  const orbit = scenario.orbit;
+  // Two columns: the scenario file on the left; the orbit, the conventions
+  // below it, and the power file on the right
+  const column = (blocks) => element("div", { class: "stack" }, blocks);
+  const orbitBlock = block(
+    ["Orbit"],
+    [
+      kv([
+        ["Name", orbit.name || "none given"],
+        ["Nodal period", `${numberText(orbit.nodal_period_s / 60)} min`],
+      ]),
+      element("p", { class: "note", text: "The element set, as SGP4 reads it:" }),
+      element("pre", { class: "file", text: orbit.tle.join("\n") }),
+    ],
+  );
+  const conventions = block(
+    ["Conventions"],
+    [
+      element("p", {
+        class: "note",
+        text:
+          "Vectors are in GCRS. q_body turns body vectors into GCRS, and q_earth turns ITRS vectors into GCRS. " +
+          "LVLH: x along track, y minus the orbit normal, z nadir. The shadow is cast by the sun's disk on " +
+          "the WGS84 ellipsoid, with an umbra and a penumbra. With a slew block, the body turns between attitudes; without one, attitude changes are instant. Between time steps the page interpolates position " +
+          "and attitude; the power values are per step. Times are UTC, as the start plus the seconds; a " +
+          "browser ignores leap seconds. These inputs come from the scenario and power files on this page: " +
+          "edit them there and run the notebook again.",
+      }),
+    ],
+  );
+  const powerFile = power ? [block(name("Power file", power.power_file), [fileText(power.power_text)])] : [];
+  $("#inputs").append(
+    column([block(name("Scenario file", SCENARIO_FILE), [fileText(scenario.scenario_text || "")])]),
+    column([orbitBlock, conventions, ...powerFile]),
+  );
+}
+
+function showResults() {
+  const count = (status) => OCCURRENCES.filter((o) => o.statuses.includes(status));
+  const outside = count("outside constraint");
+  const neverCame = count("event never came");
+  const negative = count("negative duration");
+  const constrained = OCCURRENCES.filter((o) => o.constraint !== null);
+  const name = (o) => `Activity ${o.number} of repeat ${o.repeat}`;
+
+  const eclipses = ECLIPSES;
+  // Both times are rounded to 1 ms, so a run of 3 orbits can come out a hair short
+  const whole = Math.floor(T_END / PERIOD + 1e-6);
+  const span = whole ? whole * PERIOD : T_END;
+  const dark = eclipses.reduce((sum, p) => sum + Math.max(0, Math.min(p.end_s, span) - p.start_s), 0);
+  const full = eclipses.filter((p) => p.start_s > 0 && p.end_s < T_END);
+  const longest = full.reduce((most, p) => Math.max(most, p.end_s - p.start_s), 0);
+  const range = (array) => [Math.min(...array), Math.max(...array)];
+  const [betaLow, betaHigh] = range(BETA);
+  const altitudes = Array.from({ length: N }, (_, i) => Math.hypot(R[3 * i], R[3 * i + 1], R[3 * i + 2]) - R_E);
+  const [altLow, altHigh] = range(altitudes);
+
+  const cards = [
+    ["Occurrences", OCCURRENCES.length, ""],
+    ["Outside constraint", outside.length, ""],
+    ["Eclipse fraction", (100 * dark / span).toFixed(1), "%"],
+    ...(power ? power.summary.filter((item) => item.headline).map((item) => [item.label, item.value, item.unit]) : []),
+  ];
+  const checks = [
+    {
+      name: "Triggers",
+      status: negative.length ? "fail" : "ok",
+      detail: negative.length
+        ? negative.map((o) => `${name(o)}: ${o.trigger} ends it before it starts, so it takes no time`).join("\n")
+        : "Every activity ends after it starts.",
+    },
+    {
+      name: "Constraints",
+      status: outside.length ? "fail" : "ok",
+      detail: outside.length
+        ? outside.map((o) => `${name(o)}: ${numberText(o.outside_s)} s outside ${o.constraint}`).join("\n")
+        : `All ${constrained.length} occurrences with a constraint stay inside it.`,
+    },
+    {
+      name: "Events",
+      status: neverCame.length ? "warn" : "ok",
+      detail: neverCame.length
+        ? neverCame.map((o) => `${name(o)}: ${o.trigger} never came, so it runs to the end`).join("\n")
+        : "Every event trigger found its event.",
+    },
+    ...(power ? power.checks : []),
+  ];
+  const files = [
+    ["scenario.js", `version ${scenario.version}, id ${scenario.id}`],
+    ["power.js", power ? `version ${power.version}, for scenario ${power.scenario_id}` : DATA.power ? "not shown" : "not in this folder"],
+  ];
+
+  $("#results").append(
+    element(
+      "div",
+      { class: "cards wide" },
+      cards.map(([label, value, unit]) =>
+        element("div", { class: "card" }, [element("div", { class: "label", text: label }), element("div", { class: "value" }, [String(value), element("small", { text: unit })])]),
+      ),
+    ),
+    block(
+      ["Scenario"],
+      [
+        kv([
+          ["Start, UTC", utcText(0)],
+          ["End, UTC", utcText(T_END)],
+          ["Length", `${clockText(T_END)}, ${numberText(T_END / PERIOD, 2)} orbits`],
+          ["Time step", `${numberText(STEP)} s, ${N} steps`],
+          ["Nodal period", `${numberText(PERIOD / 60)} min`],
+          ["Beta", `${betaLow.toFixed(2)}° to ${betaHigh.toFixed(2)}°`],
+          ["Altitude", `${altLow.toFixed(1)} to ${altHigh.toFixed(1)} km`],
+          ["Eclipses", `${eclipses.length}, ${full.length} of them whole`],
+          ["Longest whole eclipse", full.length ? clockText(longest) : "none"],
+          ["Eclipse fraction", `${(100 * dark / span).toFixed(2)} %, over ${whole ? `${whole} whole orbits` : "the run"}`],
+        ]),
+        element("p", { class: "note", text: activitySummary() }),
+      ],
+    ),
+    block(
+      ["Checks"],
+      checks.map((check) =>
+        element("div", { class: `check ${check.status}` }, [element("div", { class: "head", text: check.name }), element("div", { class: "detail", text: check.detail })]),
+      ),
+    ),
+    ...(power
+      ? [block(["Power"], [kv(power.summary.filter((item) => !item.headline).map((item) => [item.label, `${item.value} ${item.unit}`.trim()]))])]
+      : []),
+    block(
+      ["Files"],
+      [
+        kv(files),
+        ...(powerNote ? [element("p", { class: "note", text: `The power is not shown: ${powerNote}` })] : []),
+        element("p", { class: "note", text: "3D: three.js (MIT). Charts: uPlot (MIT). Coastlines: Natural Earth (public domain). Orbit: SGP4 with astropy." }),
+      ],
+    ),
+  );
+}
+
+// ---------------------------------------------------------------- Explanations
+
+/** What each window, value and button is, for the box that appears on hover. */
+const HELP = {
+  orbit: {
+    title: "Orbit view",
+    text:
+      "The orbit in GCRS, the Earth-centred frame that does not turn with the Earth. The Earth and its " +
+      "coastlines turn under the orbit. The track takes its colours from the row chosen in the legend. The " +
+      "yellow arrow points at the sun. The Earth's shadow is two dark cones: the umbra, and around it the " +
+      "lighter penumbra. The two part only far from the Earth, as in a high orbit. Drag to turn the view, " +
+      "right-drag to pan, and scroll to zoom.",
+  },
+  body: {
+    title: "Body view",
+    text:
+      "The spacecraft, with its body axes x, y and z in red, green and blue. The arrows show the velocity, " +
+      "the nadir, the orbit normal and the sun. The first three are close to the LVLH axes: x along track, " +
+      "z nadir, and y minus the orbit normal. Without power data, the body is a plain 0.6 m cube.",
+  },
+  ground: {
+    title: "Ground track",
+    text:
+      "The point below the spacecraft, in geodetic latitude and longitude. The track has the same colours " +
+      "as the orbit view. The dark area is the night side, and the dashed line is the terminator. The " +
+      "yellow dot is the point below the sun, and the red dot is the spacecraft.",
+  },
+  timeline: {
+    title: "Timeline",
+    text:
+      "The illumination, the attitude and the mode against time, as the scenario run gives them. A red box " +
+      "marks an activity outside its constraint. A dashed red line marks an activity with a negative " +
+      "duration. A dashed amber box marks an event that never came. Click to move the time cursor, drag to " +
+      "zoom, and double-click to zoom out.",
+  },
+  power: {
+    title: "Power",
+    text:
+      "The power that the panels generate, and the power that the modes consume, in watts. The shaded " +
+      "bands are eclipses. Both come from power.js.",
+  },
+  battery: {
+    title: "Battery",
+    text:
+      "The battery's state of charge, as a percentage of its capacity. The dashed red line is the lowest " +
+      "charge allowed, set by the depth of discharge limit.",
+  },
+  current: {
+    title: "Current data",
+    text: "The state of the run at the time cursor. It changes as the scenario plays, or as you move the cursor.",
+  },
+  mode: {
+    title: "Mode",
+    text:
+      "What the spacecraft is doing, as the activity under way names it. Any name works. Power gives " +
+      "each mode its consumption.",
+  },
+  attitude: {
+    title: "Attitude",
+    text:
+      "How the body is pointed. In nadir, one body axis points at the centre of the Earth. In sun pointing, " +
+      "one body axis points at the sun. The scenario file names the axes. During a slew, the body turns into " +
+      "the next attitude, shown as, for example, nadir (slewing). Without slews, attitude changes are instant.",
+  },
+  illumination: {
+    title: "Illumination",
+    text:
+      "Whether the spacecraft is sunlit, in the penumbra, where the Earth hides part of the sun, or in " +
+      "the umbra, where it hides all of it. The shadow is cast by the sun's disk on the WGS84 ellipsoid.",
+  },
+  activity: {
+    title: "Activity",
+    text:
+      "The activity under way: its number in the scenario file's list, and which repeat of the list it " +
+      "belongs to. The Activities tab lists every one.",
+  },
+  beta: {
+    title: "Beta angle",
+    text:
+      "The angle between the sun direction and the orbit plane. It changes little over a run, so the start " +
+      "date and the orbit set it.",
+  },
+  position: {
+    title: "Position",
+    text:
+      "The geodetic latitude and longitude of the point below the spacecraft, and its altitude. The " +
+      "altitude is above a sphere of the Earth's equatorial radius, 6378.1 km.",
+  },
+  sunBody: {
+    title: "Sun in body axes",
+    text:
+      "The unit vector from the spacecraft to the sun, in body axes. In sun pointing, the sun axis reads " +
+      "1 or -1, which checks the pointing.",
+  },
+  panels: {
+    title: "Sun on panels",
+    text:
+      "The cosine of the sun angle on each panel. 1 means the panel faces the sun. 0 means it is edge-on, " +
+      "faces away, or is in eclipse.",
+  },
+  colourBy: {
+    title: "Track colours",
+    text: "Choose the timeline row that colours the track, here and on the ground track.",
+  },
+  track: { title: "Track", text: "Show or hide the orbit track." },
+  grid: { title: "Grid", text: "Show or hide the latitude and longitude lines on the Earth, every 30 degrees." },
+  coast: { title: "Coast", text: "Show or hide the coastlines on the Earth." },
+  shadow: {
+    title: "Shadow",
+    text:
+      "Show or hide the Earth's shadow: the dark umbra cone, which narrows away from the Earth, and the " +
+      "lighter penumbra cone around it, which widens.",
+  },
+  light: {
+    title: "Sunlight",
+    text:
+      "The fraction of the sun's disk seen from the spacecraft: 100 % when sunlit, and 0 % in the umbra. In " +
+      "the penumbra the Earth hides part of the sun, and the fraction falls or rises through it. The square " +
+      "fades with it. Power will scale the panels' output by it.",
+  },
+  follow: {
+    title: "Follow",
+    text: "Keep the camera on the spacecraft as it moves. Dragging still turns the view around it.",
+  },
+  orbitReset: { title: "Reset view", text: "Put the camera back where it started, and turn Follow off." },
+  lvlh: {
+    title: "LVLH",
+    text:
+      "Show the body in LVLH axes, which turn with the orbit: x along track, y minus the orbit normal, and " +
+      "z nadir. A nadir attitude then stands still.",
+  },
+  gcrs: {
+    title: "GCRS",
+    text: "Show the body in GCRS axes, which stay fixed in space. The arrows then turn as the spacecraft orbits.",
+  },
+  bodyReset: { title: "Reset view", text: "Put the camera back where it started, for the axes in use." },
+  zoomFull: { title: "Full", text: "Show the whole run on the charts." },
+  zoomOrbit: { title: "1 orbit", text: "Show one orbit on the charts, centred on the time cursor." },
+  zoom30: { title: "30 min", text: "Show 30 minutes on the charts, centred on the time cursor." },
+  play: { title: "Play", text: "Play or pause the scenario. The space bar does the same." },
+  start: { title: "Reset", text: "Stop, and go back to the start of the run. The Home key does the same." },
+  speed: { title: "Speed", text: "How fast the scenario plays, in seconds of the run for each second." },
+  slider: {
+    title: "Time",
+    text:
+      "The time cursor. Drag it to move through the run. The arrow keys step one time step, or a minute " +
+      "with Shift.",
+  },
+  tabScenario: { title: "Scenario", text: "Run through the scenario: the 3D views, the map, the timeline and the current data." },
+  tabActivities: { title: "Activities", text: "Every occurrence of every activity, with its times and statuses." },
+  tabInputs: { title: "Inputs", text: "The scenario file and the power file as written, the orbit, and the conventions." },
+  tabResults: { title: "Results", text: "The summary, the checks, and which data files were found." },
+};
+
+/**
+ * The box that explains whatever the pointer rests on. It appears after a
+ * moment, below the element, or above it when there is no room below.
+ */
+(function explanations() {
+  const box = element("div", { class: "help", hidden: "" });
+  document.body.append(box);
+  let target = null;
+  let timer = null;
+
+  function hide() {
+    clearTimeout(timer);
+    box.hidden = true;
+  }
+
+  function show(node) {
+    const help = HELP[node.dataset.help];
+    if (!help) return;
+    box.replaceChildren(element("b", { text: help.title }), help.text);
+    box.hidden = false;
+    const rect = node.getBoundingClientRect();
+    const left = Math.min(rect.left, innerWidth - 8 - box.offsetWidth);
+    const below = rect.bottom + 6;
+    const top = below + box.offsetHeight > innerHeight - 8 ? rect.top - 6 - box.offsetHeight : below;
+    box.style.left = `${Math.max(8, left)}px`;
+    box.style.top = `${Math.max(8, top)}px`;
+  }
+
+  document.addEventListener("pointerover", (event) => {
+    const node = event.target.closest("[data-help]");
+    if (node === target) return;
+    target = node;
+    hide();
+    if (node) timer = setTimeout(() => show(node), 250);
+  });
+  document.addEventListener("pointerout", (event) => {
+    if (!event.relatedTarget) {
+      target = null;
+      hide();
+    }
+  });
+  // A click on a button or a view hides the box. A tap on a touch screen
+  // shows it, and the next tap elsewhere hides it.
+  document.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse") hide();
+  });
+  document.addEventListener("scroll", hide, true);
+})();
+
+// ---------------------------------------------------------------- Pages and controls
+
+function showPage(page) {
+  state.page = page;
+  for (const button of $("#page-tabs").querySelectorAll("button")) button.classList.toggle("active", button.dataset.page === page);
+  for (const section of document.querySelectorAll(".page")) section.classList.toggle("active", section.id === `page-${page}`);
+  markAll();
+}
+
+function setPlaying(on) {
+  state.playing = on;
+  $("#play").innerHTML = on ? "&#10074;&#10074;" : "&#9654;";
+}
+
+function setupControls() {
+  $("#page-tabs").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-page]");
+    if (button) showPage(button.dataset.page);
+  });
+  const speed = $("#speed");
+  for (const value of SPEEDS) speed.append(element("option", { value, text: `${value}x` }));
+  speed.value = state.speed;
+  speed.addEventListener("change", () => (state.speed = Number(speed.value)));
+  $("#play").addEventListener("click", () => {
+    if (!state.playing && state.t >= T_END) setTime(0);
+    setPlaying(!state.playing);
+  });
+  $("#reset").addEventListener("click", () => {
+    setPlaying(false);
+    setTime(0);
+  });
+  $("#slider").addEventListener("input", (event) => setTime(T[Number(event.target.value)]));
+  document.addEventListener("keydown", (event) => {
+    if (event.target.closest("input:not([type=range]), select, textarea")) return;
+    if (event.key === " ") {
+      event.preventDefault();
+      $("#play").click();
+    } else if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+      event.preventDefault();
+      const forward = event.key === "ArrowRight";
+      if (event.shiftKey) setTime(state.t + (forward ? 60 : -60));
+      else setTime(T[clamp(indexAt(state.t) + (forward ? 1 : -1), 0, N - 1)]);
+    } else if (event.key === "Home") {
+      $("#reset").click();
+    }
+  });
+
+  const shown = power ? "with power" : DATA.power ? "power not shown" : "scenario only";
+  $("#subtitle").replaceChildren(
+    element("b", { text: SCENARIO_FILE }),
+    ` · ${shown} · ${utcText(0)} UTC · ${clockText(T_END)} at ${numberText(STEP)} s`,
+  );
+  if (powerNote) $("#subtitle").title = powerNote;
+  document.title = `quicksat Scenario Viewer · ${SCENARIO_FILE}`;
+}
+
+function observe(selector, resize) {
+  const node = $(selector);
+  new ResizeObserver(() => {
+    if (node.clientWidth > 0 && node.clientHeight > 0) {
+      resize(node.clientWidth, node.clientHeight);
+      markAll();
+    }
+  }).observe(node);
+}
+
+// ---------------------------------------------------------------- Start
+
+setupControls();
+showActivities();
+showInputs();
+showResults();
+trackColours.start();
+observe("#vp-orbit", (w, h) => orbitView.resize(w, h));
+observe("#vp-body", (w, h) => bodyView.resize(w, h));
+observe("#vp-ground", (w, h) => groundView.resize(w, h));
+setTime(0);
+
+let last = performance.now();
+function frame(now) {
+  const elapsed = Math.min((now - last) / 1000, 0.25);
+  last = now;
+  if (state.playing) {
+    let next = state.t + elapsed * state.speed;
+    if (next >= T_END) {
+      next = T_END;
+      setPlaying(false);
+    }
+    setTime(next);
+  }
+  if (state.page === "scenario") {
+    if (dirty.orbit) {
+      orbitView.update();
+      orbitView.render();
+      dirty.orbit = false;
+    }
+    if (dirty.body) {
+      bodyView.update();
+      bodyView.render();
+      dirty.body = false;
+    }
+    if (dirty.ground) {
+      groundView.render();
+      dirty.ground = false;
+    }
+    if (dirty.charts) {
+      charts.redraw();
+      dirty.charts = false;
+    }
+  }
+  if (dirty.readouts) {
+    readouts();
+    dirty.readouts = false;
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

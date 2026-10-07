@@ -19,16 +19,19 @@ import numpy as np
 import portion as P
 from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection
+from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 from quicksat import u
+from quicksat.scenario.attitude import SLEW
 from quicksat.scenario.config import Scenario
-from quicksat.scenario.run import OUTSIDE_CONSTRAINT, ScenarioRun
+from quicksat.scenario.run import NEGATIVE_DURATION, OUTSIDE_CONSTRAINT, ScenarioRun
 from quicksat.utils.intervals import TimeArray, labels_at
 from quicksat.utils.plot_helpers import (
     AXIS,
     CRITICAL,
     INK,
+    MUTED,
     legend_below,
     load_coastlines,
     text_colour,
@@ -47,8 +50,10 @@ def scenario_colours(scenario: Scenario) -> dict[str, str]:
     """
     The colour of every value the plots show.
 
-    The values take the colours in a fixed order: the illumination first, then
-    the attitudes, then the modes in the order the activities name them.
+    The values take the colours in a fixed order: the illumination first, as
+    `sunlit`, `penumbra` and `umbra`, then the attitudes, then the modes in the
+    order the activities name them. A `slew` between attitudes is always grey,
+    so it takes no colour from the palette.
 
     Parameters
     ----------
@@ -60,14 +65,13 @@ def scenario_colours(scenario: Scenario) -> dict[str, str]:
     colours : dict
         The colour of each value, as a hex string
     """
-    return value_colours(
-        [
-            "sunlit",
-            "eclipse",
-            *scenario.attitudes.names,
-            *(activity.mode for activity in scenario.activities),
-        ]
-    )
+    attitudes = ["sunlit", "penumbra", "umbra", *scenario.attitudes.names]
+    modes = [activity.mode for activity in scenario.activities]
+    colours = value_colours([*attitudes, *modes])
+    # the slew sits after the attitudes, in the order the legends show the values
+    ordered = {value: colours[value] for value in attitudes}
+    ordered[SLEW] = MUTED
+    return ordered | {value: colours[value] for value in modes}
 
 
 def gantt_chart(  # noqa: V103
@@ -78,7 +82,8 @@ def gantt_chart(  # noqa: V103
 
     Each row is drawn in one call to `broken_barh`. A bar carries its value as a
     label when it is wide enough. A red box marks every occurrence that spends
-    time outside its constraint.
+    time outside its constraint. A dashed red line marks every occurrence with a
+    negative duration, at its start, since it takes no time.
 
     Parameters
     ----------
@@ -143,6 +148,33 @@ def gantt_chart(  # noqa: V103
             linewidth=2,
         )
 
+    early = [
+        occurrence for occurrence in run.occurrences if occurrence.negative_duration
+    ]
+    if early:
+        # The next activity starts at the same time, so the line runs past any
+        # red box drawn there, and a triangle on top keeps it visible
+        starts = [minutes(occurrence.start) for occurrence in early]
+        ax.vlines(
+            starts,
+            -0.6,
+            len(rows) - 0.4,
+            colors=CRITICAL,
+            linestyles="dashed",
+            linewidth=2,
+            zorder=4,
+        )
+        ax.plot(
+            starts,
+            [len(rows) - 0.4] * len(starts),
+            linestyle="none",
+            marker="v",
+            markersize=9,
+            color=CRITICAL,
+            clip_on=False,
+            zorder=4,
+        )
+
     ax.set_yticks(range(len(rows)), labels=list(rows))
     ax.grid(axis="y", visible=False)
     ax.set(
@@ -152,13 +184,27 @@ def gantt_chart(  # noqa: V103
         title="Illumination, attitude and mode",
     )
     shown = {value for row in rows.values() for value in row.values()}
-    outside = Patch(
-        fill=False, edgecolor=CRITICAL, linewidth=2, label=OUTSIDE_CONSTRAINT
-    )
+    problems = []
+    if failed:
+        problems.append(
+            Patch(fill=False, edgecolor=CRITICAL, linewidth=2, label=OUTSIDE_CONSTRAINT)
+        )
+    if early:
+        problems.append(
+            Line2D(
+                [],
+                [],
+                color=CRITICAL,
+                linestyle="--",
+                linewidth=2,
+                marker="v",
+                label=NEGATIVE_DURATION,
+            )
+        )
     legend_below(
         ax,
         {value: colour for value, colour in colours.items() if value in shown},
-        [outside] if failed else [],
+        problems,
     )
     return ax
 

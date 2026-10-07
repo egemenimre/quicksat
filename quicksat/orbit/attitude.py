@@ -15,10 +15,20 @@ onto the other.
 A rotation is held as a 3x3 matrix that turns body vectors into the frame of the
 directions: column i is body axis i, seen in that frame. A quaternion is
 `[x, y, z, w]`, with the scalar last, which is the order three.js and scipy use.
+scipy's `Rotation` converts between the two, and composes rotations. The TRIAD
+construction stays here, because scipy's `align_vectors` takes one time per call.
+
+A slew turns the body from one attitude to another, from rest to rest, about one
+axis. It speeds up at the maximum acceleration, coasts at the maximum rate if it
+reaches it, and slows down at the maximum acceleration. A slew too short to
+reach the maximum rate speeds up to its midpoint and slows down from there. This
+is the same profile as the agility budget's, with one rate and one acceleration
+for every axis.
 
 """
 
 import numpy as np
+from scipy.spatial.transform import Rotation
 
 _DEGENERATE = 1e-6
 """Sine of the angle below which two directions count as parallel. The second
@@ -138,7 +148,7 @@ def quaternions(rotations: np.ndarray) -> np.ndarray:
     A quaternion and its negative give the same rotation. Each quaternion here
     takes the sign that keeps it closest to the one before it, so that the
     viewer can interpolate between neighbours. The first takes the sign that
-    Shepperd's method gives it.
+    scipy gives it.
 
     Parameters
     ----------
@@ -151,36 +161,158 @@ def quaternions(rotations: np.ndarray) -> np.ndarray:
     quaternions : ndarray
         The quaternions `[x, y, z, w]`, scalar last, shape (n, 4)
     """
-    m = rotations
-    # Four times each product of two components, read off the matrix
-    product = {
-        "xw": m[:, 2, 1] - m[:, 1, 2],
-        "yw": m[:, 0, 2] - m[:, 2, 0],
-        "zw": m[:, 1, 0] - m[:, 0, 1],
-        "xy": m[:, 0, 1] + m[:, 1, 0],
-        "xz": m[:, 0, 2] + m[:, 2, 0],
-        "yz": m[:, 1, 2] + m[:, 2, 1],
-    }
-    # Four times the square of each component, from the diagonal
-    square = {
-        "w": 1 + m[:, 0, 0] + m[:, 1, 1] + m[:, 2, 2],
-        "x": 1 + m[:, 0, 0] - m[:, 1, 1] - m[:, 2, 2],
-        "y": 1 - m[:, 0, 0] + m[:, 1, 1] - m[:, 2, 2],
-        "z": 1 - m[:, 0, 0] - m[:, 1, 1] + m[:, 2, 2],
-    }
-    # Shepperd's method: take the largest component from its square, and the
-    # others from their products with it, so that nothing divides by a small number
-    names = list(square)
-    largest = np.argmax(np.stack([square[name] for name in names], axis=-1), axis=-1)
-    q = np.empty((len(m), 4))
-    for index, known in enumerate(names):
-        rows = largest == index
-        size = 0.5 * np.sqrt(square[known][rows])
-        values = {known: size}
-        for other in "xyzw".replace(known, ""):
-            pair = "".join(sorted(known + other, key="xyzw".index))
-            values[other] = product[pair][rows] / (4 * size)
-        q[rows] = np.column_stack([values[name] for name in "xyzw"])
-
+    q = Rotation.from_matrix(rotations).as_quat()
     flips = np.where(np.sum(q[1:] * q[:-1], axis=1) < 0, -1.0, 1.0)
     return q * np.cumprod(np.concatenate([[1.0], flips]))[:, None]
+
+
+def rotation_angles(first: np.ndarray, second: np.ndarray) -> np.ndarray:
+    """
+    The angle of the single turn that takes each rotation to the other.
+
+    Parameters
+    ----------
+    first, second : ndarray
+        Rotation matrices, shape (n, 3, 3) or (3, 3)
+
+    Returns
+    -------
+    angles : ndarray
+        The angles, from 0 to pi [rad], shape (n,)
+    """
+    relative = Rotation.from_matrix(first).inv() * Rotation.from_matrix(second)
+    return np.atleast_1d(relative.magnitude())
+
+
+def turn_between(
+    start: np.ndarray,
+    ends: np.ndarray,
+    fractions: np.ndarray,
+    reference: np.ndarray | None = None,
+) -> np.ndarray:
+    """
+    Rotations part of the way from one rotation to others.
+
+    This is spherical linear interpolation of the quaternions. By default each
+    turn goes the shorter way round. With a reference, every turn goes the way
+    that is shorter to the reference. That keeps the direction of a slew fixed
+    while its target moves, even where the target drifts past a half turn away.
+
+    Parameters
+    ----------
+    start : ndarray
+        The rotation turned from, shape (3, 3)
+    ends : ndarray
+        The rotations turned to, shape (n, 3, 3)
+    fractions : ndarray
+        How far along each turn, from 0 at `start` to 1 at the end, shape (n,)
+    reference : ndarray, optional
+        A rotation close to all the ends, shape (3, 3), that fixes the direction
+
+    Returns
+    -------
+    rotations : ndarray
+        Shape (n, 3, 3)
+    """
+    q0 = Rotation.from_matrix(start).as_quat()
+    q1 = Rotation.from_matrix(ends).as_quat()
+    # q and -q are the same rotation, and the sign of q1 sets which way the turn
+    # goes: the sign nearer q0 is the shorter way round
+    toward = q0
+    if reference is not None:
+        toward = Rotation.from_matrix(reference).as_quat()
+        toward = toward if toward @ q0 >= 0 else -toward
+    q1 = np.where((q1 @ toward)[:, None] < 0, -q1, q1)
+    angle = np.arccos(np.clip(q1 @ q0, -1.0, 1.0))
+    fractions = np.asarray(fractions, dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        sine = np.sin(angle)
+        small = angle < 1e-9
+        weight0 = np.where(small, 1 - fractions, np.sin((1 - fractions) * angle) / sine)
+        weight1 = np.where(small, fractions, np.sin(fractions * angle) / sine)
+    q = weight0[:, None] * q0 + weight1[:, None] * q1
+    return Rotation.from_quat(q).as_matrix()
+
+
+def slew_duration(
+    angle: np.ndarray, max_rate: float | None, max_acceleration: float | None
+) -> np.ndarray:
+    """
+    How long a rest-to-rest slew takes, settling excluded.
+
+    Parameters
+    ----------
+    angle : ndarray
+        The angles to turn through [rad]
+    max_rate : float or None
+        The fastest the body turns [rad/s]. None for no limit.
+    max_acceleration : float or None
+        The fastest the turn speeds up or slows down [rad/s^2]. None for no
+        limit, which starts and stops the turn at once.
+
+    Returns
+    -------
+    duration : ndarray
+        The slew times [s]
+
+    Raises
+    ------
+    ValueError
+        If neither limit is given
+    """
+    angle = np.asarray(angle, dtype=float)
+    if max_rate is None and max_acceleration is None:
+        raise ValueError("a slew needs a maximum rate, a maximum acceleration, or both")
+    if max_acceleration is None:
+        assert max_rate is not None
+        return angle / max_rate
+    triangular = 2 * np.sqrt(angle / max_acceleration)
+    if max_rate is None:
+        return triangular
+    coasting = angle / max_rate + max_rate / max_acceleration
+    return np.where(angle <= max_rate**2 / max_acceleration, triangular, coasting)
+
+
+def slew_progress(
+    angle: float,
+    elapsed: np.ndarray,
+    max_rate: float | None,
+    max_acceleration: float | None,
+) -> np.ndarray:
+    """
+    How far through a rest-to-rest slew the body has turned, as a fraction.
+
+    Parameters
+    ----------
+    angle : float
+        The whole angle of the slew [rad]
+    elapsed : ndarray
+        Time since the slew started [s]
+    max_rate, max_acceleration : float or None
+        The limits of the turn, as for `slew_duration`
+
+    Returns
+    -------
+    fraction : ndarray
+        0 at the start, 1 once the slew is over
+    """
+    elapsed = np.asarray(elapsed, dtype=float)
+    duration = float(slew_duration(np.array(angle), max_rate, max_acceleration))
+    if angle <= 0 or duration <= 0:
+        return np.ones_like(elapsed)
+    tau = np.clip(elapsed, 0.0, duration)
+    if max_acceleration is None:
+        turned = angle * tau / duration
+    else:
+        # the time spent speeding up, and again slowing down, from
+        # angle = acceleration * ramp * (duration - ramp)
+        root = duration**2 / 4 - angle / max_acceleration
+        ramp = duration / 2 - np.sqrt(max(root, 0.0))
+        peak = max_acceleration * ramp
+        speeding = 0.5 * max_acceleration * tau**2
+        coasting = 0.5 * peak * ramp + peak * (tau - ramp)
+        slowing = angle - 0.5 * max_acceleration * (duration - tau) ** 2
+        turned = np.where(
+            tau <= ramp, speeding, np.where(tau <= duration - ramp, coasting, slowing)
+        )
+    return np.clip(turned / angle, 0.0, 1.0)

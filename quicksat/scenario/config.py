@@ -28,6 +28,7 @@ from datetime import date, datetime, time, timezone
 from pathlib import Path
 from typing import Annotated, Literal, cast, get_args
 
+import numpy as np
 import yaml
 from astropy.time import Time
 from astropy.units import Quantity
@@ -43,16 +44,26 @@ from pydantic import (
 )
 
 from quicksat import Q_, u
+from quicksat.orbit.attitude import slew_duration, slew_progress
 from quicksat.utils.intervals import TIME_GRID
-from quicksat.utils.parser_helpers import LengthQty, PlainQty, TimeQty
+from quicksat.utils.parser_helpers import (
+    AngularAccelerationQty,
+    AngularRateQty,
+    LengthQty,
+    PlainQty,
+    TimeQty,
+)
 
 Axis = Literal["+x", "-x", "+y", "-y", "+z", "-z"]
 """A body axis, with its sign: the axis the attitude points along."""
 
-Illumination = Literal["sunlit", "eclipse"]
-"""The states of the illumination, and so the constraints an activity may have."""
+Illumination = Literal["sunlit", "penumbra", "umbra", "eclipse"]
+"""The constraints an activity may have. The illumination has three states,
+`sunlit`, `penumbra` and `umbra`, and `eclipse` means either of the last two."""
 
-EventName = Literal["eclipse entry", "eclipse exit", "latitude crossing"]
+EventName = Literal[
+    "eclipse entry", "eclipse exit", "umbra entry", "umbra exit", "latitude crossing"
+]
 """The kinds of event that can end an activity."""
 
 LATITUDE_CROSSING = "latitude crossing"
@@ -426,8 +437,7 @@ class Trigger(BaseModel):
     """
     What ends an activity: a duration, or an event with an optional offset.
 
-    Build one with `parse_trigger`. The umbra edges come with the penumbra. They
-    will add events here and forms to the parser.
+    Build one with `parse_trigger`.
 
     Parameters
     ----------
@@ -437,8 +447,9 @@ class Trigger(BaseModel):
         The length of the activity, for a duration trigger
     event : str, optional
         The kind of event that ends the activity, for an event trigger:
-        `eclipse entry`, `eclipse exit` or `latitude crossing`. The node triggers
-        are latitude crossings of 0 degrees.
+        `eclipse entry`, `eclipse exit`, `umbra entry`, `umbra exit` or
+        `latitude crossing`. The node triggers are latitude crossings of 0
+        degrees.
     latitude : Quantity, optional
         The geodetic latitude crossed, from -90 to 90 degrees, for a latitude
         crossing
@@ -497,7 +508,8 @@ _NUMBER = r"(?:\d+(?:\.\d*)?|\.\d+)"
 """A number without a sign, such as `30`, `2.5` or `.5`."""
 
 _EVENT_TRIGGER = re.compile(
-    r"(?P<event>eclipse entry|eclipse exit|ascending node|descending node"
+    r"(?P<event>eclipse entry|eclipse exit|umbra entry|umbra exit"
+    r"|ascending node|descending node"
     rf"|latitude (?P<latitude>[+-]?{_NUMBER} ?[a-z]+)"
     r"(?: (?P<direction>ascending|descending))?)"
     rf"(?: ?(?P<sign>[+-]) ?(?P<offset>{_NUMBER}.*))?",
@@ -517,7 +529,8 @@ def _trigger_forms() -> str:
     """
     return (
         "a positive duration with a unit, such as '20 min', or an event: "
-        "'eclipse entry', 'eclipse exit', 'ascending node', 'descending node', or a "
+        "'eclipse entry', 'eclipse exit', 'umbra entry', 'umbra exit', "
+        "'ascending node', 'descending node', or a "
         "latitude crossing such as 'latitude 30 deg ascending'. An event can take "
         "an offset, such as 'eclipse entry + 2 min'"
     )
@@ -604,7 +617,8 @@ def parse_trigger(text: str) -> Trigger:
 
     - a positive duration with a unit, such as `20 min`. It must be at least as
       long as the 1 ms time grid.
-    - the events `eclipse entry` and `eclipse exit`;
+    - the shadow edges `eclipse entry`, `umbra entry`, `umbra exit` and
+      `eclipse exit`;
     - a latitude crossing, such as `latitude 30 deg ascending`, `latitude -30 deg
       descending`, or `latitude 45 deg` for either direction;
     - `ascending node` and `descending node`, the crossings of 0 degrees;
@@ -687,7 +701,7 @@ def parse_constraint(text: str) -> Illumination:
     Parameters
     ----------
     text : str
-        `sunlit` or `eclipse`
+        `sunlit`, `penumbra`, `umbra`, or `eclipse` for either of the last two
 
     Returns
     -------
@@ -697,23 +711,16 @@ def parse_constraint(text: str) -> Illumination:
     Raises
     ------
     ValueError
-        If the text is not `sunlit` or `eclipse`. `umbra` and `penumbra` get a
-        message that they come with the penumbra model.
+        If the text is none of the four words
     """
+    words = ", ".join(f"'{word}'" for word in get_args(Illumination))
     if not isinstance(text, str):
-        raise ValueError(f"constraint {text!r} is not text. Use 'sunlit' or 'eclipse'")
+        raise ValueError(f"constraint {text!r} is not text. Use one of {words}")
     word = text.strip().lower()
-    if word in ("umbra", "penumbra"):
-        raise ValueError(
-            f"constraint '{word}' comes with the penumbra, which is not modelled "
-            "yet. Use 'sunlit' or 'eclipse'"
-        )
     for constraint in get_args(Illumination):
         if word == constraint:
             return constraint
-    raise ValueError(
-        f"constraint '{text}' is not understood. Use 'sunlit' or 'eclipse'"
-    )
+    raise ValueError(f"constraint '{text}' is not understood. Use one of {words}")
 
 
 class Activity(BaseModel):
@@ -729,7 +736,8 @@ class Activity(BaseModel):
     mode : str
         The name of the mode. Any name that is not empty.
     constraint : str, optional
-        The illumination the activity expects, `sunlit` or `eclipse`
+        The illumination the activity expects: `sunlit`, `penumbra`, `umbra`,
+        or `eclipse` for either of the last two
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
@@ -819,6 +827,101 @@ def _parse_start(value) -> Time:
     raise ValueError(message)
 
 
+class Slew(BaseModel):
+    """
+    How the body turns from one attitude to another.
+
+    A slew turns from rest to rest about one axis. It speeds up at the maximum
+    acceleration, coasts at the maximum rate if it reaches it, and slows down
+    again. The body then settles for the settling time before the activity
+    starts. The same rate and acceleration hold for every axis. They can be set
+    close to the agility budget's, but nothing reads them from it.
+
+    Parameters
+    ----------
+    max_rate : Quantity, optional
+        The fastest the body turns, such as `0.7 deg/s`. Without it, the slew
+        speeds up until the midpoint, then slows down.
+    max_acceleration : Quantity, optional
+        How fast the turn speeds up and slows down, such as `0.08 deg/s2`.
+        Without it, the slew starts and stops at the maximum rate at once.
+    settling_time : Quantity, optional
+        Time to settle after the turn, 0 s by default
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+    max_rate: AngularRateQty | None = None
+    max_acceleration: AngularAccelerationQty | None = None
+    settling_time: TimeQty = Q_(0, "s")
+
+    @model_validator(mode="after")
+    def _a_positive_limit(self):
+        """Checks for at least one limit, and that each limit is above zero."""
+        limits = {"max_rate": self.max_rate, "max_acceleration": self.max_acceleration}
+        given = {name: limit for name, limit in limits.items() if limit is not None}
+        if not given:
+            raise ValueError("a slew needs max_rate, max_acceleration, or both")
+        for name, limit in given.items():
+            if limit <= 0:
+                raise ValueError(f"{name} must be positive, got '{limit}'")
+        return self
+
+    def _limits(self) -> tuple[float | None, float | None]:
+        """
+        The two limits as plain numbers, in rad/s and rad/s^2.
+
+        Returns
+        -------
+        limits : tuple
+            The maximum rate and the maximum acceleration, or None for either
+        """
+        rate = None if self.max_rate is None else self.max_rate.to(u.rad / u.s).value
+        acceleration = (
+            None
+            if self.max_acceleration is None
+            else self.max_acceleration.to(u.rad / u.s**2).value
+        )
+        return rate, acceleration
+
+    def turn_time(self, angle: Quantity) -> Quantity:
+        """
+        How long the turn through an angle takes, settling excluded.
+
+        Parameters
+        ----------
+        angle : Quantity
+            The angle to turn through
+
+        Returns
+        -------
+        time : Quantity
+            In seconds
+        """
+        seconds = slew_duration(np.asarray(angle.to(u.rad).value), *self._limits())
+        return Q_(float(seconds), "s")
+
+    def turned(self, angle: Quantity, elapsed: Quantity) -> np.ndarray:
+        """
+        How far through the turn the body is, as a fraction.
+
+        Parameters
+        ----------
+        angle : Quantity
+            The whole angle of the turn
+        elapsed : Quantity
+            Time since the turn started, one value or an array
+
+        Returns
+        -------
+        fraction : ndarray
+            0 at the start, 1 once the turn is over
+        """
+        return slew_progress(
+            float(angle.to(u.rad).value), elapsed.to(u.s).value, *self._limits()
+        )
+
+
 class Scenario(BaseModel):
     """
     A scenario: the orbit, the period of the run, and the activities.
@@ -841,6 +944,9 @@ class Scenario(BaseModel):
     activities : list of Activity
         One repeat of the activities. The run repeats the list until the duration
         ends, and cuts the last activity there.
+    slew : Slew, optional
+        How the body turns between attitudes. Without it, attitude changes are
+        instant.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -851,6 +957,7 @@ class Scenario(BaseModel):
     step: TimeQty = DEFAULT_STEP
     attitudes: Attitudes
     activities: list[Activity]
+    slew: Slew | None = None
 
     _source_file: Path | None = PrivateAttr(None)
     _source_text: str | None = PrivateAttr(None)

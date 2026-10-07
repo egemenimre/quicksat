@@ -6,8 +6,8 @@
 """
 Running a scenario: the orbit, the eclipses and the repeated activities.
 
-`run_scenario` evaluates the orbit on the time grid and finds the eclipses, and
-the latitude crossings that the triggers name. It repeats the list of activities
+`run_scenario` evaluates the orbit on the time grid and finds the umbra and the
+penumbra, and the latitude crossings that the triggers name. It repeats the list of activities
 until the duration ends and checks each constraint. All the results come back in
 one `ScenarioRun`.
 
@@ -18,7 +18,7 @@ overlaps.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import pandas as pd
@@ -29,13 +29,15 @@ from astropy.units import Quantity
 from quicksat import Q_, u
 from quicksat.orbit.geometry import (
     beta_angle,
-    eclipse_intervals,
     geodetic,
-    in_shadow,
+    light_fraction,
+    shadow_cones,
+    shadow_intervals,
     sun_positions,
 )
 from quicksat.orbit.sso import sso_tle
 from quicksat.orbit.tle import Tle, read_tle_file, tle_states, warn_if_far_from_epoch
+from quicksat.scenario.attitude import SLEW, SlewWindow, plan_slews
 from quicksat.scenario.config import (
     LATITUDE_CROSSING,
     Activity,
@@ -50,6 +52,10 @@ from quicksat.utils.intervals import (
     next_start,
     round_time,
 )
+
+Illumination = dict[str, P.Interval]
+"""The illumination of a run, by the words of the constraints: `sunlit`,
+`penumbra`, `umbra`, and `eclipse` for either of the last two."""
 
 Events = dict[tuple, tuple[P.Interval, ...]]
 """The events of a run, by `Trigger.event_key`. Each event is the start of a
@@ -66,6 +72,17 @@ run."""
 CUT_AT_END = "cut at end"
 """Status: the activity would run past the end of the run, and is cut there. This
 includes an event trigger whose next event comes after the end of the run."""
+
+NEGATIVE_DURATION = "negative duration"
+"""Status: a negative offset takes the end of the activity back to its start, or
+before it. The activity then takes no time, and the next one starts where this one
+started. This is a fault of the trigger, where `outside constraint` is a fault of
+the constraint."""
+
+SLEW_STARTS_EARLY = "slew starts early"
+"""Status: the slew into the activity starts before the activity before it does,
+because that activity is shorter than the slew. It can also run on into the
+activity, if the run starts too late for it."""
 
 STATUS_OK = "ok"
 """Status: none of the above."""
@@ -88,7 +105,8 @@ class Occurrence:
     activity : Activity
         The activity as written
     start, end : Time
-        Start and end, on the 1 ms grid
+        Start and end, on the 1 ms grid. A negative offset can take the end back
+        to the start, or before it.
     outside : Quantity or None
         Total time spent outside the constraint, or None if there is no constraint
     event_never_came : bool
@@ -96,6 +114,11 @@ class Occurrence:
     cut_at_end : bool
         True if the activity would have ended after the end of the run. That
         includes an event that happens in the run, but not again before its end.
+    slew : Quantity, optional
+        The time of the slew into the activity, settling included. None if the
+        attitude does not change, or the scenario has no slews.
+    slew_starts_early : bool, optional
+        True if the slew into the activity starts before the activity before it
     """
 
     repeat: int
@@ -106,6 +129,8 @@ class Occurrence:
     outside: Quantity | None
     event_never_came: bool
     cut_at_end: bool
+    slew: Quantity | None = None
+    slew_starts_early: bool = False
 
     @property
     def interval(self) -> P.Interval:
@@ -115,8 +140,21 @@ class Occurrence:
         Returns
         -------
         interval : portion.Interval
+            Empty if the activity ends at or before its start
         """
         return P.closedopen(self.start, self.end)
+
+    @property
+    def negative_duration(self) -> bool:
+        """
+        Whether a negative offset takes the end back to the start, or before it.
+
+        Returns
+        -------
+        negative_duration : bool
+            True for a duration of zero too
+        """
+        return bool(self.end <= self.start)
 
     @property
     def failed(self) -> bool:
@@ -138,16 +176,21 @@ class Occurrence:
         Returns
         -------
         statuses : list of str
-            `outside constraint`, `event never came` and `cut at end`, as far as
-            they apply, or `ok` if none does
+            `negative duration`, `outside constraint`, `event never came`,
+            `cut at end` and `slew starts early`, as far as they apply, or `ok` if
+            none does
         """
         statuses = []
+        if self.negative_duration:
+            statuses.append(NEGATIVE_DURATION)
         if self.failed:
             statuses.append(OUTSIDE_CONSTRAINT)
         if self.event_never_came:
             statuses.append(EVENT_NEVER_CAME)
         if self.cut_at_end:
             statuses.append(CUT_AT_END)
+        if self.slew_starts_early:
+            statuses.append(SLEW_STARTS_EARLY)
         return statuses or [STATUS_OK]
 
 
@@ -242,17 +285,18 @@ def next_event(intervals: tuple[P.Interval, ...], after: TimeArray) -> TimeArray
 def find_events(
     activities: list[Activity],
     interval: P.Interval,
-    eclipses: P.Interval,
-    sunlit: P.Interval,
+    illumination: Illumination,
     time_above: Callable[[Quantity], P.Interval],
 ) -> Events:
     """
     The events that the activities' triggers name, as the intervals they start.
 
-    An eclipse entry is the start of an eclipse, and an eclipse exit is the start
-    of a sunlit piece. A northward crossing of a latitude is the start of the time
-    above it, and a southward crossing is the start of the time below it. The time
-    above each latitude is found once, whichever directions the triggers name.
+    An eclipse entry is the start of an eclipse, and an eclipse exit the start of
+    a sunlit piece. An umbra entry is the start of the umbra, and an umbra exit
+    the start of the time outside it. A northward crossing of a latitude is the
+    start of the time above it, and a southward crossing is the start of the time
+    below it. The time above each latitude is found once, whichever directions the
+    triggers name.
 
     Parameters
     ----------
@@ -260,8 +304,8 @@ def find_events(
         One repeat of the list
     interval : portion.Interval
         The run, closed at its start and open at its end
-    eclipses, sunlit : portion.Interval
-        The illumination intervals
+    illumination : dict
+        The intervals of `sunlit`, `penumbra`, `umbra` and `eclipse`
     time_above : callable
         Gives the time at or above a geodetic latitude, as intervals over the run
 
@@ -271,6 +315,12 @@ def find_events(
         For the `event_key` of each event trigger, the intervals whose starts are
         its events
     """
+    shadow_edges = {
+        "eclipse entry": illumination["eclipse"],
+        "eclipse exit": illumination["sunlit"],
+        "umbra entry": illumination["umbra"],
+        "umbra exit": interval - illumination["umbra"],
+    }
     events: Events = {}
     above: dict[float, P.Interval] = {}
     for activity in activities:
@@ -278,10 +328,8 @@ def find_events(
         key = trigger.event_key
         if key is None or key in events:
             continue
-        if trigger.event == "eclipse entry":
-            events[key] = (eclipses,)
-        elif trigger.event == "eclipse exit":
-            events[key] = (sunlit,)
+        if trigger.event in shadow_edges:
+            events[key] = (shadow_edges[trigger.event],)
         else:
             assert trigger.event == LATITUDE_CROSSING
             assert trigger.latitude is not None  # a latitude crossing has one
@@ -346,6 +394,10 @@ def resolve_activities(
     again before the end. If the event never happens in the run at all, the
     activity runs to the end and is flagged that its event never came.
 
+    A negative offset can take an activity's end back to its start, or before it.
+    The activity is then flagged, and takes no time. The next activity starts
+    where it started.
+
     A constraint holds when the activity has no time outside the intervals that
     the constraint allows.
 
@@ -368,11 +420,13 @@ def resolve_activities(
     Raises
     ------
     ValueError
-        If a negative offset ends an activity at or before its start
+        If no activity in the list ends after it starts. The run would then never
+        move on.
     """
     run_end: TimeArray = interval.upper
     occurrences = []
     start: TimeArray = interval.lower
+    repeat_start = start
     index, repeat = 0, 1
     while start < run_end:
         activity = activities[index]
@@ -386,15 +440,6 @@ def resolve_activities(
             cut = not never_came
             end = run_end
         else:
-            if end <= start:
-                # only a negative offset can do this
-                raise ValueError(
-                    f"Activity {index + 1} of repeat {repeat}, '{trigger.text}', ends "
-                    f"{(start - end).to_value(u.s):.3f} s before it starts. It starts "
-                    f"at {start.utc.isot} and would end at {end.utc.isot}. Its "
-                    "offset takes the end back to the start or before it. Shorten "
-                    "the offset, or add an activity before this one."
-                )
             never_came = False
             cut = bool(end > run_end)
             if cut:
@@ -409,10 +454,18 @@ def resolve_activities(
             )
         )
 
-        start = end
+        # an activity that ends before it starts takes no time
+        start = max(start, end)
         index += 1
         if index == len(activities):
-            index, repeat = 0, repeat + 1
+            if start == repeat_start:
+                raise ValueError(
+                    "No activity in the list ends after it starts, so the run never "
+                    f"moves on from {start.utc.isot}. Every activity has a negative "
+                    "offset that takes its end back to its start or before it. "
+                    "Shorten the offsets."
+                )
+            index, repeat, repeat_start = 0, repeat + 1, start
     return occurrences
 
 
@@ -430,10 +483,13 @@ def activity_table(occurrences: list[Occurrence]) -> pd.DataFrame:
     table : pd.DataFrame
         The columns are the repeat and activity numbers, the start and end as UTC
         text, the duration in minutes, the trigger as written, the attitude, the
-        mode, the constraint, the time outside the constraint in seconds, and the
-        status. The status is `ok`, or any of `outside constraint`,
-        `event never came` and `cut at end`, joined by commas. The constraint is
-        blank and the time outside is NaN where an activity has no constraint.
+        time of the slew into it in seconds, the mode, the constraint, the time
+        outside the constraint in seconds, and the status. The duration is
+        negative for an activity that ends before it starts. The status is `ok`,
+        or any of `negative duration`, `outside constraint`, `event never came`,
+        `cut at end` and `slew starts early`, joined by commas. The slew is NaN
+        where there is none. The constraint is blank and the time outside is NaN
+        where an activity has no constraint.
     """
     rows = []
     for occurrence in occurrences:
@@ -444,9 +500,15 @@ def activity_table(occurrences: list[Occurrence]) -> pd.DataFrame:
                 "activity": occurrence.number,
                 "start [UTC]": occurrence.start.utc.isot,
                 "end [UTC]": occurrence.end.utc.isot,
-                "duration [min]": duration(occurrence.interval).to_value(u.min),
+                "duration [min]": round(
+                    float((occurrence.end - occurrence.start).to_value(u.s)), 3
+                )
+                / 60,
                 "trigger": activity.trigger.text,
                 "attitude": activity.attitude,
+                "slew [s]": (
+                    np.nan if occurrence.slew is None else occurrence.slew.to_value(u.s)
+                ),
                 "mode": activity.mode,
                 "constraint": activity.constraint or "",
                 "outside [s]": (
@@ -472,22 +534,30 @@ def activity_summary(occurrences: list[Occurrence]) -> str:
     Returns
     -------
     summary : str
-        The number of occurrences and repeats, and how many are outside their
-        constraint, saw an event that never came, or were cut at the end
+        The number of occurrences and repeats, and how many have a negative
+        duration, are outside their constraint, saw an event that never came, were
+        cut at the end, or have a slew that starts early
     """
+    repeats = occurrences[-1].repeat
+    early = sum(occurrence.negative_duration for occurrence in occurrences)
     failed = sum(occurrence.failed for occurrence in occurrences)
     never_came = sum(occurrence.event_never_came for occurrence in occurrences)
     cut = sum(occurrence.cut_at_end for occurrence in occurrences)
+    slews = sum(occurrence.slew_starts_early for occurrence in occurrences)
     return (
-        f"Occurrences: {len(occurrences)} in {occurrences[-1].repeat} repeats. "
+        f"Occurrences: {len(occurrences)} in {repeats} repeat{'' if repeats == 1 else 's'}. "
+        f"{NEGATIVE_DURATION.capitalize()}: {early}. "
         f"{OUTSIDE_CONSTRAINT.capitalize()}: {failed}. "
         f"{EVENT_NEVER_CAME.capitalize()}: {never_came}. "
-        f"{CUT_AT_END.capitalize()}: {cut}."
+        f"{CUT_AT_END.capitalize()}: {cut}. "
+        f"{SLEW_STARTS_EARLY.capitalize()}: {slews}."
     )
 
 
 def gantt_rows(
-    sunlit: P.Interval, eclipses: P.Interval, occurrences: list[Occurrence]
+    illumination: Illumination,
+    occurrences: list[Occurrence],
+    slews: list[SlewWindow],
 ) -> tuple[P.IntervalDict, P.IntervalDict, P.IntervalDict]:
     """
     Build the three rows of the Gantt chart.
@@ -497,29 +567,34 @@ def gantt_rows(
 
     Parameters
     ----------
-    sunlit, eclipses : portion.Interval
-        The illumination intervals
+    illumination : dict
+        The intervals of `sunlit`, `penumbra` and `umbra`
     occurrences : list of Occurrence
         The occurrences from `resolve_activities`
+    slews : list of SlewWindow
+        The slews, from `plan_slews`. They take the attitude row's time over
+        from the activities.
 
     Returns
     -------
     illumination : portion.IntervalDict
-        `sunlit` and `eclipse`
+        `sunlit`, `penumbra` and `umbra`
     attitude : portion.IntervalDict
-        The attitude names
+        The attitude names, and `slew` while the body turns or settles
     mode : portion.IntervalDict
         The mode names
     """
-    illumination = P.IntervalDict()
-    illumination[sunlit] = "sunlit"
-    illumination[eclipses] = "eclipse"
+    row = P.IntervalDict()
+    for state in ("sunlit", "penumbra", "umbra"):
+        row[illumination[state]] = state
     attitude = P.IntervalDict()
     mode = P.IntervalDict()
     for occurrence in occurrences:
         attitude[occurrence.interval] = occurrence.activity.attitude
         mode[occurrence.interval] = occurrence.activity.mode
-    return illumination, attitude, mode
+    for window in slews:
+        attitude[window.interval] = SLEW
+    return row, attitude, mode
 
 
 @dataclass(frozen=True)
@@ -551,10 +626,18 @@ class ScenarioRun:
         The beta angle on the grid
     eclipses, sunlit : portion.Interval
         The eclipse and sunlit intervals, which together fill the run
+    umbra, penumbra : portion.Interval
+        The two parts of the eclipses: where the Earth hides the whole sun, and
+        where it hides part of it
+    light : ndarray
+        The fraction of the sun's disk seen at each time of the grid, from 0 to 1
     illumination, attitude, mode : portion.IntervalDict
         The three rows of the Gantt chart
     occurrences : list of Occurrence
         Every activity as it happens in the run
+    slews : list of SlewWindow
+        Every slew between attitudes, in time order. Empty when the scenario has
+        no slews.
     activity_table : pd.DataFrame
         The occurrences as a table, from `activity_table`
     """
@@ -570,10 +653,14 @@ class ScenarioRun:
     beta: Quantity  # noqa: V107
     eclipses: P.Interval
     sunlit: P.Interval
+    umbra: P.Interval
+    penumbra: P.Interval
+    light: np.ndarray
     illumination: P.IntervalDict
     attitude: P.IntervalDict
     mode: P.IntervalDict
     occurrences: list[Occurrence]
+    slews: list[SlewWindow]
     activity_table: pd.DataFrame
 
     @property
@@ -593,9 +680,9 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
     Run a scenario.
 
     The orbit comes from the TLE file, or from a TLE built for the
-    sun-synchronous orbit. It is evaluated on the time grid with SGP4. The eclipse
-    entries and exits are then located between the grid steps, and so are the
-    latitude crossings that the triggers name. The activities are then repeated
+    sun-synchronous orbit. It is evaluated on the time grid with SGP4. The edges
+    of the umbra and the penumbra are then located between the grid steps, and so
+    are the latitude crossings that the triggers name. The activities are then repeated
     over the run and checked against the eclipses. The run gets a warning if it
     starts more than 7 days from the epoch of the TLE.
 
@@ -612,7 +699,7 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
     Raises
     ------
     ValueError
-        If a negative offset ends an activity at or before its start
+        If no activity in the list ends after it starts
     """
     tle = scenario_tle(scenario)
     start = round_time(scenario.start)
@@ -630,9 +717,13 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
 
     state = tle_states(tle, times)
     sun = sun_positions(times)
-    shadow = in_shadow(state, sun)
-    eclipses = eclipse_intervals(times, shadow, positions_at)
-    sunlit = interval - eclipses
+    umbra, eclipses = shadow_intervals(times, shadow_cones(state, sun), positions_at)
+    illumination = {
+        "sunlit": interval - eclipses,
+        "penumbra": eclipses - umbra,
+        "umbra": umbra,
+        "eclipse": eclipses,
+    }
     latitude, longitude = geodetic(state)
 
     def time_above(limit: Quantity) -> P.Interval:
@@ -641,14 +732,31 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
 
         return intervals_where(times, np.asarray(latitude >= limit), above_at)
 
-    events = find_events(scenario.activities, interval, eclipses, sunlit, time_above)
+    events = find_events(scenario.activities, interval, illumination, time_above)
     occurrences = resolve_activities(
-        scenario.activities,
-        interval,
-        events,
-        {"sunlit": sunlit, "eclipse": eclipses},
+        scenario.activities, interval, events, illumination
     )
-    illumination, attitude, mode = gantt_rows(sunlit, eclipses, occurrences)
+    slews = []
+    if scenario.slew is not None:
+
+        def states_at(at: TimeArray) -> SkyCoord:
+            return tle_states(tle, at)
+
+        slews = plan_slews(
+            occurrences,
+            scenario.slew,
+            scenario.attitudes,
+            interval,
+            states_at,
+            sun_positions,
+        )
+        for window in slews:
+            occurrences[window.into] = replace(
+                occurrences[window.into],
+                slew=window.duration,
+                slew_starts_early=window.early,
+            )
+    illumination_row, attitude, mode = gantt_rows(illumination, occurrences, slews)
 
     return ScenarioRun(
         scenario=scenario,
@@ -661,10 +769,14 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
         longitude=longitude,
         beta=beta_angle(state, sun),
         eclipses=eclipses,
-        sunlit=sunlit,
-        illumination=illumination,
+        sunlit=illumination["sunlit"],
+        umbra=umbra,
+        penumbra=illumination["penumbra"],
+        light=light_fraction(state, sun),
+        illumination=illumination_row,
         attitude=attitude,
         mode=mode,
         occurrences=occurrences,
+        slews=slews,
         activity_table=activity_table(occurrences),
     )

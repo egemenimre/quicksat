@@ -1,0 +1,21 @@
+# Fixture for the scenario tests: a list in which each problem happens once.
+#
+# 1. ends a minute before the eclipse, so 2 starts in sunlight and is outside its
+#    eclipse constraint by 60 s.
+# 3. ends 100 min before the next eclipse entry, before it starts: a negative
+#    duration.
+# 5. waits for a latitude the orbit never reaches: the event never came.
+orbit:
+  tle_file: sso_510km.tle
+start: 2026-10-01T00:00:00
+duration: 2 orbits
+step: 10 s
+attitudes:
+  nadir: {nadir_axis: +z, orbit_normal: -y}
+  sun pointing: {sun_axis: -z, constrain_to_orbit_normal: -y}
+activities:
+  - [eclipse entry - 1 min, sun pointing, idle, sunlit]
+  - [eclipse exit, nadir, idle, eclipse]
+  - [eclipse entry - 100 min, nadir, idle]
+  - [30 min, sun pointing, idle, sunlit]
+  - [latitude 85 deg, nadir, idle]
