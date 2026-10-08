@@ -25,11 +25,16 @@ The JSON holds plain numbers. Units are in the field names: `_s`, `_km`,
 `_km_s` and `_deg`. Every vector is in GCRS. Every time is in seconds from
 `start`, rounded to 1 ms. A quaternion is `[x, y, z, w]`, scalar last.
 
+The spacecraft's 3D model travels inside `scenario.js` too, as the bytes of its
+GLB file in base64. The page cannot read the `.glb` file from disk, for the
+same reason it cannot read JSON.
+
 The file holds no time stamps. So the same inputs and the same code write the
 same bytes, and the `id` stays the same.
 
 """
 
+import base64
 import hashlib
 import json
 from importlib.resources import files
@@ -50,10 +55,11 @@ from quicksat.utils.intervals import TimeArray
 FORMAT = "quicksat-scenario"
 """The `format` field of the scenario data."""
 
-VERSION = 2
+VERSION = 3
 """The `version` field of the scenario data. It goes up when a field changes.
 Version 2 added `light` to the grid, and `penumbra` and `umbra` to the
-illumination track, in place of `eclipse`."""
+illumination track, in place of `eclipse`. Version 3 added `model`, the
+spacecraft's 3D model."""
 
 DATA_FILE = "scenario.js"
 """Name of the file the scenario data is written to."""
@@ -142,6 +148,29 @@ def _attitudes_between_slews(run: ScenarioRun) -> P.IntervalDict:
     return row
 
 
+def _model_data(path: Path | None) -> dict | None:
+    """
+    The spacecraft's 3D model, as the page reads it.
+
+    Parameters
+    ----------
+    path : Path or None
+        The GLB file, or None for no model
+
+    Returns
+    -------
+    model : dict or None
+        `name`, the file name, and `glb_base64`, the file's bytes in base64. None
+        without a model, for which the page draws a 1 m cube.
+    """
+    if path is None:
+        return None
+    return {
+        "name": path.name,
+        "glb_base64": base64.b64encode(path.read_bytes()).decode("ascii"),
+    }
+
+
 def scenario_data(run: ScenarioRun) -> dict:
     """
     Everything the viewer shows of a run, as plain numbers and text.
@@ -156,7 +185,7 @@ def scenario_data(run: ScenarioRun) -> dict:
     data : dict
         The fields of `scenario.js`. `grid` holds the values at each time step.
         `tracks` holds the three rows of the Gantt chart, and `occurrences` the
-        activity table. `id` is the first 16 hex digits of the SHA-256 of the
+        activity table. `model` holds the spacecraft's 3D model, or None. `id` is the first 16 hex digits of the SHA-256 of the
         JSON text of the other fields.
     """
     start: TimeArray = run.times[0]
@@ -239,6 +268,7 @@ def scenario_data(run: ScenarioRun) -> dict:
             "nodal_period_s": round(float(run.tle.nodal_period.to(u.s).value), 3),
         },
         "colours": scenario_colours(run.scenario),
+        "model": _model_data(run.scenario.spacecraft_model),
         "grid": {
             "t_s": _flat((run.times - start).to_value(u.s), 3),
             "r_km": _flat(position, 3),

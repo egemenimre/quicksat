@@ -57,13 +57,15 @@ results. Which technology it uses is decided elsewhere.
 
 ---
 
-## 9. Sizing and power are separate domains, each with its own files
+## 9. Sizing, scenario and power are separate domains, each with its own files
 
-**2026-10-01. Settled.**
+**2026-10-01. Settled. Updated on 2026-10-08: entry 10 added the scenario as a
+third domain on 2026-10-02.**
 
-The notebooks, their input files and the tests are split into two domains.
+The notebooks, their input files and the tests are split into domains.
 `sizing` holds the current four budgets: mass, data, delta-V and agility.
-`power` holds power generation. Each domain has the same three folders:
+`scenario` holds the orbit and the timeline of activities. `power` holds power
+generation. Each domain has the same three folders:
 
 - `sample/<domain>/` for the worked examples, with their data in `data/`.
 - `docs/<domain>/` for the reference notebooks, with their data in `data/`.
@@ -73,16 +75,19 @@ The how-to guides follow the same split, under `docs/guides/<domain>/`.
 Project-wide documents stay at the top of `docs/`: this file and
 `reference/conventions.md`.
 
-The reason is that the two domains describe the satellite differently. Sizing
-uses a circular orbit and a flat equipment list. Power needs an epoch, a
-local time of the ascending node, a TLE or an ephemeris, and solar panels on
-named faces. One set of files cannot serve both without one domain carrying
-fields it never reads.
+The reason is that the domains describe the satellite differently. Sizing
+uses a circular orbit and a flat equipment list. The scenario needs an epoch, a
+local time of the ascending node, and a TLE or an ephemeris. Power needs solar
+panels on named faces, and takes its orbit from the scenario. One set of files
+cannot serve them all without a domain carrying fields it never reads.
+
+When this entry was written, there were two domains, sizing and power. The orbit
+and the epoch were then power's. Entry 10 moved them into the scenario.
 
 **The domains do not share input files.** The rule in entry 2 applies within
 a domain: a fact that more than one module in that domain uses goes in that
-domain's shared file. The two domains may share code, such as the orbit and
-sun geometry in `quicksat/orbit/`, but not data. The three copies in entry 5
+domain's shared file. The domains may share code, such as the orbit and sun
+geometry in `quicksat/orbit/`, but not data. The three copies in entry 5
 are kept once per domain.
 
 ---

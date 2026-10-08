@@ -45,6 +45,7 @@ from pydantic import (
 
 from quicksat import Q_, u
 from quicksat.orbit.attitude import slew_duration, slew_progress
+from quicksat.scenario.spacecraft import read_glb_json
 from quicksat.utils.intervals import TIME_GRID
 from quicksat.utils.parser_helpers import (
     AngularAccelerationQty,
@@ -947,6 +948,10 @@ class Scenario(BaseModel):
     slew : Slew, optional
         How the body turns between attitudes. Without it, attitude changes are
         instant.
+    spacecraft_model : Path, optional
+        The spacecraft's 3D model, a GLB file in body axes and metres, written
+        `3d_model` in the file. A relative path is taken from the folder of the
+        scenario file. The viewer draws it, or a 1 m cube without it.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -958,6 +963,7 @@ class Scenario(BaseModel):
     attitudes: Attitudes
     activities: list[Activity]
     slew: Slew | None = None
+    spacecraft_model: Path | None = Field(None, alias="3d_model")
 
     _source_file: Path | None = PrivateAttr(None)
     _source_text: str | None = PrivateAttr(None)
@@ -1051,6 +1057,23 @@ class Scenario(BaseModel):
         if value <= Q_(0, "s"):
             raise ValueError(f"{info.field_name} must be positive, got '{value}'")
         return value
+
+    @field_validator("spacecraft_model")
+    @classmethod
+    def _read_model(cls, path: Path | None, info: ValidationInfo) -> Path | None:
+        """
+        Takes a relative path from the folder of the scenario file, and checks
+        that the viewer can read the model.
+        """
+        if path is None:
+            return None
+        base_dir = (info.context or {}).get("base_dir")
+        if base_dir is not None and not path.is_absolute():
+            path = Path(base_dir) / path
+        if not path.is_file():
+            raise ValueError(f"no such file: {path}")
+        read_glb_json(path)
+        return path
 
     @field_validator("activities", mode="before")
     @classmethod

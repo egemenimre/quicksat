@@ -364,7 +364,7 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
 
 // ---------------------------------------------------------------- Data and its checks
 
-const PAGE_VERSION = 2;
+const PAGE_VERSION = 3;
 
 function stop(message) {
   document.body.innerHTML = "";
@@ -474,9 +474,12 @@ const OCCURRENCES = scenario.occurrences;
 // A scenario read from text, not a file, has no file name
 const SCENARIO_FILE = scenario.scenario_file || "the scenario";
 const COLOURS = scenario.colours;
-// Without power.js there are no panels, and the body is a plain cube
+// Without power.js there are no panels, and the body is a plain 1 m cube
 const PANELS = power ? power.spacecraft.panels : [];
-const BODY = power ? power.spacecraft.body_m : [0.6, 0.6, 0.6];
+const BODY = power ? power.spacecraft.body_m : [1, 1, 1];
+// The spacecraft's 3D model, from version 3 of scenario.js. It takes the place
+// of the cube and the panel boxes once it is decoded.
+const MODEL = scenario.model || null;
 const MONO = getComputedStyle(document.body).fontFamily;
 
 // ---------------------------------------------------------------- Helpers
@@ -682,14 +685,44 @@ const occurrenceAt = (time) => pieceAt(OCCURRENCES, time);
 
 // ---------------------------------------------------------------- Spacecraft model
 
+// Both views show the shape at this radius from the body's origin, whatever its
+// size, so that any model fits them. The body axes reach past it.
+const SHAPE_RADIUS = 1.25;
+const AXIS_LENGTH = 1.45;
+
+/** The farthest the object's bounding box reaches from the object's origin. */
+function radiusOf(object) {
+  const box = new THREE.Box3().setFromObject(object);
+  if (box.isEmpty()) return 0;
+  return new THREE.Vector3(
+    Math.max(-box.min.x, box.max.x),
+    Math.max(-box.min.y, box.max.y),
+    Math.max(-box.min.z, box.max.z),
+  ).length();
+}
+
+/** Scales a shape, which must have no parent, out to SHAPE_RADIUS. */
+function fitShape(shape) {
+  shape.scale.setScalar(1);
+  const radius = radiusOf(shape);
+  shape.scale.setScalar(radius > 0 ? SHAPE_RADIUS / radius : 1);
+}
+
+/**
+ * The spacecraft: its shape, in metres and fitted to the view, and in the
+ * detailed version its body axes. The shape is the cube and the panel boxes
+ * until `useModel` puts the 3D model in their place.
+ */
 function buildSpacecraft(detailed) {
   const group = new THREE.Group();
+  const shape = new THREE.Group();
+  const standIns = [];
   const body = new THREE.BoxGeometry(...BODY);
-  group.add(new THREE.Mesh(body, new THREE.MeshStandardMaterial({ color: 0xc6ccd6, metalness: 0.35, roughness: 0.55 })));
+  standIns.push(new THREE.Mesh(body, new THREE.MeshStandardMaterial({ color: 0xc6ccd6, metalness: 0.35, roughness: 0.55 })));
   const panelMaterial = new THREE.MeshStandardMaterial({ color: 0x1b3d85, emissive: 0x050f24, metalness: 0.4, roughness: 0.35 });
   const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x9fc4ee, transparent: true, opacity: 0.55 });
   const cellMaterial = new THREE.LineBasicMaterial({ color: 0x5fa8ff, transparent: true, opacity: 0.3 });
-  if (detailed) group.add(new THREE.LineSegments(new THREE.EdgesGeometry(body), edgeMaterial));
+  if (detailed) standIns.push(new THREE.LineSegments(new THREE.EdgesGeometry(body), edgeMaterial));
 
   for (const panel of PANELS) {
     const inPlane = [0, 1, 2].filter((k) => k !== panel.axis);
@@ -699,12 +732,12 @@ function buildSpacecraft(detailed) {
     const geometry = new THREE.BoxGeometry(...extent);
     const mesh = new THREE.Mesh(geometry, panelMaterial);
     mesh.position.set(...panel.centre_m);
-    group.add(mesh);
+    standIns.push(mesh);
     if (!detailed) continue;
 
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMaterial);
     edges.position.copy(mesh.position);
-    group.add(edges);
+    standIns.push(edges);
     // Cell lines on the face the normal points out of
     const points = [];
     const face = panel.centre_m.slice();
@@ -724,20 +757,54 @@ function buildSpacecraft(detailed) {
     }
     const cells = new THREE.BufferGeometry();
     cells.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
-    group.add(new THREE.LineSegments(cells, cellMaterial));
-    group.add(
+    standIns.push(new THREE.LineSegments(cells, cellMaterial));
+    // The normal stays with a 3D model, which does not mark the panels
+    shape.add(
       new THREE.ArrowHelper(new THREE.Vector3(...panel.normal), new THREE.Vector3(...face), 0.55, VECTOR_COLOURS.normal, 0.12, 0.06),
     );
   }
+  shape.add(...standIns);
+  fitShape(shape);
+  group.add(shape);
 
   if (detailed) {
     AXIS_COLOURS.forEach((colour, k) => {
       const axis = new THREE.Vector3().setComponent(k, 1);
-      group.add(new THREE.ArrowHelper(axis, new THREE.Vector3(), 0.75, colour, 0.1, 0.05));
+      group.add(new THREE.ArrowHelper(axis, new THREE.Vector3(), AXIS_LENGTH, colour, 0.1, 0.05));
     });
   }
+  group.userData = { shape, standIns };
   return group;
 }
+
+/** Puts a 3D model in place of a spacecraft's cube and panel boxes, fitted to the view. */
+function useModel(spacecraft, model) {
+  const { shape, standIns } = spacecraft.userData;
+  spacecraft.remove(shape);
+  shape.remove(...standIns);
+  shape.add(model);
+  fitShape(shape);
+  spacecraft.add(shape);
+}
+
+// Why the 3D model could not be shown, if it could not
+let modelProblem = "";
+
+/** The 3D model's scene, once decoded, or null without a model or when it cannot be read. */
+const modelScene = new Promise((resolve) => {
+  if (!MODEL) return resolve(null);
+  const failed = (error) => {
+    modelProblem = `${MODEL.name} could not be read: ${(error && error.message) || error}`;
+    console.warn(modelProblem);
+    resolve(null);
+  };
+  try {
+    const bytes = Uint8Array.from(atob(MODEL.glb_base64), (c) => c.charCodeAt(0));
+    new THREE.GLTFLoader().parse(bytes.buffer, "", (gltf) => resolve(gltf.scene), failed);
+  } catch (error) {
+    failed(error);
+  }
+});
 
 function makeRenderer(viewport) {
   try {
@@ -921,7 +988,13 @@ const orbitView = (() => {
   // model, and zoomed in the model hides it.
   const satellite = new THREE.Group();
   const model = buildSpacecraft(false);
-  model.scale.setScalar(0.12); // 0.12 Mm, or 120 km, to the metre
+  // The shape's radius, fitted to 1.25, shown as 62 km
+  model.scale.setScalar(0.05);
+  modelScene.then((scene) => {
+    if (!scene) return;
+    useModel(model, scene.clone());
+    dirty.orbit = true;
+  });
   const marker = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: 0xff4d4d }));
   satellite.add(model, marker);
   world.add(satellite);
@@ -1090,6 +1163,11 @@ const bodyView = (() => {
 
   const spacecraft = buildSpacecraft(true);
   world.add(spacecraft);
+  modelScene.then((scene) => {
+    if (!scene) return;
+    useModel(spacecraft, scene.clone());
+    dirty.body = true;
+  });
   // The velocity, the nadir and the orbit normal are close to the LVLH axes:
   // x along track, z nadir, and y minus the orbit normal
   const arrows = {};
@@ -1104,15 +1182,18 @@ const bodyView = (() => {
     orbitNormal: labels.add("Orbit normal", VECTOR_COLOURS.orbitNormal),
     sun: labels.add("Sun", VECTOR_COLOURS.sun),
   };
-  // Points fixed in the body: just past each panel normal and body axis
+  // Points fixed in the body: just past each panel normal, in metres and so
+  // scaled with the shape, and just past each body axis
   const bodyLabels = [
     ...PANELS.map((panel) => ({
       label: labels.add(panel.name, VECTOR_COLOURS.normal),
       local: new THREE.Vector3(...panel.centre_m).addScaledVector(new THREE.Vector3(...panel.normal), 0.74),
+      scaled: true,
     })),
     ...["x", "y", "z"].map((name, k) => ({
       label: labels.add(name, AXIS_COLOURS[k]),
-      local: new THREE.Vector3().setComponent(k, 0.92),
+      local: new THREE.Vector3().setComponent(k, AXIS_LENGTH + 0.17),
+      scaled: false,
     })),
   ];
   let size = { width: 1, height: 1 };
@@ -1194,7 +1275,10 @@ const bodyView = (() => {
       // The sun's direction is the last one set
       sunlight.position.copy(direction).multiplyScalar(10);
       sunlight.intensity = 2.4 * state.light;
-      for (const { label, local } of bodyLabels) label.position.copy(local).applyQuaternion(spacecraft.quaternion);
+      const scale = spacecraft.userData.shape.scale.x;
+      for (const { label, local, scaled } of bodyLabels) {
+        label.position.copy(local).multiplyScalar(scaled ? scale : 1).applyQuaternion(spacecraft.quaternion);
+      }
     },
     render() {
       if (!renderer) return;
@@ -1892,7 +1976,15 @@ function showResults() {
   const files = [
     ["scenario.js", `version ${scenario.version}, id ${scenario.id}`],
     ["power.js", power ? `version ${power.version}, for scenario ${power.scenario_id}` : DATA.power ? "not shown" : "not in this folder"],
+    ["3D model", MODEL ? `${MODEL.name}, ${Math.round((MODEL.glb_base64.length * 3) / 4 / 1024)} kB` : "none, so a 1 m cube"],
   ];
+  // Filled in if the model turns out to be unreadable, once it is decoded
+  const modelNote = element("p", { class: "note", style: "display: none" });
+  modelScene.then(() => {
+    if (!modelProblem) return;
+    modelNote.textContent = `${modelProblem}. The body is a 1 m cube instead.`;
+    modelNote.style.display = "";
+  });
 
   $("#results").append(
     element(
@@ -1933,6 +2025,7 @@ function showResults() {
       ["Files"],
       [
         kv(files),
+        modelNote,
         ...(powerNote ? [element("p", { class: "note", text: `The power is not shown: ${powerNote}` })] : []),
         element("p", { class: "note", text: "3D: three.js (MIT). Charts: uPlot (MIT). Coastlines: Natural Earth (public domain). Orbit: SGP4 with astropy." }),
       ],
@@ -1958,7 +2051,8 @@ const HELP = {
     text:
       "The spacecraft, with its body axes x, y and z in red, green and blue. The arrows show the velocity, " +
       "the nadir, the orbit normal and the sun. The first three are close to the LVLH axes: x along track, " +
-      "z nadir, and y minus the orbit normal. Without power data, the body is a plain 0.6 m cube.",
+      "z nadir, and y minus the orbit normal. The spacecraft is the 3D model that 3d_model names in the " +
+      "scenario file, or a 1 m cube without one. It is scaled to fit the view.",
   },
   ground: {
     title: "Ground track",

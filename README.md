@@ -3,7 +3,7 @@
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/egemenimre/quicksat/tree/master.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/egemenimre/quicksat/tree/master)
 [![codecov](https://codecov.io/github/egemenimre/quicksat/graph/badge.svg?token=ANT5QB5UB8)](https://codecov.io/github/egemenimre/quicksat)
 
-Basic satellite sizing tool: mass, data, delta-V and attitude agility budgets, with power, battery and radiator sizing to come. Deliberately spartan — the aim is a first-pass sizing, not a full systems engineering environment.
+Basic satellite sizing tool: mass, data, delta-V and attitude agility budgets, and a mission scenario with a 3D viewer, with power, battery and radiator sizing to come. Deliberately spartan — the aim is a first-pass sizing, not a full systems engineering environment.
 
 ## Status
 
@@ -13,6 +13,7 @@ Basic satellite sizing tool: mass, data, delta-V and attitude agility budgets, w
 | **Data and downlink budget** | implemented |
 | **Delta-V budget** | implemented |
 | **Attitude agility budget** | implemented |
+| **Mission scenario** | implemented |
 | **Power, battery and radiator sizing** | not yet specified |
 
 ## The shared mission
@@ -214,11 +215,60 @@ Roll and pitch run identical machinery, because the pyramid's symmetry axis is a
 
 `tabulated_agility()` renders the slew table as a document. Given a `target_duration` it also checks each angle against it and marks what does not fit; without one those columns are absent rather than merely hidden, because there is nothing to check against. Tying a slew time to the shared mission's ground track speed turns it into swath given up — 798 km over the 113 s allowance here — which is the currency a payload operator thinks in.
 
+## Mission scenario
+
+The scenario flies the satellite through a list of activities on a real orbit. It checks the timeline: whether each activity falls in sunlight or in eclipse as planned, and how long the body takes to turn between attitudes. Power will build on it.
+
+The orbit comes from a TLE file, or from a sun-synchronous orbit that quicksat builds as a TLE. SGP4 flies it, and astropy gives the sun and the frames. The scenario does not read `mission.yaml`, because it needs a real orbit, with an epoch and a node. One file holds the whole scenario:
+
+```yaml
+orbit:
+  sso: {altitude: 510 km, ltan: "13:30"}
+start: 2026-10-01T09:00:00
+duration: 3 orbits
+3d_model: spacecraft.glb       # optional: the viewer draws a 1 m cube without it
+
+attitudes:
+  nadir: {nadir_axis: +z, orbit_normal: -y}
+  sun pointing: {sun_axis: -z, constrain_to_orbit_normal: -y}
+
+slew:
+  max_rate: 0.7 deg/s
+  max_acceleration: 0.08 deg/s2
+  settling_time: 20 s
+
+# the trigger that ends each activity, its attitude, its mode, and the illumination it expects
+activities:
+  - [eclipse entry, sun pointing, idle, sunlit]
+  - [eclipse exit, nadir, idle, eclipse]
+  - [latitude 45 deg -2 min, sun pointing, idle, sunlit]
+  - [latitude 45 deg +4 min, nadir, imaging, sunlit]
+  - [10 min, nadir, downlink]
+```
+
+Each activity starts where the one before it ends, and the list repeats until the run ends. An activity ends after a fixed time, or at an event: a shadow edge, a node, or a latitude crossing, with an optional offset. The shadow has an umbra and a penumbra, cast on the WGS84 ellipsoid. Before each change of attitude, the body slews into the new one, at the given rate and acceleration.
+
+```python
+from quicksat.scenario.config import Scenario
+from quicksat.scenario.run import run_scenario
+from quicksat.scenario.viewer import write_scenario_viewer
+
+scenario = Scenario.from_yaml_file("sample/scenario/data/scenario.yaml")
+run = run_scenario(scenario)
+
+run.activity_summary  # 13 occurrences in 3 repeats, all ok but the last, cut at the end
+run.activity_table    # one row per occurrence, with its slew time and status
+len(run.slews)        # 10 slews, from 92 s to 214 s
+write_scenario_viewer(run, "sample/scenario/output")
+```
+
+The activity table and a Gantt chart show which activities miss their constraint, and by how much. The viewer is a web page, `scenario_viewer.html`, with the run's data in `scenario.js` beside it. It shows the run in 3D, with the ground track and the timeline. The spacecraft is drawn from the GLB file that `3d_model` names in the scenario file, or as a 1 m cube without one. The page needs no Python and no server. So the folder can be sent to anyone, who opens the page with a double-click.
+
 ## Documentation
 
 Split along [Diátaxis](https://diataxis.fr/) lines: the sample is there to be followed, the docs to be understood. Files under `docs/` take a `_ref` suffix, so the two halves of a topic cannot be confused, and each half reads its own input files — `sample/sizing/data/` and `docs/sizing/data/` — so that retuning a tutorial cannot quietly falsify a figure quoted in a reference.
 
-The notebooks and their data are grouped by domain. `sizing` covers the mission, mass, data, delta-V and agility budgets below. `power` will hold power generation, which describes the satellite differently and so has its own files. The tests follow the same split, under `tests/sizing/` and `tests/power/`.
+The notebooks and their data are grouped by domain. `sizing` covers the mission, mass, data, delta-V and agility budgets below. `scenario` covers the orbit and the timeline of activities. `power` will hold power generation, built on the scenario. The tests follow the same split, under `tests/sizing/`, `tests/scenario/` and `tests/power/`. The orbit and shadow code that the scenario and power share is tested in `tests/orbit/`.
 
 | | tutorial and how-to | explanation and reference |
 |---|---|---|
@@ -227,6 +277,7 @@ The notebooks and their data are grouped by domain. `sizing` covers the mission,
 | Data | [`sample/sizing/data_budget.ipynb`](sample/sizing/data_budget.ipynb) | [`docs/sizing/data_budget_ref.ipynb`](docs/sizing/data_budget_ref.ipynb) |
 | Delta-V | [`sample/sizing/delta_v_budget.ipynb`](sample/sizing/delta_v_budget.ipynb) | [`docs/sizing/delta_v_ref.ipynb`](docs/sizing/delta_v_ref.ipynb) |
 | Agility | [`sample/sizing/agility_roll.ipynb`](sample/sizing/agility_roll.ipynb), [`sample/sizing/agility_pitch.ipynb`](sample/sizing/agility_pitch.ipynb) | [`docs/sizing/agility_ref.ipynb`](docs/sizing/agility_ref.ipynb) |
+| Scenario | [`sample/scenario/scenario.ipynb`](sample/scenario/scenario.ipynb) | [`docs/scenario/scenario_ref.ipynb`](docs/scenario/scenario_ref.ipynb) |
 
 Three Markdown documents sit beside the notebooks. They cover the project as a whole rather than one budget.
 
@@ -234,9 +285,9 @@ Three Markdown documents sit beside the notebooks. They cover the project as a w
 |---|---|
 | [`docs/explanations/decisions.md`](docs/explanations/decisions.md) | The decisions that shaped quicksat, and the reasons for each. Newest first. Read it to learn why the code is built the way it is. |
 | [`docs/reference/conventions.md`](docs/reference/conventions.md) | The rules the code and the notebooks follow: how to handle units and constants, and how to write tests. Read it before changing the code. |
-| [`docs/guides/`](docs/guides/) | Guides for getting a specific task done. Start with [how to initialise a satellite](docs/guides/sizing/initialise_a_satellite.md). |
+| [`docs/guides/`](docs/guides/) | Guides for getting a specific task done. Start with [how to initialise a satellite](docs/guides/sizing/initialise_a_satellite.md). For the timeline, see [how to set up and run a scenario](docs/guides/scenario/set_up_a_scenario.md). |
 
-The sample notebooks work each budget through against one sample satellite — a small Earth observation platform in a 500 km sun-synchronous orbit — in the order you would actually do it. The reference notebooks sit behind them and say why each piece behaves as it does: the data model, unit handling, the input files field by field, how the derived quantities and the margin layers are worked out, and where each budget stops.
+The sample notebooks work each budget through against one sample satellite — a small Earth observation platform in a 500 km sun-synchronous orbit — in the order you would actually do it. The scenario sample flies a 510 km sun-synchronous orbit for three orbits, with five activities. The reference notebooks sit behind them and say why each piece behaves as it does: the data model, unit handling, the input files field by field, how the derived quantities and the margin layers are worked out, and where each budget stops.
 
 ## Installation
 

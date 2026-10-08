@@ -21,6 +21,11 @@ duration: 3 orbits
 # The orbit and the eclipses are evaluated on this grid. The default is 10 s.
 step: 10 s
 
+# The spacecraft's 3D model, which the viewer draws: a GLB file in body axes and
+# metres, with its origin at the point the body turns about. A relative path is
+# taken from the folder of this file. Leave it out for a plain 1 m cube.
+3d_model: spacecraft.glb
+
 # The body axes that each attitude points.
 attitudes:
   # +z points at the Earth and -y runs along the orbit normal. The body axes then

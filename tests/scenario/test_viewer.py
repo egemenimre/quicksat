@@ -81,7 +81,8 @@ def test_the_light_is_a_fraction_and_the_illumination_has_three_states(data):
     assert {0.0, 1.0} <= set(light)
     values = {piece["value"] for piece in data["tracks"]["illumination"]}
     assert values == {"sunlit", "penumbra", "umbra"}
-    assert data["version"] == 2
+    # both came with version 2
+    assert data["version"] >= 2
 
 
 def test_the_unit_vectors_and_quaternions_have_unit_length(data):
