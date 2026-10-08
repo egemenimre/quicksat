@@ -364,7 +364,7 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
 
 // ---------------------------------------------------------------- Data and its checks
 
-const PAGE_VERSION = 3;
+const PAGE_VERSION = 4;
 
 function stop(message) {
   document.body.innerHTML = "";
@@ -451,7 +451,8 @@ const BETA = GRID.beta_deg;
 // The fraction of the sun's disk seen, from version 2 of scenario.js
 const LIGHT = GRID.light;
 const MINUTES = T.map((t) => t / 60);
-const PERIOD = scenario.orbit.nodal_period_s;
+// period_s from version 4 of scenario.js, nodal_period_s before it
+const PERIOD = scenario.orbit.period_s ?? scenario.orbit.nodal_period_s;
 const R_E = scenario.earth_radius_km;
 const START_MS = Date.parse(scenario.start + "Z");
 const TRACKS = scenario.tracks;
@@ -1895,10 +1896,24 @@ function showInputs() {
     [
       kv([
         ["Name", orbit.name || "none given"],
-        ["Nodal period", `${numberText(orbit.nodal_period_s / 60)} min`],
+        [orbit.tle ? "Nodal period" : "Period", `${numberText(PERIOD / 60)} min`],
       ]),
-      element("p", { class: "note", text: "The element set, as SGP4 reads it:" }),
-      element("pre", { class: "file", text: orbit.tle.join("\n") }),
+      ...(orbit.tle
+        ? [
+            element("p", { class: "note", text: "The element set, as SGP4 reads it:" }),
+            element("pre", { class: "file", text: orbit.tle.join("\n") }),
+          ]
+        : [
+            element("p", { class: "note", text: "The states come from a trajectory file, interpolated between its samples:" }),
+            kv([
+              ["File", orbit.trajectory.file || "none given"],
+              ["Frame", orbit.trajectory.frame],
+              ["Samples", orbit.trajectory.samples],
+              ["From, UTC", orbit.trajectory.start],
+              ["To, UTC", orbit.trajectory.end],
+              ["Period from", orbit.trajectory.period_from],
+            ]),
+          ]),
     ],
   );
   const conventions = block(
@@ -2027,7 +2042,7 @@ function showResults() {
         kv(files),
         modelNote,
         ...(powerNote ? [element("p", { class: "note", text: `The power is not shown: ${powerNote}` })] : []),
-        element("p", { class: "note", text: "3D: three.js (MIT). Charts: uPlot (MIT). Coastlines: Natural Earth (public domain). Orbit: SGP4 with astropy." }),
+        element("p", { class: "note", text: "3D: three.js (MIT). Charts: uPlot (MIT). Coastlines: Natural Earth (public domain). Orbit: SGP4 or a trajectory file, with astropy." }),
       ],
     ),
   );

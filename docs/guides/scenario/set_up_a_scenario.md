@@ -30,7 +30,7 @@ orbit, with an epoch and a node, so it has its own.
 
 ## 2. Define the orbit
 
-`orbit` takes exactly one of two keys:
+`orbit` takes exactly one of three keys:
 
 - **`sso`** builds a sun-synchronous orbit from an altitude and a local time of
   the ascending node, as in `sso: {altitude: 510 km, ltan: "13:30"}`. Write the
@@ -40,6 +40,10 @@ orbit, with an epoch and a node, so it has its own.
   taken from the folder of `scenario.yaml`. Use a TLE whose epoch is close to the
   start. A run more than 7 days from the epoch gets a warning, because SGP4 loses
   accuracy away from it.
+- **`trajectory_file`** names an ECSV file of positions and velocities, such as
+  from a propagator. Its header gives the epoch, the time scale and a frame
+  centred on the Earth, such as ITRS or EME2000. Space the samples 60 s apart in
+  low orbit, and let the file reach a few samples past the run at each end.
 
 Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), section "The
 orbit".

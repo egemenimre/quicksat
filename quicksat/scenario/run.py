@@ -27,6 +27,7 @@ from astropy.coordinates import CartesianRepresentation, SkyCoord
 from astropy.units import Quantity
 
 from quicksat import Q_, u
+from quicksat.orbit.ecsv_trajectory import read_ecsv_trajectory
 from quicksat.orbit.geometry import (
     beta_angle,
     geodetic,
@@ -36,7 +37,8 @@ from quicksat.orbit.geometry import (
     sun_positions,
 )
 from quicksat.orbit.sso import sso_tle
-from quicksat.orbit.tle import Tle, read_tle_file, tle_states, warn_if_far_from_epoch
+from quicksat.orbit.tle import Tle, read_tle_file, warn_if_far_from_epoch
+from quicksat.orbit.trajectory import Trajectory
 from quicksat.scenario.attitude import SLEW, SlewWindow, plan_slews
 from quicksat.scenario.config import (
     LATITUDE_CROSSING,
@@ -52,6 +54,11 @@ from quicksat.utils.intervals import (
     next_start,
     round_time,
 )
+
+OrbitSource = Tle | Trajectory
+"""Where a run's states come from: an element set for SGP4, or a trajectory.
+Each gives a `name`, a `period` for a duration in orbits, and `states(times)` in
+GCRS."""
 
 Illumination = dict[str, P.Interval]
 """The illumination of a run, by the words of the constraints: `sunlit`,
@@ -194,12 +201,13 @@ class Occurrence:
         return statuses or [STATUS_OK]
 
 
-def scenario_tle(scenario: Scenario) -> Tle:
+def scenario_orbit(scenario: Scenario) -> OrbitSource:
     """
-    The element set of the scenario's orbit.
+    Where the scenario's states come from.
 
-    It is read from the TLE file, or built for the sun-synchronous orbit. A built
-    TLE has its epoch at the start of the run.
+    An element set is read from the TLE file, or built for the sun-synchronous
+    orbit, with its epoch at the start of the run. A trajectory is read from the
+    trajectory file.
 
     Parameters
     ----------
@@ -208,31 +216,34 @@ def scenario_tle(scenario: Scenario) -> Tle:
 
     Returns
     -------
-    tle : Tle
-        The element set
+    orbit : Tle or Trajectory
+        The element set or the trajectory
     """
     orbit = scenario.orbit
     if orbit.sso is not None:
         sso = orbit.sso
         name = f"SSO {sso.altitude:g}, LTAN {sso.ltan:.4g}"
         return sso_tle(round_time(scenario.start), sso.altitude, sso.ltan, name=name)
-    assert orbit.tle_file is not None  # the orbit has exactly one of the two
+    if orbit.trajectory_file is not None:
+        return read_ecsv_trajectory(orbit.trajectory_file)
+    assert orbit.tle_file is not None  # the orbit has exactly one of the three
     return read_tle_file(orbit.tle_file)
 
 
-def run_length(scenario: Scenario, tle: Tle) -> Quantity:
+def run_length(scenario: Scenario, orbit: OrbitSource) -> Quantity:
     """
     The length of the run, as a time.
 
     A duration given as a time is used as it is. A number of orbits is multiplied
-    by the nodal period of the element set.
+    by the orbit's period: the nodal period of an element set, or the period
+    measured from a trajectory.
 
     Parameters
     ----------
     scenario : Scenario
         The scenario
-    tle : Tle
-        The element set of the scenario's orbit
+    orbit : Tle or Trajectory
+        Where the scenario's states come from
 
     Returns
     -------
@@ -242,11 +253,17 @@ def run_length(scenario: Scenario, tle: Tle) -> Quantity:
     Raises
     ------
     ValueError
-        If the step is not shorter than the run
+        If the step is not shorter than the run, or if the duration is in orbits
+        and the trajectory is too short to measure one
     """
     duration = scenario.duration
     if isinstance(duration, OrbitCount):
-        length = Q_(duration.count * tle.nodal_period.to(u.s).value, "s")
+        if isinstance(orbit, Trajectory) and not orbit.period_measured:
+            raise ValueError(
+                "the trajectory covers less than one orbit, so it has no measured "
+                "period. Give the duration as a time, such as '5 h'."
+            )
+        length = Q_(duration.count * orbit.period.to(u.s).value, "s")
     else:
         length = duration.to(u.s)
     if scenario.step >= length:
@@ -606,8 +623,8 @@ class ScenarioRun:
     ----------
     scenario : Scenario
         The scenario that was run
-    tle : Tle
-        The element set the orbit comes from
+    orbit : Tle or Trajectory
+        Where the states come from: the element set, or the trajectory
     interval : portion.Interval
         The run, closed at its start and open at its end
     times : Time
@@ -643,7 +660,7 @@ class ScenarioRun:
     """
 
     scenario: Scenario
-    tle: Tle
+    orbit: OrbitSource
     interval: P.Interval
     times: TimeArray
     state: SkyCoord
@@ -679,12 +696,13 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
     """
     Run a scenario.
 
-    The orbit comes from the TLE file, or from a TLE built for the
-    sun-synchronous orbit. It is evaluated on the time grid with SGP4. The edges
-    of the umbra and the penumbra are then located between the grid steps, and so
-    are the latitude crossings that the triggers name. The activities are then repeated
-    over the run and checked against the eclipses. The run gets a warning if it
-    starts more than 7 days from the epoch of the TLE.
+    The orbit comes from the TLE file, from a TLE built for the sun-synchronous
+    orbit, or from the trajectory file. It is evaluated on the time grid, with
+    SGP4 or by interpolation. The edges of the umbra and the penumbra are then
+    located between the grid steps, and so are the latitude crossings that the
+    triggers name. The activities are then repeated over the run and checked
+    against the eclipses. The run gets a warning if it starts more than 7 days
+    from the epoch of the TLE, or comes close to an end of the trajectory.
 
     Parameters
     ----------
@@ -699,23 +717,27 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
     Raises
     ------
     ValueError
-        If no activity in the list ends after it starts
+        If no activity in the list ends after it starts, or if the run does not
+        lie inside the trajectory
     """
-    tle = scenario_tle(scenario)
+    orbit = scenario_orbit(scenario)
     start = round_time(scenario.start)
-    warn_if_far_from_epoch(tle, start)
+    if isinstance(orbit, Tle):
+        warn_if_far_from_epoch(orbit, start)
 
-    duration_s = run_length(scenario, tle).to(u.s).value
+    duration_s = run_length(scenario, orbit).to(u.s).value
     step_s = scenario.step.to(u.s).value
     steps = int(np.ceil(duration_s / step_s))
     offsets = np.unique(np.minimum(np.arange(steps + 1) * step_s, duration_s))
     times = round_time(start + Q_(offsets, "s"))
     interval = P.closedopen(times[0], times[-1])
+    if isinstance(orbit, Trajectory):
+        orbit.check_covers(times[0], times[-1])
 
     def positions_at(at: TimeArray) -> SkyCoord:
-        return tle_states(tle, at, with_velocity=False)
+        return orbit.states(at, with_velocity=False)
 
-    state = tle_states(tle, times)
+    state = orbit.states(times)
     sun = sun_positions(times)
     umbra, eclipses = shadow_intervals(times, shadow_cones(state, sun), positions_at)
     illumination = {
@@ -740,7 +762,7 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
     if scenario.slew is not None:
 
         def states_at(at: TimeArray) -> SkyCoord:
-            return tle_states(tle, at)
+            return orbit.states(at)
 
         slews = plan_slews(
             occurrences,
@@ -760,7 +782,7 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
 
     return ScenarioRun(
         scenario=scenario,
-        tle=tle,
+        orbit=orbit,
         interval=interval,
         times=times,
         state=state,

@@ -9,9 +9,21 @@ passes wherever pytest is invoked from.
 
 from pathlib import Path
 
+import numpy as np
 import pytest
+from astropy.coordinates import CartesianDifferential, CartesianRepresentation, SkyCoord
 
+from quicksat import u
 from quicksat.orbit.tle import Tle, read_tle_file
+
+
+def vectors(state: SkyCoord) -> tuple[np.ndarray, np.ndarray]:
+    """The positions [mm] and the velocities [mm/s] of a state, shape (3, n)."""
+    cartesian = state.cartesian
+    assert isinstance(cartesian, CartesianRepresentation)
+    velocity = cartesian.differentials["s"]
+    assert isinstance(velocity, CartesianDifferential)
+    return cartesian.xyz.to_value(u.mm), velocity.d_xyz.to_value(u.mm / u.s)
 
 
 @pytest.fixture(scope="session")

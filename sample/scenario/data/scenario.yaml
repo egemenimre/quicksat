@@ -5,7 +5,7 @@
 # The notebook never writes it.
 
 orbit:
-  # The orbit is given one of two ways. Here, a sun-synchronous orbit, for which
+  # The orbit is given one of three ways. Here, a sun-synchronous orbit, for which
   # quicksat builds the TLE, with its epoch at the start time below. The altitude
   # is averaged over one orbit. Write the LTAN in quotes: YAML reads an unquoted
   # 13:30 as the number 810.
@@ -14,6 +14,9 @@ orbit:
   # of this file. This one is a 510 km orbit at 10:30 LTAN, with its epoch at the
   # start time below.
   # tle_file: sso_510km.tle
+  # Or a trajectory file in ECSV, with positions and velocities at times. See
+  # docs/scenario/scenario_ref.ipynb for its layout.
+  # trajectory_file: my_orbit.ecsv
 
 # UTC. YAML turns an unquoted ISO time into a datetime, and that is accepted.
 start: 2026-10-01T09:00:00

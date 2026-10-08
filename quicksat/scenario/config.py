@@ -389,9 +389,10 @@ class SsoOrbit(BaseModel):
 
 class Orbit(BaseModel):
     """
-    Where the orbit comes from: a TLE file, or a sun-synchronous orbit.
+    Where the orbit comes from: a TLE file, a sun-synchronous orbit, or a
+    trajectory file.
 
-    Exactly one of the two is given.
+    Exactly one of the three is given.
 
     Parameters
     ----------
@@ -401,12 +402,17 @@ class Orbit(BaseModel):
     sso : SsoOrbit, optional
         A sun-synchronous orbit. quicksat builds its TLE, with the epoch at the
         start of the run.
+    trajectory_file : Path, optional
+        An ECSV file of positions and velocities, which the run interpolates.
+        See `quicksat.orbit.ecsv_trajectory`. A relative path is taken from
+        the folder of the scenario file.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     tle_file: Path | None = None
     sso: SsoOrbit | None = None
+    trajectory_file: Path | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -422,7 +428,7 @@ class Orbit(BaseModel):
             )
         return data
 
-    @field_validator("tle_file")
+    @field_validator("tle_file", "trajectory_file")
     @classmethod
     def _relative_to_the_file(
         cls, path: Path | None, info: ValidationInfo
