@@ -7,15 +7,23 @@ name = "quicksat"
 version = "0.1.0"
 dependencies = [
     "astropy",
+    # static plots: the scenario's Gantt chart and ground track maps
+    "matplotlib",
     "numpy",
     # output-formatting brings jinja2, which pandas Styler needs -- every report.py
     # returns one
     "pandas[output-formatting]",
+    # time intervals: eclipses and activities are both portion intervals
+    "portion",
     "pydantic>=2.0",
     "pyyaml",
+    # rotations and quaternions: the attitudes and slews
+    "scipy",
+    # SGP4 propagation of a TLE
+    "sgp4",
 ]
 
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 authors = [{ name = "Egemen Imre" }]
 
@@ -36,7 +44,6 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -53,7 +60,7 @@ test = ["pytest", "coverage", "pytest-xdist"]
 
 [tool.ruff]
 line-length = 88
-target-version = "py314"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "C", "I"]

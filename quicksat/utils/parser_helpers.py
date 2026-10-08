@@ -134,6 +134,13 @@ all -- write `800 Mbit/s`.
 TimeQty = non_negative_quantity(u.s, "time")
 """Annotated Quantity type restricted to non-negative durations."""
 
+AngularRateQty = non_negative_quantity(u.deg / u.s, "angular rate")
+"""Annotated Quantity type for non-negative angular rates, such as `0.7 deg/s`."""
+
+AngularAccelerationQty = non_negative_quantity(u.deg / u.s**2, "angular acceleration")
+"""Annotated Quantity type for non-negative angular accelerations, such as
+`0.08 deg/s2`."""
+
 FractionQty = non_negative_quantity(u.dimensionless_unscaled, "fraction")
 """Annotated Quantity type for dimensionless fractions, written as percentages.
 

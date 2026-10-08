@@ -10,6 +10,88 @@ lost is most of the value.
 
 ---
 
+## 10. Scenario is its own domain, and power depends on it
+
+**2026-10-02. Settled.**
+
+A third domain, `scenario`, sits next to `sizing` and `power`. It follows the
+layout in entry 9: `sample/scenario/`, `docs/scenario/`, `tests/scenario/` and
+`docs/guides/scenario/`, with the code in `quicksat/scenario/`.
+
+The scenario holds the orbit, the start time, the duration and a list of
+activities. Each activity has an end trigger, an attitude, a mode and an
+optional constraint. The scenario file is `scenario.yaml`. The scenario notebook
+checks the activities against the orbit, for example their eclipse constraints.
+
+**The dependency runs one way.** The scenario imports nothing from power. Power
+imports the scenario. The workflow follows from that:
+
+1. Define the scenario.
+2. Define a baseline power sizing: the solar panels and the batteries.
+3. Verify that the sizing supports the scenario.
+
+The reason is that a scenario of modes and attitudes is useful without a power
+model. Other domains may use it later, such as thermal, or agility along the
+scenario's real attitudes.
+
+**Power keeps its own copies of the scenario files.** Power imports the scenario
+code, but it does not read the scenario domain's files. Each power data folder
+holds the scenario files it needs, so `sample/power/data/` never reads
+`sample/scenario/data/`. This keeps the rule in entry 9 that the domains do not
+share input files. One power setup can be checked against more than one
+scenario, such as winter and summer, so a power data folder may hold several
+scenario files.
+
+**The scenario names the modes, and power defines them.** An activity says
+`idle` or `firing`. The power files say how much each mode draws. Power checks that every
+mode in the scenario has a consumption entry.
+
+**An unsupported scenario is a power result.** A battery that runs flat is
+reported by power. It is not a scenario error. The scenario is invalid only for
+its own reasons, such as a violated constraint.
+
+**Visualisation is not a domain.** Plots that compute a result stay in the
+notebook of the domain that owns the data. A scenario viewer is a separate front
+end. It reads a timeline file written by the library and, optionally, the power
+results. Which technology it uses is decided elsewhere.
+
+---
+
+## 9. Sizing, scenario and power are separate domains, each with its own files
+
+**2026-10-01. Settled. Updated on 2026-10-08: entry 10 added the scenario as a
+third domain on 2026-10-02.**
+
+The notebooks, their input files and the tests are split into domains.
+`sizing` holds the current four budgets: mass, data, delta-V and agility.
+`scenario` holds the orbit and the timeline of activities. `power` holds power
+generation. Each domain has the same three folders:
+
+- `sample/<domain>/` for the worked examples, with their data in `data/`.
+- `docs/<domain>/` for the reference notebooks, with their data in `data/`.
+- `tests/<domain>/` for the tests, with their fixtures in `data/`.
+
+The how-to guides follow the same split, under `docs/guides/<domain>/`.
+Project-wide documents stay at the top of `docs/`: this file and
+`reference/conventions.md`.
+
+The reason is that the domains describe the satellite differently. Sizing
+uses a circular orbit and a flat equipment list. The scenario needs an epoch, a
+local time of the ascending node, and a TLE or an ephemeris. Power needs solar
+panels on named faces, and takes its orbit from the scenario. One set of files
+cannot serve them all without a domain carrying fields it never reads.
+
+When this entry was written, there were two domains, sizing and power. The orbit
+and the epoch were then power's. Entry 10 moved them into the scenario.
+
+**The domains do not share input files.** The rule in entry 2 applies within
+a domain: a fact that more than one module in that domain uses goes in that
+domain's shared file. The domains may share code, such as the orbit and sun
+geometry in `quicksat/orbit/`, but not data. The three copies in entry 5
+are kept once per domain.
+
+---
+
 ## 8. Earth constants are astropy's defaults
 
 **2026-09-30. Settled. Replaces WGS-84 and EGM96, which the project used from
@@ -127,8 +209,8 @@ are in [conventions.md](../reference/conventions.md).
 
 **2025-09. Settled.**
 
-`sample/data/` belongs to the worked examples, `docs/data/` to the reference
-notebooks, `tests/data/` is a fixture. Before the split, retuning the sample to
+`sample/sizing/data/` belongs to the worked examples, `docs/sizing/data/` to the reference
+notebooks, `tests/sizing/data/` is a fixture. Before the split, retuning the sample to
 make a budget close would silently move a test's expected figure. The cost is
 that a schema change has to be applied three times, and missing one leaves a
 reference documenting a column its own example file does not have.

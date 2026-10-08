@@ -1,0 +1,70 @@
+# The sample scenario: three orbits of a 510 km sun-synchronous orbit.
+#
+# The scenario notebook reads this file and shows the activity table, a Gantt
+# chart and two ground track maps. Edit this file and run the notebook again.
+# The notebook never writes it.
+
+orbit:
+  # The orbit is given one of two ways. Here, a sun-synchronous orbit, for which
+  # quicksat builds the TLE, with its epoch at the start time below. The altitude
+  # is averaged over one orbit. Write the LTAN in quotes: YAML reads an unquoted
+  # 13:30 as the number 810.
+  sso: {altitude: 510 km, ltan: "13:30"}
+  # Or a TLE file with exactly one TLE. A relative path is taken from the folder
+  # of this file. This one is a 510 km orbit at 10:30 LTAN, with its epoch at the
+  # start time below.
+  # tle_file: sso_510km.tle
+
+# UTC. YAML turns an unquoted ISO time into a datetime, and that is accepted.
+start: 2026-10-01T09:00:00
+duration: 3 orbits
+# The orbit and the eclipses are evaluated on this grid. The default is 10 s.
+step: 10 s
+
+# The spacecraft's 3D model, which the viewer draws: a GLB file in body axes and
+# metres, with its origin at the point the body turns about. A relative path is
+# taken from the folder of this file. Leave it out for a plain 1 m cube.
+3d_model: spacecraft.glb
+
+# The body axes that each attitude points.
+attitudes:
+  # +z points at the Earth and -y runs along the orbit normal. The body axes then
+  # match LVLH: x along the track, y minus the orbit normal and z nadir.
+  nadir: {nadir_axis: +z, orbit_normal: -y}
+  # -z points at the sun. The -y axis stays along the orbit normal, so the body
+  # stays still over an orbit. Use constrain_to_nadir to keep one axis facing the
+  # Earth instead, which spins fast when the sun is close to the nadir line.
+  sun pointing: {sun_axis: -z, constrain_to_orbit_normal: -y}
+
+# How the body turns from one attitude to another. Before each activity whose
+# attitude differs from the one before, the body turns from rest to rest about one
+# axis, then settles. The turn takes the end of the activity before, so each
+# activity starts in its own attitude. Its time grows with the angle. These values
+# are close to the sizing sample's agility budget, but nothing reads them from it.
+# Leave the block out for instant changes.
+slew:
+  max_rate: 0.7 deg/s            # the fastest the body turns
+  max_acceleration: 0.08 deg/s2  # how fast the turn speeds up and slows down
+  settling_time: 20 s            # time to settle after the turn
+
+# One repeat of the list. The run repeats it until the duration ends, and cuts
+# the last activity there. Each activity is a chain link: it starts where the one
+# before it ends. The fields are
+#   the trigger that ends it: a duration such as 20 min, or the next event after
+#     the activity starts. The events are the shadow edges, eclipse entry, umbra
+#     entry, umbra exit and eclipse exit; ascending node and descending node; and
+#     latitude crossings such as latitude 30 deg ascending, latitude -30 deg
+#     descending, or latitude 45 deg for either direction. An event can take an
+#     offset, such as eclipse entry + 2 min
+#   the attitude: nadir or sun pointing
+#   the mode: any name
+#   the constraint, optional: the illumination it expects. sunlit, penumbra,
+#     umbra, or eclipse for either of the last two
+activities:
+  - [eclipse entry, sun pointing, idle, sunlit]
+  - [eclipse exit, nadir, idle, eclipse]
+  - [latitude 45 deg -2 min, sun pointing, idle, sunlit]
+  - [latitude 45 deg +4 min, nadir, imaging, sunlit]
+  - [10 min, nadir, downlink]
+  # - [5 min, nadir, idle]
+

@@ -1,0 +1,20 @@
+# Fixture for the scenario tests. Change it only together with the tests that
+# read it. Every trigger kind appears once, and every status is ok except the
+# last activity's, which is cut at the end.
+orbit:
+  tle_file: sso_510km.tle
+start: 2026-10-01T00:00:00
+duration: 3 orbits
+step: 10 s
+attitudes:
+  nadir: {nadir_axis: +z, orbit_normal: -y}
+  sun pointing: {sun_axis: -z, constrain_to_orbit_normal: -y}
+activities:
+  - [ascending node, nadir, idle]
+  - [latitude 45 deg ascending, nadir, idle]
+  - [eclipse entry - 1 min, sun pointing, idle, sunlit]
+  - [eclipse entry, nadir, idle, sunlit]
+  - [eclipse exit, nadir, idle, eclipse]
+  - [latitude 45 deg + 4 min, sun pointing, imaging, sunlit]
+  - [descending node - 30 s, sun pointing, idle]
+  - [10 min, nadir, downlink]

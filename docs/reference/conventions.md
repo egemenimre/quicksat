@@ -53,7 +53,9 @@ differences in kelvin.
 **Constants come from `astropy.constants`.** That module creates its constants
 when it is imported, so a static checker cannot see them. The import therefore
 carries `# pyright: ignore[reportAttributeAccessIssue]`. quicksat's `R_EARTH`
-and `MU_EARTH` are astropy's defaults, `R_earth` and `GM_earth`.
+and `MU_EARTH` are astropy's defaults, `R_earth` and `GM_earth`. The sun's
+radius in `quicksat.orbit.geometry` is `R_sun`. astropy.constants has no WGS84
+values, so that module writes the ellipsoid's radius and flattening out.
 
 ## Tests
 

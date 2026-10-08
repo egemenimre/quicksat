@@ -1,0 +1,26 @@
+# The scenario of the scenario reference notebook, docs/scenario/scenario_ref.ipynb.
+#
+# The notebook quotes figures from this run, so this file changes only with it.
+# The worked example has its own copy, in sample/scenario/data/.
+
+orbit:
+  # A 510 km sun-synchronous orbit at 10:30 LTAN, with its epoch at the start
+  tle_file: sso_510km.tle
+
+start: 2026-10-01T00:00:00
+duration: 3 orbits
+step: 10 s
+
+# The spacecraft's 3D model, which the viewer draws, in body axes and metres
+3d_model: spacecraft.glb
+
+attitudes:
+  nadir: {nadir_axis: +z, orbit_normal: -y}
+  sun pointing: {sun_axis: -z, constrain_to_orbit_normal: -y}
+
+activities:
+  - [eclipse entry, sun pointing, idle, sunlit]
+  - [eclipse exit, nadir, idle, eclipse]
+  - [latitude 45 deg - 2 min, sun pointing, idle, sunlit]
+  - [latitude 45 deg + 4 min, nadir, imaging, sunlit]
+  - [10 min, nadir, downlink]
