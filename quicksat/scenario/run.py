@@ -27,7 +27,6 @@ from astropy.coordinates import CartesianRepresentation, SkyCoord
 from astropy.units import Quantity
 
 from quicksat import Q_, u
-from quicksat.orbit.ecsv_trajectory import read_ecsv_trajectory
 from quicksat.orbit.geometry import (
     beta_angle,
     geodetic,
@@ -39,6 +38,7 @@ from quicksat.orbit.geometry import (
 from quicksat.orbit.sso import sso_tle
 from quicksat.orbit.tle import Tle, read_tle_file, warn_if_far_from_epoch
 from quicksat.orbit.trajectory import Trajectory
+from quicksat.orbit.trajectory_files import read_trajectory_file
 from quicksat.scenario.attitude import SLEW, SlewWindow, plan_slews
 from quicksat.scenario.config import (
     LATITUDE_CROSSING,
@@ -225,7 +225,7 @@ def scenario_orbit(scenario: Scenario) -> OrbitSource:
         name = f"SSO {sso.altitude:g}, LTAN {sso.ltan:.4g}"
         return sso_tle(round_time(scenario.start), sso.altitude, sso.ltan, name=name)
     if orbit.trajectory_file is not None:
-        return read_ecsv_trajectory(orbit.trajectory_file)
+        return read_trajectory_file(orbit.trajectory_file)
     assert orbit.tle_file is not None  # the orbit has exactly one of the three
     return read_tle_file(orbit.tle_file)
 

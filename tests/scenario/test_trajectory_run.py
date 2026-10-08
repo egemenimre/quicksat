@@ -6,11 +6,12 @@
 """
 Tests for a scenario whose orbit comes from a trajectory file.
 
-The file is written from the fixture TLE, at 60 s, in ITRS, from 10 min before
-the run to 10 min after it. The run from it must match the run from the TLE:
-the same occurrences, statuses and eclipses, to a few milliseconds. The period
-measured from the file differs from SGP4's nodal period by under a millisecond,
-so three orbits end within a few milliseconds of each other.
+The file is written from the fixture TLE, at 60 s, from 10 min before the run to
+10 min after it: as ECSV in ITRS, and as an OEM in ITRF2000. The run from it
+must match the run from the TLE: the same occurrences, statuses and eclipses, to
+a few milliseconds. The period measured from the file differs from SGP4's nodal
+period by under a millisecond, so three orbits end within a few milliseconds of
+each other.
 """
 
 import numpy as np
@@ -18,6 +19,7 @@ import pytest
 
 from quicksat import Q_, u
 from quicksat.orbit.ecsv_trajectory import write_ecsv_trajectory
+from quicksat.orbit.oem_trajectory import write_oem_trajectory
 from quicksat.orbit.tle import read_tle_file
 from quicksat.orbit.trajectory import ASCENDING_NODES, Trajectory
 from quicksat.scenario.config import Scenario
@@ -28,12 +30,24 @@ TOLERANCE_S = 5e-3
 """How far apart the two runs' times may be."""
 
 
-def write_file(data_dir, folder, start_s, end_s, name="leo.ecsv"):
+FORMATS = {
+    "ECSV": ("leo.ecsv", "ITRS"),
+    "OEM": ("leo.oem", "ITRF2000"),
+}
+"""Each format's file name in the tests, and the frame it is written in."""
+
+
+def write_file(data_dir, folder, start_s, end_s, form="ECSV"):
     """The fixture TLE's states, from and to these offsets from its epoch."""
     tle = read_tle_file(data_dir / "sso_510km.tle")
     offsets = np.arange(start_s, end_s + 60.0, 60.0)
     state = tle.states(tle.epoch + Q_(offsets, "s"))
-    return write_ecsv_trajectory(folder / name, state, frame="ITRS", name="SSO 510")
+    name, frame = FORMATS[form]
+    if form == "OEM":
+        return write_oem_trajectory(
+            folder / name, state, frame=frame, name="SSO 510", creation_date=tle.epoch
+        )
+    return write_ecsv_trajectory(folder / name, state, frame=frame, name="SSO 510")
 
 
 def scenario_from(data_dir, folder, name="leo.ecsv", **replace):
@@ -45,12 +59,12 @@ def scenario_from(data_dir, folder, name="leo.ecsv", **replace):
     return Scenario.from_yaml_text(text, base_dir=folder)
 
 
-@pytest.fixture(scope="module")
-def trajectory_run(data_dir, tmp_path_factory):
-    """The fixture scenario, run from a trajectory file."""
-    folder = tmp_path_factory.mktemp("trajectory")
-    write_file(data_dir, folder, -600.0, 3 * 5700.0 + 600.0)
-    return run_scenario(scenario_from(data_dir, folder))
+@pytest.fixture(scope="module", params=list(FORMATS))
+def trajectory_run(request, data_dir, tmp_path_factory):
+    """The fixture scenario, run from a trajectory file in each format."""
+    folder = tmp_path_factory.mktemp(request.param.lower())
+    path = write_file(data_dir, folder, -600.0, 3 * 5700.0 + 600.0, request.param)
+    return run_scenario(scenario_from(data_dir, folder, path.name))
 
 
 def seconds(time, start) -> float:
@@ -94,12 +108,20 @@ def test_the_run_from_the_file_matches_the_run_from_the_tle(run, trajectory_run)
 def test_the_viewer_names_the_file(trajectory_run):
     data = scenario_data(trajectory_run)
     orbit = data["orbit"]
+    form = trajectory_run.orbit.format
+    name, frame = FORMATS[form]
     assert data["version"] == VERSION == 4
     assert orbit["tle"] is None
     assert orbit["name"] == "SSO 510"
-    assert orbit["trajectory"]["file"] == "leo.ecsv"
-    assert orbit["trajectory"]["frame"] == "ITRS"
-    assert orbit["trajectory"]["period_from"] == ASCENDING_NODES
+    trajectory = orbit["trajectory"]
+    assert (trajectory["file"], trajectory["format"], trajectory["frame"]) == (
+        name,
+        form,
+        frame,
+    )
+    assert trajectory["segments"] == 1
+    assert trajectory["originator"] == ("quicksat" if form == "OEM" else None)
+    assert trajectory["period_from"] == ASCENDING_NODES
     assert orbit["period_s"] == pytest.approx(
         trajectory_run.orbit.period.to_value(u.s), abs=1e-3
     )

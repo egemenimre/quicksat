@@ -14,9 +14,9 @@ orbit:
   # of this file. This one is a 510 km orbit at 10:30 LTAN, with its epoch at the
   # start time below.
   # tle_file: sso_510km.tle
-  # Or a trajectory file in ECSV, with positions and velocities at times. See
-  # docs/scenario/scenario_ref.ipynb for its layout.
-  # trajectory_file: my_orbit.ecsv
+  # Or a trajectory file with positions and velocities at times: ECSV, or a
+  # CCSDS OEM in KVN. See docs/scenario/scenario_ref.ipynb for the layouts.
+  # trajectory_file: my_orbit.oem
 
 # UTC. YAML turns an unquoted ISO time into a datetime, and that is accepted.
 start: 2026-10-01T09:00:00

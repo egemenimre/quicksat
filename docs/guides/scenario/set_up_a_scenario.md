@@ -40,10 +40,12 @@ orbit, with an epoch and a node, so it has its own.
   taken from the folder of `scenario.yaml`. Use a TLE whose epoch is close to the
   start. A run more than 7 days from the epoch gets a warning, because SGP4 loses
   accuracy away from it.
-- **`trajectory_file`** names an ECSV file of positions and velocities, such as
-  from a propagator. Its header gives the epoch, the time scale and a frame
-  centred on the Earth, such as ITRS or EME2000. Space the samples 60 s apart in
-  low orbit, and let the file reach a few samples past the run at each end.
+- **`trajectory_file`** names a file of positions and velocities, such as
+  from a propagator: ECSV, or a CCSDS OEM in KVN. quicksat tells them apart by
+  their first line. The frame must be centred on the Earth, such as ITRS or
+  EME2000. Space the samples 60 s apart in low orbit, and let the file reach a
+  few samples past the run at each end. If the orbit has a manoeuvre, give it
+  as an OEM with a new segment from the manoeuvre on.
 
 Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), section "The
 orbit".

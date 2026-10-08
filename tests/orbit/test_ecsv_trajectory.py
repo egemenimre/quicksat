@@ -101,7 +101,7 @@ def test_a_file_in_other_units_and_a_lower_case_frame_reads(tle, tmp_path):
         ({"labels": {"x": None}}, "'x' column has no unit"),
         ({"labels": {"y": u.s}}, "not a unit of length"),
         ({"offsets": [0, 60, 120, 100, 240, 300, 360]}, "must rise"),
-        ({"offsets": [0, 60, 120]}, "at least 6 samples"),
+        ({"offsets": [0]}, "at least 2 samples"),
         ({"header": False}, "the header has no epoch, time_scale, frame"),
     ],
 )
@@ -110,6 +110,15 @@ def test_a_file_that_cannot_be_read_is_refused(tle, tmp_path, change, message):
     table_of(tle, **change).write(path, format="ascii.ecsv")
     with pytest.raises(ValueError, match=message):
         read_ecsv_trajectory(path)
+
+
+def test_a_short_file_reads_with_a_lower_degree_and_a_warning(tle, tmp_path):
+    path = tmp_path / "short.ecsv"
+    table_of(tle, offsets=[0, 60, 120]).write(path, format="ascii.ecsv")
+    with pytest.warns(UserWarning, match="degree 2 instead of 5"):
+        trajectory = read_ecsv_trajectory(path)
+    assert trajectory.sample_count == 3
+    assert trajectory.format == "ECSV"
 
 
 def test_a_plain_csv_or_no_file_is_refused(tmp_path):

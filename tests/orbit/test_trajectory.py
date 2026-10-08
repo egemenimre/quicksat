@@ -13,6 +13,8 @@ so they have no node at all. The period of a circular two-body orbit is known
 exactly, which checks both ways of measuring it.
 """
 
+from typing import cast
+
 import numpy as np
 import pytest
 from astropy.coordinates import (
@@ -22,6 +24,7 @@ from astropy.coordinates import (
     SkyCoord,
 )
 from astropy.time import Time
+from scipy.spatial.transform import Rotation
 from sgp4.api import WGS72, Satrec
 
 from quicksat import MU_EARTH, Q_, u
@@ -32,6 +35,7 @@ from quicksat.orbit.trajectory import (
     TWO_BODY,
     Trajectory,
 )
+from quicksat.utils.intervals import TimeArray
 
 from .conftest import vectors
 
@@ -67,6 +71,10 @@ def sampled(tle: Tle, span_s: float, step_s: float = 60.0) -> Trajectory:
     return Trajectory.from_states(tle.states(tle.epoch + Q_(offsets, "s")))
 
 
+START = Time("2026-10-01T00:00:00", scale="utc")
+"""The start of the circular orbits."""
+
+
 def circular(inclination_deg: float, orbits: float, step_s: float = 60.0):
     """A circular two-body orbit at 7000 km, and its exact period."""
     radius = 7000.0
@@ -87,7 +95,7 @@ def circular(inclination_deg: float, orbits: float, step_s: float = 60.0):
     along = np.stack([-np.sin(angle), np.cos(angle), np.zeros_like(angle)])
     position = turn @ in_plane * radius
     velocity = turn @ along * radius * rate
-    times = Time("2026-10-01T00:00:00", scale="utc") + Q_(offsets, "s")
+    times = START + Q_(offsets, "s")
     data = CartesianRepresentation(Q_(position, "km")).with_differentials(
         CartesianDifferential(Q_(velocity, "km/s"))
     )
@@ -138,13 +146,139 @@ def test_a_run_must_lie_inside_and_is_warned_near_the_ends(tle):
     trajectory.check_covers(tle.epoch + Q_(600, "s"), tle.epoch + Q_(1800, "s"))
 
 
-def test_too_few_samples_or_falling_times_are_refused(tle):
+def test_few_samples_lower_the_degree_and_one_or_falling_times_are_refused(tle):
     state = tle.states(tle.epoch + Q_(np.arange(5) * 60.0, "s"))
-    with pytest.raises(ValueError, match="at least 6 samples"):
+    with pytest.warns(UserWarning, match="degree 4 instead of 5"):
         Trajectory.from_states(state)
+    with pytest.raises(ValueError, match="at least 2 samples"):
+        Trajectory.from_states(tle.states(tle.epoch + Q_([0.0], "s")))
     zeros = np.zeros((6, 3))
     with pytest.raises(ValueError, match="must rise"):
-        Trajectory(tle.epoch, np.array([0, 60, 60, 120, 180, 240]), zeros, zeros)
+        Trajectory(tle.epoch, [(np.array([0, 60, 60, 120, 180, 240.0]), zeros, zeros)])
+
+
+# ---------------------------------------------------------------- Segments
+
+
+def times_of(state: SkyCoord) -> TimeArray:
+    """The times of a state, typed for the checker."""
+    return state.obstime
+
+
+def part(state: SkyCoord, index) -> SkyCoord:
+    """Some of a state's samples, typed for the checker."""
+    return cast(SkyCoord, state[index])
+
+
+def pieces(state: SkyCoord, *bounds: tuple[float, float]) -> list[SkyCoord]:
+    """The states between each pair of bounds, in seconds from the first."""
+    times = times_of(state)
+    # rounded, since a time difference of 3000 s comes out as 2999.999...
+    offsets = np.round((times - times[0]).to_value(u.s), 6)
+    return [part(state, (offsets >= low) & (offsets <= high)) for low, high in bounds]
+
+
+BURN_S = 3000.0
+"""When the plane of the orbit turns, in seconds from its start."""
+
+
+def gcrs(times, position: np.ndarray, velocity: np.ndarray) -> SkyCoord:
+    """States in GCRS from positions [mm] and velocities [mm/s], shape (3, n)."""
+    data = CartesianRepresentation(Q_(position, "mm")).with_differentials(
+        CartesianDifferential(Q_(velocity, "mm/s"))
+    )
+    return SkyCoord(GCRS(data, obstime=times))
+
+
+def burn(state: SkyCoord, angle_deg: float = 1.0) -> SkyCoord:
+    """
+    The states after a burn at `BURN_S` from `START` that turns the plane by an
+    angle: each turned about the position at the burn, which the turn leaves in
+    place. The states must include the burn.
+    """
+    offsets = (times_of(state) - START).to_value(u.s)
+    position, velocity = vectors(state)
+    at_burn = position[:, np.argmin(np.abs(offsets - BURN_S))]
+    turn = Rotation.from_rotvec(
+        np.radians(angle_deg) * at_burn / np.linalg.norm(at_burn)
+    ).as_matrix()
+    return gcrs(times_of(state), turn @ position, turn @ velocity)
+
+
+def test_segments_keep_a_manoeuvre_that_one_spline_smooths():
+    coarse, _ = circular(51.6, orbits=1.2)
+    fine, _ = circular(51.6, orbits=1.2, step_s=1.0)
+    before, after = pieces(coarse, (0, BURN_S), (BURN_S, 1e9))
+    turned = burn(after)
+    segmented = Trajectory.from_segments([before, turned])
+    # one spline through the same samples, with the burn's sample once
+    joined = Trajectory.from_states(
+        gcrs(
+            times_of(coarse),
+            np.concatenate([vectors(before)[0][:, :-1], vectors(turned)[0]], axis=1),
+            np.concatenate([vectors(before)[1][:, :-1], vectors(turned)[1]], axis=1),
+        )
+    )
+    times = times_of(fine)
+    offsets = (times - times[0]).to_value(u.s)
+    near = np.abs(offsets - BURN_S) < 300
+    exact = np.where(
+        offsets[near] < BURN_S,
+        vectors(part(fine, near))[0],
+        vectors(part(burn(fine), near))[0],
+    )
+    errors = {
+        name: np.linalg.norm(vectors(trajectory.states(times[near]))[0] - exact, axis=0)
+        for name, trajectory in (("segmented", segmented), ("joined", joined))
+    }
+    assert errors["segmented"].max() < 20.0  # mm
+    assert errors["joined"].max() > 10_000.0  # mm
+
+
+def test_where_two_segments_meet_the_later_one_applies():
+    coarse, _ = circular(51.6, orbits=1.2)
+    before, after = pieces(coarse, (0, BURN_S), (BURN_S, 1e9))
+    turned = burn(after)
+    trajectory = Trajectory.from_segments([before, turned])
+    at_burn = times_of(coarse)[0] + Q_(BURN_S, "s")
+    _, velocity = vectors(trajectory.states(at_burn + Q_([-1e-3, 0.0], "s")))
+    _, expected_before = vectors(part(before, slice(-1, None)))
+    _, expected_after = vectors(part(turned, slice(0, 1)))
+    assert np.allclose(velocity[:, 1], expected_after[:, 0], atol=1e-3)
+    assert np.allclose(velocity[:, 0], expected_before[:, 0], atol=10.0)
+    assert trajectory.segment_count == 2
+
+
+def test_a_run_may_not_cross_a_gap_between_segments():
+    state, _ = circular(51.6, orbits=1.2)
+    trajectory = Trajectory.from_segments(pieces(state, (0, 1800), (3600, 5400)))
+    start = times_of(state)[0]
+    trajectory.check_covers(start + Q_(600, "s"), start + Q_(1200, "s"))
+    with pytest.raises(ValueError, match="crosses a gap .* between segments 1 and 2"):
+        trajectory.check_covers(start + Q_(600, "s"), start + Q_(4000, "s"))
+    with pytest.raises(ValueError, match="outside the trajectory.*with gaps"):
+        trajectory.states(start + Q_([2700.0], "s"))
+
+
+def test_a_segment_serves_its_span_and_segments_may_not_overlap():
+    state, _ = circular(51.6, orbits=0.5)
+    start = times_of(state)[0]
+    span = (start + Q_(300, "s"), start + Q_(1500, "s"))
+    trajectory = Trajectory.from_segments(pieces(state, (0, 1800)), [span])
+    assert trajectory.start == span[0]
+    with pytest.raises(ValueError, match="outside the trajectory"):
+        trajectory.states(start + Q_([200.0], "s"))
+    with pytest.raises(ValueError, match="segment 2 overlaps"):
+        Trajectory.from_segments(pieces(state, (0, 1200), (600, 1800)))
+
+
+def test_the_period_counts_the_crossings_of_every_segment():
+    state, period = circular(51.6, orbits=3)
+    trajectory = Trajectory.from_segments(pieces(state, (0, 9000), (9000, 1e9)))
+    assert trajectory.period_method == ASCENDING_NODES
+    assert trajectory.period.to_value(u.s) == pytest.approx(
+        period.to_value(u.s), abs=1e-3
+    )
 
 
 # ---------------------------------------------------------------- The period

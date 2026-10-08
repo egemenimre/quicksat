@@ -6581,8 +6581,11 @@ function showInputs() {
             element("p", { class: "note", text: "The states come from a trajectory file, interpolated between its samples:" }),
             kv([
               ["File", orbit.trajectory.file || "none given"],
+              ...(orbit.trajectory.format ? [["Format", orbit.trajectory.format]] : []),
+              ...(orbit.trajectory.originator ? [["Written by", orbit.trajectory.originator]] : []),
               ["Frame", orbit.trajectory.frame],
               ["Samples", orbit.trajectory.samples],
+              ...(orbit.trajectory.segments > 1 ? [["Segments", orbit.trajectory.segments]] : []),
               ["From, UTC", orbit.trajectory.start],
               ["To, UTC", orbit.trajectory.end],
               ["Period from", orbit.trajectory.period_from],

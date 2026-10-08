@@ -5,6 +5,10 @@ sun-synchronous TLE, and Orekit's eclipse times for it. Both are copies of files
 in `tests/power/data/` and `sample/scenario/data/`, kept here so that each test
 folder owns its fixtures. The directory is resolved from this file, so the suite
 passes wherever pytest is invoked from.
+
+Two CCSDS OEM files sit there too: the example of figure 5-1 of CCSDS
+502.0-B-2, and an abbreviated ephemeris of SELENE that JAXA wrote as an ODM
+version 2 test case.
 """
 
 from pathlib import Path

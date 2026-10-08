@@ -403,9 +403,9 @@ class Orbit(BaseModel):
         A sun-synchronous orbit. quicksat builds its TLE, with the epoch at the
         start of the run.
     trajectory_file : Path, optional
-        An ECSV file of positions and velocities, which the run interpolates.
-        See `quicksat.orbit.ecsv_trajectory`. A relative path is taken from
-        the folder of the scenario file.
+        A file of positions and velocities, which the run interpolates: ECSV,
+        or a CCSDS OEM in KVN. See `quicksat.orbit.trajectory_files`. A
+        relative path is taken from the folder of the scenario file.
     """
 
     model_config = ConfigDict(extra="forbid")

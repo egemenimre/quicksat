@@ -61,8 +61,8 @@ VERSION = 4
 Version 2 added `light` to the grid, and `penumbra` and `umbra` to the
 illumination track, in place of `eclipse`. Version 3 added `model`, the
 spacecraft's 3D model. Version 4 added `orbit.trajectory` for an orbit from a
-trajectory file, where `orbit.tle` is null, and renamed `orbit.nodal_period_s`
-to `orbit.period_s`."""
+trajectory file, ECSV or OEM, where `orbit.tle` is null, and renamed
+`orbit.nodal_period_s` to `orbit.period_s`."""
 
 DATA_FILE = "scenario.js"
 """Name of the file the scenario data is written to."""
@@ -187,9 +187,9 @@ def _orbit_data(run: ScenarioRun) -> dict:
     -------
     orbit : dict
         `name`, and `period_s`, the period a duration in orbits counts. Then
-        either `tle`, the two TLE lines, or `trajectory`: the file, its frame,
-        its samples, its span in UTC and how its period was found. The other is
-        None.
+        either `tle`, the two TLE lines, or `trajectory`: the file, its format
+        and frame, its samples and segments, who wrote it, its span in UTC and
+        how its period was found. The other is None.
     """
     orbit = run.orbit
     data = {
@@ -203,8 +203,11 @@ def _orbit_data(run: ScenarioRun) -> dict:
     else:
         data["trajectory"] = {
             "file": orbit.file,
+            "format": orbit.format,
             "frame": orbit.frame,
             "samples": orbit.sample_count,
+            "segments": orbit.segment_count,
+            "originator": orbit.originator,
             "start": orbit.start.utc.isot,
             "end": orbit.end.utc.isot,
             "period_from": orbit.period_method,

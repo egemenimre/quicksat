@@ -219,8 +219,9 @@ def read_ecsv_trajectory(path: str | Path) -> Trajectory:
         )
     except ValueError as error:
         raise ValueError(f"{path}: {error}") from error
-    # Keep the file name for display
+    # Keep the file name and the format for display
     trajectory.file = path.name
+    trajectory.format = "ECSV"
     return trajectory
 
 
