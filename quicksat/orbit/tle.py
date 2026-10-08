@@ -93,6 +93,40 @@ class Tle:
         return nodal_period(self.satrec)
 
     @property
+    def period(self) -> Quantity:
+        """
+        One orbit, for a duration in orbits: the nodal period.
+
+        A `Trajectory` has a `period` too, measured from its states. So a run
+        reads one orbit the same way from either.
+
+        Returns
+        -------
+        period : Quantity
+            The nodal period, in minutes
+        """
+        return self.nodal_period
+
+    def states(self, times: TimeArray, with_velocity: bool = True) -> SkyCoord:
+        """
+        The satellite's state from SGP4, in GCRS. See `tle_states`.
+
+        Parameters
+        ----------
+        times : Time
+            The sample times, as an array
+        with_velocity : bool, optional
+            Whether the state carries velocities as well as positions. True by
+            default.
+
+        Returns
+        -------
+        state : SkyCoord
+            The position, and the velocity if asked for, in GCRS
+        """
+        return tle_states(self, times, with_velocity)
+
+    @property
     def lines(self) -> tuple[str, str]:
         """
         The two TLE lines, written from the elements by sgp4's exporter.

@@ -47,6 +47,7 @@ from astropy.coordinates import CartesianDifferential, CartesianRepresentation
 from quicksat import R_EARTH, u
 from quicksat.orbit.attitude import quaternions
 from quicksat.orbit.geometry import earth_rotations
+from quicksat.orbit.tle import Tle
 from quicksat.scenario.attitude import SLEW, SlewWindow, body_rotations
 from quicksat.scenario.plots import scenario_colours
 from quicksat.scenario.run import ScenarioRun
@@ -55,11 +56,13 @@ from quicksat.utils.intervals import TimeArray
 FORMAT = "quicksat-scenario"
 """The `format` field of the scenario data."""
 
-VERSION = 3
+VERSION = 4
 """The `version` field of the scenario data. It goes up when a field changes.
 Version 2 added `light` to the grid, and `penumbra` and `umbra` to the
 illumination track, in place of `eclipse`. Version 3 added `model`, the
-spacecraft's 3D model."""
+spacecraft's 3D model. Version 4 added `orbit.trajectory` for an orbit from a
+trajectory file, ECSV or OEM, where `orbit.tle` is null, and renamed
+`orbit.nodal_period_s` to `orbit.period_s`."""
 
 DATA_FILE = "scenario.js"
 """Name of the file the scenario data is written to."""
@@ -171,6 +174,47 @@ def _model_data(path: Path | None) -> dict | None:
     }
 
 
+def _orbit_data(run: ScenarioRun) -> dict:
+    """
+    Where the run's orbit comes from, as the page shows it.
+
+    Parameters
+    ----------
+    run : ScenarioRun
+        The run
+
+    Returns
+    -------
+    orbit : dict
+        `name`, and `period_s`, the period a duration in orbits counts. Then
+        either `tle`, the two TLE lines, or `trajectory`: the file, its format
+        and frame, its samples and segments, who wrote it, its span in UTC and
+        how its period was found. The other is None.
+    """
+    orbit = run.orbit
+    data = {
+        "name": orbit.name,
+        "period_s": round(float(orbit.period.to(u.s).value), 3),
+        "tle": None,
+        "trajectory": None,
+    }
+    if isinstance(orbit, Tle):
+        data["tle"] = list(orbit.lines)
+    else:
+        data["trajectory"] = {
+            "file": orbit.file,
+            "format": orbit.format,
+            "frame": orbit.frame,
+            "samples": orbit.sample_count,
+            "segments": orbit.segment_count,
+            "originator": orbit.originator,
+            "start": orbit.start.utc.isot,
+            "end": orbit.end.utc.isot,
+            "period_from": orbit.period_method,
+        }
+    return data
+
+
 def scenario_data(run: ScenarioRun) -> dict:
     """
     Everything the viewer shows of a run, as plain numbers and text.
@@ -262,11 +306,7 @@ def scenario_data(run: ScenarioRun) -> dict:
         "scenario_text": run.scenario.source_text,
         "start": start.utc.isot,
         "earth_radius_km": R_EARTH.to_value(u.km),
-        "orbit": {
-            "name": run.tle.name,
-            "tle": list(run.tle.lines),
-            "nodal_period_s": round(float(run.tle.nodal_period.to(u.s).value), 3),
-        },
+        "orbit": _orbit_data(run),
         "colours": scenario_colours(run.scenario),
         "model": _model_data(run.scenario.spacecraft_model),
         "grid": {

@@ -20,7 +20,6 @@ from astropy.time import Time
 
 from quicksat import Q_, u
 from quicksat.orbit.geometry import geodetic
-from quicksat.orbit.tle import tle_states
 from quicksat.scenario.config import Activity, Scenario
 from quicksat.scenario.run import (
     CUT_AT_END,
@@ -34,7 +33,7 @@ from quicksat.scenario.run import (
     resolve_activities,
     run_length,
     run_scenario,
-    scenario_tle,
+    scenario_orbit,
 )
 from quicksat.utils.intervals import labels_at, round_time
 
@@ -237,7 +236,7 @@ def test_the_time_above_a_latitude_is_found_once_for_all_directions():
 
 def test_the_length_of_a_run_in_orbits(run):
     assert_quantity_allclose(
-        run_length(run.scenario, run.tle), 3 * run.tle.nodal_period, rtol=1e-12
+        run_length(run.scenario, run.orbit), 3 * run.orbit.period, rtol=1e-12
     )
 
 
@@ -245,16 +244,14 @@ def test_a_step_as_long_as_the_run_is_refused(data_dir):
     text = (data_dir / "scenario.yaml").read_text().replace("3 orbits", "0.001 orbits")
     scenario = Scenario.from_yaml_text(text, base_dir=data_dir)
     with pytest.raises(ValueError, match="step must be shorter than the run"):
-        run_length(scenario, scenario_tle(scenario))
+        run_length(scenario, scenario_orbit(scenario))
 
 
 def test_the_grid_ends_exactly_at_the_end_of_the_run(run):
     offsets = (run.times - run.times[0]).to_value(u.s)
     assert np.allclose(np.diff(offsets)[:-1], 10.0)
     assert run.times[-1] == run.interval.upper
-    assert offsets[-1] == pytest.approx(
-        3 * run.tle.nodal_period.to_value(u.s), abs=1e-3
-    )
+    assert offsets[-1] == pytest.approx(3 * run.orbit.period.to_value(u.s), abs=1e-3)
 
 
 def test_the_gantt_rows_cover_the_run(run):
@@ -319,7 +316,7 @@ def test_each_latitude_crossing_is_found_to_a_millisecond(run):
             trigger.offset if trigger.offset is not None else Q_(0, "s")
         )
         times = round_time(crossing + np.array([-1, 1]) * millisecond)
-        latitude, _ = geodetic(tle_states(run.tle, times, with_velocity=False))
+        latitude, _ = geodetic(run.orbit.states(times, with_velocity=False))
         before, after = latitude.to_value(u.deg) - trigger.latitude.to_value(u.deg)
         assert before * after < 0
         if trigger.direction == "ascending":
@@ -336,7 +333,7 @@ def test_ascending_nodes_come_a_whole_number_of_nodal_periods_apart(run):
         o.end for o in run.occurrences if o.activity.trigger.text == "ascending node"
     ]
     gaps = np.diff([(node - run.times[0]).to_value(u.s) for node in nodes])
-    period = run.tle.nodal_period.to_value(u.s)
+    period = run.orbit.period.to_value(u.s)
     assert len(gaps) >= 1
     assert gaps == pytest.approx(np.round(gaps / period) * period, abs=2e-3)
 
@@ -387,6 +384,6 @@ def test_an_sso_orbit_is_built_at_the_start(data_dir):
         .replace("tle_file: sso_510km.tle", 'sso: {altitude: 510 km, ltan: "13:30"}')
     )
     scenario = Scenario.from_yaml_text(text, base_dir=data_dir)
-    tle = scenario_tle(scenario)
+    tle = scenario_orbit(scenario)
     assert tle.epoch.utc.isot == "2026-10-01T00:00:00.000"
     assert tle.name == "SSO 510 km, LTAN 13.5 h"

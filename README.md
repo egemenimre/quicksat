@@ -219,7 +219,7 @@ Roll and pitch run identical machinery, because the pyramid's symmetry axis is a
 
 The scenario flies the satellite through a list of activities on a real orbit. It checks the timeline: whether each activity falls in sunlight or in eclipse as planned, and how long the body takes to turn between attitudes. Power will build on it.
 
-The orbit comes from a TLE file, or from a sun-synchronous orbit that quicksat builds as a TLE. SGP4 flies it, and astropy gives the sun and the frames. The scenario does not read `mission.yaml`, because it needs a real orbit, with an epoch and a node. One file holds the whole scenario:
+The orbit comes from a TLE file, from a sun-synchronous orbit that quicksat builds as a TLE, or from a trajectory file, in ECSV or CCSDS OEM. SGP4 flies a TLE, a trajectory is interpolated between its samples, and astropy gives the sun and the frames. The scenario does not read `mission.yaml`, because it needs a real orbit, with an epoch and a node. One file holds the whole scenario:
 
 ```yaml
 orbit:
