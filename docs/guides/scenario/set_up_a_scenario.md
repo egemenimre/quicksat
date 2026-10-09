@@ -30,7 +30,7 @@ orbit, with an epoch and a node, so it has its own.
 
 ## 2. Define the orbit
 
-`orbit` takes exactly one of three keys:
+`orbit` takes exactly one of four keys:
 
 - **`sso`** builds a sun-synchronous orbit from an altitude and a local time of
   the ascending node, as in `sso: {altitude: 510 km, ltan: "13:30"}`. Write the
@@ -40,6 +40,9 @@ orbit, with an epoch and a node, so it has its own.
   taken from the folder of `scenario.yaml`. Use a TLE whose epoch is close to the
   start. A run more than 7 days from the epoch gets a warning, because SGP4 loses
   accuracy away from it.
+- **`omm_file`** names a file that holds exactly one OMM element set: the same
+  elements as a TLE, at full precision. It may be KVN, XML, JSON or CSV, as
+  CelesTrak and Space-Track give them.
 - **`trajectory_file`** names a file of positions and velocities, such as
   from a propagator: ECSV, or a CCSDS OEM in KVN. quicksat tells them apart by
   their first line. The frame must be centred on the Earth, such as ITRS or

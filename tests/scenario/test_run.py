@@ -20,6 +20,8 @@ from astropy.time import Time
 
 from quicksat import Q_, u
 from quicksat.orbit.geometry import geodetic
+from quicksat.orbit.omm import write_omm_file
+from quicksat.orbit.tle import Tle, read_tle_file
 from quicksat.scenario.config import Activity, Scenario
 from quicksat.scenario.run import (
     CUT_AT_END,
@@ -387,3 +389,18 @@ def test_an_sso_orbit_is_built_at_the_start(data_dir):
     tle = scenario_orbit(scenario)
     assert tle.epoch.utc.isot == "2026-10-01T00:00:00.000"
     assert tle.name == "SSO 510 km, LTAN 13.5 h"
+
+
+def test_an_omm_file_runs_as_its_tle_does(run, data_dir, tmp_path):
+    # the fixture TLE's elements, written as an OMM, give the same run
+    write_omm_file(tmp_path / "leo.omm", read_tle_file(data_dir / "sso_510km.tle"))
+    text = (data_dir / "scenario.yaml").read_text()
+    text = text.replace("tle_file: sso_510km.tle", "omm_file: leo.omm")
+    scenario = Scenario.from_yaml_text(text, base_dir=tmp_path)
+    assert scenario.orbit.omm_file == tmp_path / "leo.omm"
+    from_omm = run_scenario(scenario)
+    assert isinstance(from_omm.orbit, Tle) and isinstance(run.orbit, Tle)
+    assert from_omm.orbit.lines == run.orbit.lines
+    assert [(o.start, o.end, o.statuses) for o in from_omm.occurrences] == [
+        (o.start, o.end, o.statuses) for o in run.occurrences
+    ]

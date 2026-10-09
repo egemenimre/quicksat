@@ -35,6 +35,7 @@ from quicksat.orbit.geometry import (
     shadow_intervals,
     sun_positions,
 )
+from quicksat.orbit.omm import read_omm_file
 from quicksat.orbit.sso import sso_tle
 from quicksat.orbit.tle import Tle, read_tle_file, warn_if_far_from_epoch
 from quicksat.orbit.trajectory import Trajectory
@@ -205,9 +206,9 @@ def scenario_orbit(scenario: Scenario) -> OrbitSource:
     """
     Where the scenario's states come from.
 
-    An element set is read from the TLE file, or built for the sun-synchronous
-    orbit, with its epoch at the start of the run. A trajectory is read from the
-    trajectory file.
+    An element set is read from the TLE file or the OMM file, or built for the
+    sun-synchronous orbit, with its epoch at the start of the run. A trajectory
+    is read from the trajectory file.
 
     Parameters
     ----------
@@ -226,7 +227,9 @@ def scenario_orbit(scenario: Scenario) -> OrbitSource:
         return sso_tle(round_time(scenario.start), sso.altitude, sso.ltan, name=name)
     if orbit.trajectory_file is not None:
         return read_trajectory_file(orbit.trajectory_file)
-    assert orbit.tle_file is not None  # the orbit has exactly one of the three
+    if orbit.omm_file is not None:
+        return read_omm_file(orbit.omm_file)
+    assert orbit.tle_file is not None  # the orbit has exactly one of the four
     return read_tle_file(orbit.tle_file)
 
 
