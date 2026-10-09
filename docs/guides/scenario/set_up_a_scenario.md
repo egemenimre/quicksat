@@ -8,15 +8,15 @@ You need quicksat installed first. The README has the steps, under "Installation
 
 ## 1. Copy the sample data
 
-Copy the `sample/scenario/data` folder and give the copy your own name:
+Copy the `sample/scenario/data` folder into your own project folder, outside quicksat, and give the copy your own name:
 
 ```bash
-cp -r sample/scenario/data my_scenario
+cp -r path/to/quicksat/sample/scenario/data my_project/my_scenario
 ```
 
-Then edit `my_scenario/scenario.yaml`. Do not edit `sample/scenario/data/` itself. The sample notebook reads it, and the figures in it depend on its contents.
+Keep your scenarios and their outputs in your own folders, not in your copy of quicksat. Then an update of quicksat never touches them, and you decide where every file goes. Do not edit `sample/scenario/data/` itself. The sample notebook reads it, and the figures in it depend on its contents.
 
-The folder can go anywhere. The code below assumes it is called `my_scenario` and sits in the folder you run Python from.
+The code below assumes the folder is called `my_scenario`, and sits in the folder you run Python from.
 
 The scenario does not read the sizing domain's `mission.yaml`. It needs a real orbit, with an epoch and a node, so it has its own.
 
@@ -153,7 +153,7 @@ Start with the summary line, then the `status` column of the activity table. Eac
 
 | Status | What to do |
 | --- | --- |
-| `outside constraint` | The activity spends `outside [s]` seconds in the wrong illumination. End the activity before it at the shadow edge. To change attitude before an eclipse, give that time an activity of its own. |
+| `outside constraint` | The activity spends `outside [s]` seconds in the wrong illumination, more than the 1 s allowed for numerical effects. End the activity before it at the shadow edge. To change attitude before an eclipse, give that time an activity of its own. |
 | `negative duration` | A negative offset ends the activity before it starts. Make the offset smaller, or end the activity at another event. |
 | `event never came` | The event does not happen in the run, such as a latitude higher than the orbit reaches. Pick another event, or run longer. |
 | `slew starts early` | The slew into this activity takes longer than the activity before it. Lengthen that activity, or raise the slew limits if the satellite allows it. |
@@ -165,7 +165,7 @@ Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), section "The
 
 ## 10. Open and share the viewer
 
-`write_scenario_viewer` writes two files into `my_scenario/output/`. It makes the folder if it does not exist.
+`write_scenario_viewer` writes two files into the folder you give it, here `my_scenario/output/`. It makes the folder if it does not exist. There is no default folder, so you always say where the files go.
 
 - `scenario_viewer.html` is the page. Double-click it to open it in a browser.
 - `scenario.js` holds the data of the run.

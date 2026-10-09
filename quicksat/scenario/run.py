@@ -72,7 +72,8 @@ Events = dict[tuple, tuple[P.Interval, ...]]
 piece of one of the intervals."""
 
 OUTSIDE_CONSTRAINT = "outside constraint"
-"""Status: the activity spends some time outside its constraint."""
+"""Status: the activity spends more than `CONSTRAINT_TOLERANCE` outside its
+constraint."""
 
 EVENT_NEVER_CAME = "event never came"
 """Status: the event that ends the activity never happens in the run, such as an
@@ -96,6 +97,11 @@ activity, if the run starts too late for it."""
 
 STATUS_OK = "ok"
 """Status: none of the above."""
+
+CONSTRAINT_TOLERANCE = Q_(1, "s")
+"""Time outside a constraint that still counts as none. It covers numerical
+effects only. Event times sit on the 1 ms grid and are found to it, so such
+effects are a few milliseconds. A longer miss fails, with no warning step."""
 
 
 @dataclass(frozen=True)
@@ -169,14 +175,15 @@ class Occurrence:
     @property
     def failed(self) -> bool:
         """
-        Whether the activity spends any time outside its constraint.
+        Whether the activity spends more than `CONSTRAINT_TOLERANCE` outside its
+        constraint.
 
         Returns
         -------
         failed : bool
             False if there is no constraint
         """
-        return self.outside is not None and bool(self.outside > Q_(0, "s"))
+        return self.outside is not None and bool(self.outside > CONSTRAINT_TOLERANCE)
 
     @property
     def statuses(self) -> list[str]:
@@ -420,8 +427,8 @@ def resolve_activities(
     The activity is then flagged, and takes no time. The next activity starts
     where it started.
 
-    A constraint holds when the activity has no time outside the intervals that
-    the constraint allows.
+    A constraint holds when the activity spends no more than `CONSTRAINT_TOLERANCE`
+    outside the intervals that the constraint allows.
 
     Parameters
     ----------

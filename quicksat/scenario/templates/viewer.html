@@ -333,12 +333,12 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
         <table class="list">
           <thead><tr>
             <th class="num">Repeat</th><th class="num">#</th><th>Start, UTC</th><th>End, UTC</th>
-            <th class="num">Length</th><th>Trigger</th><th>Attitude</th><th>Mode</th><th>Constraint</th>
+            <th class="num">Length</th><th>Trigger</th><th>Attitude</th><th class="num">Slew</th><th>Mode</th><th>Constraint</th>
             <th class="num">Outside</th><th>Status</th>
           </tr></thead>
           <tbody id="activity-rows"></tbody>
         </table>
-        <p class="note">Every occurrence of every activity, in time order. Click a row to see it on the Scenario page.</p>
+        <p class="note">Every occurrence of every activity, in time order. Slew is the time of the turn into the activity's attitude, settling included. Click a row to see it on the Scenario page.</p>
       </div>
     </div>
   </section>
@@ -1919,6 +1919,8 @@ function showActivities() {
           element("td", { class: "num", text: `${((o.end_s - o.start_s) / 60).toFixed(2)} min` }),
           element("td", { text: o.trigger }),
           element("td", {}, swatch(o.attitude)),
+          // slew_s came with the slews; a run without them, or an older scenario.js, has none
+          element("td", { class: "num", text: o.slew_s == null ? "" : `${numberText(o.slew_s, 1)} s` }),
           element("td", {}, swatch(o.mode)),
           element("td", { text: o.constraint || "" }),
           element("td", { class: "num", text: o.outside_s === null ? "" : `${numberText(o.outside_s)} s` }),
@@ -2288,7 +2290,7 @@ const HELP = {
       "with Shift.",
   },
   tabScenario: { title: "Scenario", text: "Run through the scenario: the 3D views, the map, the timeline and the current data." },
-  tabActivities: { title: "Activities", text: "Every occurrence of every activity, with its times and statuses." },
+  tabActivities: { title: "Activities", text: "Every occurrence of every activity, with its times, its slew and its statuses." },
   tabInputs: { title: "Inputs", text: "The scenario file and the power file as written, the orbit, and the conventions." },
   tabResults: { title: "Results", text: "The summary, the checks, and which data files were found." },
 };

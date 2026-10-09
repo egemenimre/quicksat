@@ -180,6 +180,18 @@ def test_the_time_outside_a_constraint():
     assert occurrences[0].statuses == [OUTSIDE_CONSTRAINT]
 
 
+@pytest.mark.parametrize(
+    ("length", "fails"), [("1200.5 s", False), ("1201 s", False), ("1201.5 s", True)]
+)
+def test_a_miss_of_up_to_a_second_counts_as_numerical(length, fails):
+    # sunlit until the eclipse at 20 min, so 0.5 s, 1 s or 1.5 s outside
+    first = resolve([length, "nadir", "a", "sunlit"], ["30 min", "nadir", "b"])[0]
+    assert first.outside is not None
+    assert first.outside.to_value(u.s) == pytest.approx(float(length[:-2]) - 1200)
+    assert first.failed is fails
+    assert first.statuses == ([OUTSIDE_CONSTRAINT] if fails else [STATUS_OK])
+
+
 def test_a_negative_duration_takes_no_time():
     occurrences = resolve(
         ["eclipse entry - 30 min", "nadir", "a"], ["30 min", "nadir", "b"]
