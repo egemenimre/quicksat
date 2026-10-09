@@ -3,7 +3,7 @@
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/egemenimre/quicksat/tree/master.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/egemenimre/quicksat/tree/master)
 [![codecov](https://codecov.io/github/egemenimre/quicksat/graph/badge.svg?token=ANT5QB5UB8)](https://codecov.io/github/egemenimre/quicksat)
 
-Basic satellite sizing tool: mass, data, delta-V and attitude agility budgets, and a mission scenario with a 3D viewer, with power, battery and radiator sizing to come. Deliberately spartan — the aim is a first-pass sizing, not a full systems engineering environment.
+Basic satellite sizing tool. It covers the mass, data, delta-V and attitude agility budgets, and a mission scenario with a 3D viewer. Power, battery and radiator sizing will follow. quicksat is kept simple on purpose. It gives a first-pass sizing, not a full systems engineering environment.
 
 ## Status
 
@@ -37,13 +37,15 @@ mission.velocity          # 7.61 km/s
 mission.duration          # 7 yr
 ```
 
-The data budget takes the period and the orbits in a day, delta-V takes the circular velocity and the design life that scales its recurring manoeuvres, and agility takes the ground track speed. Each budget will read the file itself, or take an already-loaded `Mission` — `DataBudget(model, mission)`, `DeltaVBudget(manoeuvres, config, mission)`, `AgilityBudget(config, mission, axis, case)` — so that several budgets in one session demonstrably fly the same one rather than four parses that merely agree today.
+Each budget takes what it needs from the mission. The data budget takes the period and the orbits in a day. The delta-V budget takes the circular velocity, and the design life that scales its recurring manoeuvres. The agility budget takes the ground track speed.
 
-The rule that decides what belongs here: **a fact more than one module can use lives in this file; a fact only one module can use stays in that module's own config.** So the altitude is here and the Isp is not, and stating each once keeps them from drifting apart, which is what happens the first time the same number is copied into three config files and one of them is retuned. The orbit is circular throughout: nothing here models eccentricity, perturbations or drag.
+Each budget reads the file itself, or takes a `Mission` that is already loaded: `DataBudget(model, mission)`, `DeltaVBudget(manoeuvres, config, mission)` and `AgilityBudget(config, mission, axis, case)`. Several budgets in one session can then share one `Mission`. This shows that they use the same orbit, rather than separate copies that happen to agree today.
+
+One rule decides what goes in this file. **A fact that more than one module can use goes here. A fact that only one module uses stays in that module's own config.** So the altitude is here, and the Isp is not. Each fact is stated once, so no two copies can disagree. Copies would disagree as soon as a number in three config files was changed in only one of them. The orbit is circular throughout. Nothing here models eccentricity, perturbations or drag.
 
 ## Mass budget
 
-A satellite is described by two files. The first is a flat equipment list, one row per item — nothing is nested, because `location`, `responsibility` and `subsystem` are cross-cutting axes rather than a hierarchy, and any of them can then be summed over independently.
+Two files describe a satellite. The first is a flat equipment list, with one row per item. Nothing is nested. `location`, `responsibility` and `subsystem` are independent axes rather than levels of a hierarchy. So the budget can sum over any one of them on its own.
 
 ```csv
 equipment_id,equipment_name,location,responsibility,subsystem,unit_mass,eqpt_margin,number_of_units,mass_class,comments
@@ -63,9 +65,9 @@ locations:
     harness_margin: 25    # percent, the harness's own contingency
 ```
 
-Masses are entered with their units and parsed with [astropy](https://docs.astropy.org/en/stable/units/), so `750 g` is converted on load and `100 W` in a mass column is rejected rather than quietly becoming a number. Harness is not typed in but derived, one row per location. Margins come in two layers — a per-item contingency and a per-location system margin — and propellant is exempt from both.
+Masses are entered with their units and parsed with [astropy](https://docs.astropy.org/en/stable/units/). So `750 g` is converted on load. `100 W` in a mass column raises an error, rather than being read as a plain number. The harness is not typed in. It is derived, with one row per location. Margins come in two layers: a contingency per item, and a system margin per location. Propellant takes neither.
 
-Then ask the budget things. Every query takes the same four flags — `propellant`, `sys_margin`, `eqpt_margin`, `in_orbit` — all defaulting to the satellite as it flies at the start of life, so the usual question is a bare call and each deviation is one explicit switch.
+Then query the budget. Every query takes the same four flags: `propellant`, `sys_margin`, `eqpt_margin` and `in_orbit`. By default, they describe the satellite as it flies at the start of life. So the usual query needs no arguments, and each change from it is one explicit flag.
 
 ```python
 from quicksat.mass.budget import MassBudget
@@ -78,11 +80,11 @@ budget.in_orbit_mass(propellant=50)  # 459.62 kg  - half-way through the mission
 budget.subsystem_mass("ADCS")        #  39.50 kg
 ```
 
-The same rows summed over any of the three axes reconcile to the same total, because they are three cuts of one table rather than three calculations — `by_location()`, `by_responsibility()`, `by_subsystem()`. And `tabulated_mass()` lays the whole budget out as a document: every item, grouped into subsystem blocks within each location, with the subtotals, the margins and the dry, propellant and wet masses in reading order.
+`by_location()`, `by_responsibility()` and `by_subsystem()` sum the same rows over each of the three axes. They give the same total, because they group one table rather than make three separate calculations. `tabulated_mass()` lays out the whole budget as a document. It lists every item, grouped by subsystem within each location. The subtotals, the margins, and the dry, propellant and wet masses follow in reading order.
 
 ## Data and downlink budget
 
-There is nothing to sum here. This is one chain of calculations from a handful of assumptions to a single comparison, so the input is config rather than a CSV, and there are no grouping views because there are no rows. Generation is naturally per orbit — the payload collects for a fraction of each revolution — while downlink is naturally per day, because contacts belong to the ground station's day. The two meet at the daily figure, which is where the margin is taken.
+There is nothing to sum here. The budget is one chain of calculations, from a few assumptions to a single comparison. So the input is a config file rather than a CSV. There are no rows, so there are no grouping views. Generation is counted per orbit, because the payload collects data for a fraction of each orbit. Downlink is counted per day, because the contacts follow the ground station's day. The two are compared per day, and the margin is taken there.
 
 ```yaml
 generation:
@@ -106,15 +108,23 @@ budget = DataBudget.from_yaml_file("sample/sizing/data/pl_dataflow_model.yaml", 
 
 budget.generated_per_day    # 225.00 GB
 budget.downlinked_per_day   # 252.00 GB
-budget.margin               # 0.12 — the link clears 12% more than the payload makes
+budget.margin               # 0.12: the link sends 12% more than the payload makes
 budget.storage_required()   # 44.35 GB to cover three orbits without a pass
 ```
 
-A positive margin means the backlog clears; a negative one means data accumulates until something is deleted or a pass is added. `storage_required()` sizes the gap between passes rather than an accumulating backlog — the two coincide only while the budget closes. `tabulated_data()` gives the whole chain as a document, one row per quantity with the assumption behind it, each tagged `input`, `derived`, `margin` or `storage` so the report can be filtered.
+A positive margin means that each day's data is sent down the same day. A negative margin means data builds up until some is deleted or a pass is added. `storage_required()` sizes the memory for the gap between passes. It does not cover a backlog that grows from day to day. The two are the same only while the budget closes. `tabulated_data()` gives the whole chain as a document. It has one row per quantity, with the assumption behind it. Each row is tagged `input`, `derived`, `margin` or `storage`, so the report can be filtered.
 
 ## Delta-V budget
 
-A flat list again, one row per manoeuvre, with `phase` and `manoeuvre_type` as the two axes to group over. Each row names a type that says how its `value` becomes a delta-V — a Hohmann transfer between circular altitudes, a collision avoidance hop that is the same transfer doubled when the config says it returns, a plane change at circular velocity, a deorbit impulse, or `given` for anything that needs real analysis done elsewhere. A `recurring` row is counted per year and scaled by the mission duration.
+The input is a flat list again, with one row per manoeuvre. `phase` and `manoeuvre_type` are the two axes to group over. Each row names a type, and the type says how its `value` becomes a delta-V:
+
+- `altitude_change`: a Hohmann transfer between circular altitudes.
+- `collision_avoidance`: the same transfer, doubled when the config says the spacecraft returns to its altitude.
+- `inclination_change`: a plane change at circular velocity.
+- `deorbit`: a single deorbit burn.
+- `given`: a delta-V worked out by real analysis elsewhere.
+
+A `recurring` row is counted per year, and scaled by the mission duration.
 
 ```csv
 manoeuvre_id,manoeuvre_name,phase,manoeuvre_type,value,count,recurring,loss_factor,comments
@@ -124,9 +134,9 @@ collision_avoidance,Collision avoidance,Operations,collision_avoidance,200 m,4,t
 deorbit,End-of-life deorbit,Disposal,deorbit,250 km,1,false,1.0,Single burn to a 500 x 250 km disposal orbit; natural decay rather than controlled re-entry
 ```
 
-The `value` column carries whatever its type requires, and is checked against it on load: a length where a velocity belongs is caught at the row that holds it. Margins are one layer rather than two — a single margin on the total, because per-manoeuvre contingency means little when the counts are the uncertain part.
+The `value` column holds whatever its type needs, and is checked against the type on load. So a length where a velocity belongs raises an error at that row. There is one layer of margin rather than two: a single margin on the total. A margin per manoeuvre would mean little, because the counts are the uncertain part.
 
-The closed forms are impulsive. `loss_factor` is where you say they are not: a multiplier on one row's delta-V for finite-burn and gravity losses, defaulting to 1.0 and bounded below by it. How large it should be depends on the thrust level and on how the manoeuvre is split into instalments, which is an operational matter, so it is an input rather than a calculation — and it is a different thing from the margin, which covers uncertainty in the counts.
+The closed forms assume impulsive burns. `loss_factor` corrects a row whose burn is not impulsive. It multiplies that row's delta-V, to cover finite-burn and gravity losses. It is 1.0 by default, and cannot be less. Its size depends on the thrust level, and on how the manoeuvre is split into several burns. That is an operational matter, so the factor is an input rather than a calculation. It is not the margin, which covers the uncertainty in the counts.
 
 ```python
 from quicksat.delta_v.budget import DeltaVBudget
@@ -146,15 +156,17 @@ budget.by_phase()                   # Commissioning 22.3, Operations 19.9, Dispo
 budget.propellant_mass()            # 24.89 kg, from the attached mass budget
 ```
 
-`tabulated_deltav()` lays the budget out as a document: every manoeuvre, a subtotal per phase, then the total before margin, the margin line, and the total with it. `comments=True` and `loss_factor=True` each add a column that is hidden by default.
+`tabulated_deltav()` lays out the budget as a document. It lists every manoeuvre, with a subtotal per phase. Then come the total before margin, the margin line, and the total with margin. `comments=True` and `loss_factor=True` each add a column that is hidden by default.
 
-`propellant_mass` takes the dry mass from a `MassBudget` attached when the delta-V budget is built, or from an argument that overrides it. The attachment is optional and one-directional — `quicksat.delta_v` never imports `quicksat.mass` at runtime — so every other query works with no spacecraft attached. Nothing is written back: the equipment CSV stays the source of truth for what is actually loaded. In the sample data that loop does not quite close: the budget asks for 24.9 kg where the equipment list carries 22. The disposal choice is what decides it — a single burn to a 500 × 250 km decay orbit costs 74 m/s of the 117 m/s total, where a direct re-entry from the same orbit would cost 152 and put the propellant at 42 kg.
+`propellant_mass` takes the dry mass from a `MassBudget`. The mass budget is attached when the delta-V budget is built, or given as an argument that overrides it. The attachment is optional and goes one way only. `quicksat.delta_v` never imports `quicksat.mass` at runtime, so every other query works with no spacecraft attached. Nothing is written back. The equipment CSV stays the only record of the propellant actually loaded.
+
+In the sample data, the two do not quite agree. The budget asks for 24.9 kg, and the equipment list carries 22 kg. The disposal choice decides this. A single burn to a 500 × 250 km decay orbit takes 74 m/s of the 117 m/s total. A direct re-entry from the same orbit would take 152 m/s, and would raise the propellant to 42 kg.
 
 ## Attitude agility budget
 
-Rest-to-rest slew performance about one axis. The wheel geometry collapses into two numbers — how much momentum and how much torque the assembly can put about that axis — and the slew arithmetic takes it from there. There is no distribution matrix and no per-wheel loading: a sizing model wants to know whether 40 degrees fits, not how the command is shared between wheels.
+The agility budget gives the rest-to-rest slew performance about one axis. The wheel geometry reduces to two numbers: the momentum and the torque that the wheels can apply about that axis. The slew calculation uses only these two. There is no distribution matrix and no load per wheel. A sizing model needs to know whether a 40° slew fits in the time, not how the wheels share the command.
 
-Mass properties arrive as **named cases**, as many as the mission needs. A case is either an envelope estimate — a box and a per-axis appendage uplift, whose inertia follows whatever the mass budget reports — or a stated inertia, as a mass properties report gives it. Never both, so there is never a question which of the two produced a number, and the names are yours: nothing in the code matches on them.
+Mass properties come as **named cases**, as many as the mission needs. A case is either an envelope estimate or a stated inertia. An envelope estimate is a box with an appendage factor per axis. Its inertia follows the mass that the mass budget reports. A stated inertia is given as a mass properties report gives it. A case is never both, so each number has only one possible source. You choose the names, and nothing in the code depends on them.
 
 ```yaml
 inertia_cases:
@@ -184,7 +196,7 @@ wheels:
 settling_time: 20 s          # an ADCS property, applied once at the end of a slew
 ```
 
-The config carries **no mass** — the mass budget owns that, and a second copy here would drift — and **no target duration**, because how long a manoeuvre may take is a question asked of a spacecraft rather than a property of one.
+The config holds **no mass**. The mass budget holds it, and a second copy here could come to disagree with it. The config also holds **no target duration**. How long a slew may take is a requirement placed on the spacecraft, not a property of it.
 
 ```python
 from quicksat import u
@@ -203,17 +215,17 @@ roll = AgilityBudget.from_yaml_file(
 roll.slew_time(40 * u.deg)                 # 63.2 s, momentum limited
 roll.total_time(40 * u.deg)                # 83.2 s once settling is added
 roll.time_margin(40 * u.deg, 113 * u.s)    # +35.8% against that target
-roll.achievable_angle(113 * u.s)           # 62.0 deg — the inverse solve
+roll.achievable_angle(113 * u.s)           # 62.0 deg, the inverse solve
 roll.slew_time(40 * u.deg, degraded=True)  # 117.5 s with one wheel failed
 ```
 
-Momentum sets the fastest the spacecraft can turn and torque sets how quickly it gets there. The crossover between them — 6.5° here — is where a triangular accelerate-then-decelerate profile gives way to a trapezoid that coasts at maximum rate. Which of the two binds is the useful output rather than a detail: below the crossover more torque would buy something, above it only more momentum would.
+Momentum sets the highest rate at which the spacecraft can turn. Torque sets how quickly it reaches that rate. The crossover angle between the two is 6.5° here. Below it, the rate profile is a triangle: the body accelerates, then decelerates. Above it, the profile is a trapezoid that coasts at the maximum rate. Which of the two limits a slew is a useful output. Below the crossover, more torque would shorten the slew. Above it, only more momentum would.
 
-Every capability query takes a `degraded` flag rather than there being a second object. With one of four wheels gone, only two of the three survivors can be driven at full torque if the net in-plane momentum is to stay zero, so both momentum and torque about the axis halve — the same pyramid flying degraded, not a three-wheel mounting.
+Every capability query takes a `degraded` flag, so there is no second object for a failed wheel. With one of the four wheels failed, three remain. Only two of them can run at full torque if the net momentum in the base plane is to stay zero. So both the momentum and the torque about the axis halve. This models the same pyramid with one wheel failed, not a mounting designed for three wheels.
 
-Roll and pitch run identical machinery, because the pyramid's symmetry axis is along yaw and both lie in its base plane; only the inertia differs, so one implementation serves both and takes the axis as an argument. Yaw is reported but never slewed — it is the weak axis under this mounting, and what a yaw manoeuvre would have to live within.
+Roll and pitch use the same calculation. The pyramid's symmetry axis is along yaw, so roll and pitch both lie in its base plane. Only the inertia differs. So one implementation serves both, and takes the axis as an argument. Yaw is reported, but never slewed. It is the weak axis with this mounting, and its limits are what a yaw manoeuvre would have to stay within.
 
-`tabulated_agility()` renders the slew table as a document. Given a `target_duration` it also checks each angle against it and marks what does not fit; without one those columns are absent rather than merely hidden, because there is nothing to check against. Tying a slew time to the shared mission's ground track speed turns it into swath given up — 798 km over the 113 s allowance here — which is the currency a payload operator thinks in.
+`tabulated_agility()` gives the slew table as a document. Given a `target_duration`, it also checks each angle against it, and marks the slews that do not fit. Without one, those columns are left out rather than hidden, because there is nothing to check against. The shared mission's ground track speed turns a slew time into a distance on the ground. During the 113 s allowance here, the ground track moves 798 km, and the payload images none of it. This distance is how a payload operator measures a slew.
 
 ## Mission scenario
 
@@ -266,7 +278,7 @@ The activity table and a Gantt chart show which activities miss their constraint
 
 ## Documentation
 
-Split along [Diátaxis](https://diataxis.fr/) lines: the sample is there to be followed, the docs to be understood. Files under `docs/` take a `_ref` suffix, so the two halves of a topic cannot be confused, and each half reads its own input files — `sample/sizing/data/` and `docs/sizing/data/` — so that retuning a tutorial cannot quietly falsify a figure quoted in a reference.
+The documentation follows the [Diátaxis](https://diataxis.fr/) split. The samples are tutorials to follow, and the docs explain how things work. Files under `docs/` take a `_ref` suffix, so a sample and its reference cannot be confused. Each reads its own input files, from `sample/sizing/data/` or `docs/sizing/data/`. So a change to a sample's inputs cannot change a figure quoted in a reference.
 
 The notebooks and their data are grouped by domain. `sizing` covers the mission, mass, data, delta-V and agility budgets below. `scenario` covers the orbit and the timeline of activities. `power` will hold power generation, built on the scenario. The tests follow the same split, under `tests/sizing/`, `tests/scenario/` and `tests/power/`. The orbit and shadow code that the scenario and power share is tested in `tests/orbit/`.
 
@@ -287,7 +299,7 @@ Three Markdown documents sit beside the notebooks. They cover the project as a w
 | [`docs/reference/conventions.md`](docs/reference/conventions.md) | The rules the code and the notebooks follow: how to handle units and constants, and how to write tests. Read it before changing the code. |
 | [`docs/guides/`](docs/guides/) | Guides for getting a specific task done. Start with [how to initialise a satellite](docs/guides/sizing/initialise_a_satellite.md). For the timeline, see [how to set up and run a scenario](docs/guides/scenario/set_up_a_scenario.md). |
 
-The sample notebooks work each budget through against one sample satellite — a small Earth observation platform in a 500 km sun-synchronous orbit — in the order you would actually do it. The scenario sample flies a 510 km sun-synchronous orbit for three orbits, with five activities. The reference notebooks sit behind them and say why each piece behaves as it does: the data model, unit handling, the input files field by field, how the derived quantities and the margin layers are worked out, and where each budget stops.
+The sizing samples work through each budget for one sample satellite, in the order you would do it. The satellite is a small Earth observation platform in a 500 km sun-synchronous orbit. The scenario sample flies a 510 km sun-synchronous orbit for three orbits, with five activities. The reference notebooks explain why each part behaves as it does. They cover the data model, unit handling, and the input files field by field. They also show how the derived quantities and the margin layers are worked out, and where each budget stops.
 
 ## Installation
 
