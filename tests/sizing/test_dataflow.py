@@ -122,7 +122,7 @@ def test_a_negative_margin_when_generation_outruns_downlink():
 
 
 def test_margin_responds_to_each_side():
-    """More contacts helps; a faster instrument hurts."""
+    """More contacts help, and a faster instrument hurts."""
     base = build().margin.value
     more_contacts = build(
         model=MODEL.replace("contacts_per_day: 7", "contacts_per_day: 9")

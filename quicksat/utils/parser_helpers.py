@@ -4,7 +4,7 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Package for Pydantic and unit parsing helpers.
+Pydantic and unit parsing helpers.
 
 """
 
@@ -63,13 +63,13 @@ def _serialize_quantity(v) -> str:
 
 def non_negative_quantity(unit, label: str):
     """
-    Builds an Annotated Quantity type restricted to one dimension and to non-negative values.
+    Builds an Annotated Quantity type for one dimension, with non-negative values.
 
     Parameters
     ----------
     unit : Unit
-        Any unit of the required dimension (`u.kg` for a mass); the value must be
-        convertible to it
+        Any unit of the required dimension, such as `u.kg` for a mass. The value
+        must be convertible to it
     label : str
         Name of the quantity, used in the error messages
 
@@ -97,8 +97,8 @@ def non_negative_quantity(unit, label: str):
 MassQty = non_negative_quantity(u.kg, "mass")
 """Annotated Quantity type restricted to non-negative masses.
 
-Rejects a dimensionally wrong entry such as '100 W' in a mass column, which a
-plain float would have silently accepted.
+Rejects an entry of the wrong dimension, such as '100 W' in a mass column. A plain
+float would have accepted it without an error.
 """
 
 LengthQty = non_negative_quantity(u.m, "length")
@@ -107,8 +107,8 @@ LengthQty = non_negative_quantity(u.m, "length")
 AngleQty = non_negative_quantity(u.deg, "angle")
 """Annotated Quantity type for angles.
 
-astropy gives angles a dimension of their own, so this rejects `500 km` and a
-bare `97.4` alike: an inclination must say whether it is in degrees or radians.
+astropy gives angles a dimension of their own, so this rejects both `500 km` and a
+bare `97.4`. An inclination must say whether it is in degrees or radians.
 """
 
 
@@ -127,8 +127,8 @@ DataRateQty = non_negative_quantity(u.bit / u.s, "data rate")
 """Annotated Quantity type for data rates.
 
 astropy treats the bit as a unit of its own, so a data rate is information over
-time: this rejects `800 MHz` as well as `500 km`. `800 Mbps` does not parse at
-all -- write `800 Mbit/s`.
+time. This rejects `800 MHz` as well as `500 km`. `800 Mbps` does not parse at all,
+so write `800 Mbit/s`.
 """
 
 TimeQty = non_negative_quantity(u.s, "time")

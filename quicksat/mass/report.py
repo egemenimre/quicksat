@@ -6,10 +6,10 @@
 """
 Rendering of the mass budget as a document.
 
-Presentation only: everything here reads a budget table and lays it out, and
-nothing in it feeds back into the arithmetic. It takes the equipment frame and the
-config rather than a `MassBudget`, which keeps the dependency one-directional and
-lets the report be exercised against a bare frame.
+This is presentation only. It reads a budget table and lays it out, and nothing in it
+changes the arithmetic. It takes the equipment frame and the config rather than a
+`MassBudget`. So the dependency goes one way only, and the report can be tested against
+a bare frame.
 
 """
 
@@ -112,9 +112,9 @@ def _row(name: str, row_type: str, **values) -> dict[str, Any]:
     """
     One row of the tabulated report, with everything not supplied left blank.
 
-    `name` carries the equipment name on an item row and the subtotal caption on
-    the rows between them. Subtotals leave `equipment_id` blank, so the captions
-    line up one column in from the items they summarise.
+    `name` holds the equipment name on an item row, and the subtotal caption on the rows
+    between items. Subtotals leave `equipment_id` blank, so the captions sit one column
+    to the right of the items they sum.
 
     Parameters
     ----------
@@ -146,9 +146,9 @@ def _assemble(
     """
     Assembles the mass budget document.
 
-    Locations and subsystems come out in order of first appearance in the equipment
-    file rather than sorted, so the report keeps the structure the file was written
-    with — and the derived harness, appended last, lands at the foot of its location.
+    Locations and subsystems keep the order in which they first appear in the equipment
+    file, rather than being sorted. So the report keeps the structure of the file. The
+    derived harness is added last, so it ends up at the bottom of its location.
 
     Parameters
     ----------
@@ -273,16 +273,16 @@ def _assemble(
 def _style(report: pd.DataFrame, comments: bool) -> Styler:
     """
     Renders the report for reading: blanks instead of NaN, fixed decimals, bold
-    subtotals, and human-friendly column headers with units.
+    subtotals, and readable column headers with units.
 
-    Columns are hidden rather than dropped, so `.data` stays complete: `row_type`
-    is what makes the report filterable, `location` is worth grouping on, and the
-    comments are worth keeping to hand. `location` is hidden because the subtotal
-    and total rows already name the location they close, so the column only repeats
-    what the row above it says.
+    Columns are hidden rather than dropped, so `.data` stays complete. `row_type` makes
+    the report filterable, `location` is useful to group on, and the comments are useful
+    to keep. `location` is hidden, because the subtotal and total rows already name the
+    location they close. So the column only repeats the row above it.
 
-    Headers are looked up per column rather than passed as a positional list, which
-    would silently mismatch whenever a column is added or hidden.
+    Headers are looked up per column, rather than passed as a list by position. A list
+    would no longer match whenever a column is added or hidden, and would raise no
+    error.
 
     Parameters
     ----------
@@ -299,7 +299,7 @@ def _style(report: pd.DataFrame, comments: bool) -> Styler:
 
     def _bold_summary(row):
         """
-        Bolds a row if it is a subtotal or a total.
+        Makes a row bold if it is a subtotal or a total.
 
         Parameters
         ----------
@@ -330,7 +330,7 @@ def _style(report: pd.DataFrame, comments: bool) -> Styler:
 
 def _with_margin(frame: pd.DataFrame) -> pd.Series:
     """
-    Margined mass per row, for the hardware rows of the report.
+    Mass with margin per row, for the hardware rows of the report.
 
     Parameters
     ----------

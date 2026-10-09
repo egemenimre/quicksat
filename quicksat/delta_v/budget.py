@@ -6,14 +6,13 @@
 """
 Delta-V budget: what the mission has to spend to fly its orbit.
 
-Mission Analysis owns the orbital mechanics. This module holds their numbers --
-how many collision avoidance manoeuvres a year, what the injection dispersion is,
-what altitude to deorbit from -- and does the small closed-form calculation that
-turns each into a delta-V.
+Mission Analysis does the orbital mechanics. This module holds their numbers, such as
+how many collision avoidance manoeuvres a year, the injection dispersion, and the
+altitude to deorbit from. It turns each into a delta-V with a short closed form.
 
-Circular orbits throughout, two-impulse transfers, no perturbations. Anything that
-needs real analysis arrives as a `given` manoeuvre with the delta-V already worked
-out elsewhere.
+The orbits are circular throughout, the transfers have two impulses, and there are no
+perturbations. Anything that needs real analysis comes as a `given` manoeuvre, with the
+delta-V already worked out elsewhere.
 
 """
 
@@ -72,7 +71,7 @@ class ManoeuvreType(str, Enum):
     """Hohmann transfer between two circular altitudes. `value` is the change."""
 
     COLLISION_AVOIDANCE = "collision_avoidance"
-    """The same Hohmann, doubled when the config says the hop returns.
+    """The same Hohmann, doubled when the config says the spacecraft returns.
     `value` is the altitude offset."""
 
     INCLINATION_CHANGE = "inclination_change"
@@ -98,8 +97,8 @@ class Manoeuvre(BaseModel):
     """
     One line of the delta-V budget.
 
-    Validated row by row on load, so a malformed CSV reports the offending row and
-    field rather than failing later in the arithmetic.
+    Each row is validated on load. So a malformed CSV raises an error that names the bad
+    row and field, rather than failing later in the arithmetic.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -120,7 +119,7 @@ class Manoeuvre(BaseModel):
     """The input, with its unit. What it means is set by `manoeuvre_type`."""
 
     count: Annotated[float, Field(ge=0)]
-    """How many times. Per year when `recurring`, otherwise outright."""
+    """How many times. Per year when `recurring`, otherwise for the whole mission."""
 
     recurring: bool = False
     """When set, `count` is per year and is multiplied by the mission duration."""
@@ -128,11 +127,12 @@ class Manoeuvre(BaseModel):
     loss_factor: Annotated[float, Field(ge=1.0)] = 1.0
     """Finite-burn and gravity losses, as a multiplier on the closed-form delta-V.
 
-    1.0 is the impulsive assumption the closed forms make; 1.03 asks for 3% more
-    to fly the manoeuvre for real. How much depends on how long each burn arc is
-    and on how the manoeuvre is split into instalments, which is an operational
-    matter this module cannot see -- hence an input rather than a calculation.
-    Bounded below at 1.0: a burn cannot cost less than the impulsive ideal."""
+    1.0 is the impulsive assumption that the closed forms make. 1.03 asks for 3%
+    more, to fly the manoeuvre with real burns. The size depends on how long each
+    burn arc is, and on how the manoeuvre is split into several burns. That is an
+    operational matter, which this module cannot see. So the factor is an input
+    rather than a calculation. It cannot be below 1.0, because a burn cannot need
+    less than the impulsive ideal."""
 
     comments: str = ""
     """Free text notes."""
@@ -140,11 +140,11 @@ class Manoeuvre(BaseModel):
     @model_validator(mode="after")
     def _value_matches_the_type(self):
         """
-        Checks `value` carries the dimension its manoeuvre type requires.
+        Checks that `value` has the dimension that its manoeuvre type requires.
 
-        This is the point of one `value` column serving five types: a length where
-        a velocity belongs is caught at the row that holds it, rather than becoming
-        a number that happens to be wrong.
+        This check is the reason one `value` column can serve five types. A length where
+        a velocity belongs raises an error at its row, rather than becoming a wrong
+        number.
         """
         unit, label = _DIMENSIONS[self.manoeuvre_type]
         if not unit.is_equivalent(self.value.unit):
@@ -165,26 +165,26 @@ class Propulsion(BaseModel):
 
 
 class CollisionAvoidance(BaseModel):
-    """Policy for how a collision avoidance hop is flown."""
+    """Policy for how a collision avoidance manoeuvre is flown."""
 
     return_burn: bool = True
-    """A hop up and back down. False when the satellite was due to be raised
-    anyway and the manoeuvre does double duty against the maintenance debt."""
+    """Up and back down. False when the satellite was due to be raised anyway, so the
+    manoeuvre also serves as that raise."""
 
 
 class DeltaVConfig(BaseModel):
     """
     Budget settings.
 
-    Neither the orbit nor the mission duration is here: both come from the shared
-    mission file, because delta-V is not the only budget that needs either. What
-    stays is what only this budget can use.
+    Neither the orbit nor the mission duration is here. Both come from the shared
+    mission file, because other budgets need them too. What stays here is what only this
+    budget can use.
     """
 
     propulsion: Propulsion
     margin: Annotated[float, Field(ge=0)] = 0.0
-    """One allowance on the total, as a percentage. Per-manoeuvre contingency is
-    not a meaningful quantity when the counts themselves are the uncertain part."""
+    """One allowance on the total, as a percentage. A contingency per manoeuvre means
+    little, because the counts are the uncertain part."""
 
     collision_avoidance: CollisionAvoidance = CollisionAvoidance()
 
@@ -295,10 +295,10 @@ class DeltaVBudget:
     """
     A delta-V budget assembled from a flat list of manoeuvres.
 
-    Like the mass budget it is a table, and `phase` and `manoeuvre_type` are two
-    ordinary columns to group over. Unlike the mass budget there is one margin
-    rather than two: a single margin on the total, because per-manoeuvre delta-V
-    contingency means little when the counts are the uncertain part.
+    Like the mass budget, it is a table, and `phase` and `manoeuvre_type` are two
+    ordinary columns to group over. Unlike the mass budget, it has one margin rather
+    than two: a single margin on the total. A delta-V contingency per manoeuvre would
+    mean little, because the counts are the uncertain part.
 
     Parameters
     ----------
@@ -310,8 +310,8 @@ class DeltaVBudget:
         The shared mission: the orbit the manoeuvres are flown from, and the
         duration that scales the recurring ones
     mass_budget : MassBudget, optional
-        The spacecraft this budget is flown by, so `propellant_mass` can take the
-        dry mass from it. Optional, and the only place the two modules meet
+        The spacecraft that flies this budget, so that `propellant_mass` can take the
+        dry mass from it. Optional, and the only link between the two modules
     """
 
     def __init__(
@@ -349,7 +349,7 @@ class DeltaVBudget:
         mission_path : str | Path
             Filepath of the shared mission (YAML)
         mass_budget : MassBudget, optional
-            The spacecraft this budget is flown by, for `propellant_mass`
+            The spacecraft that flies this budget, for `propellant_mass`
 
         Returns
         -------
@@ -381,7 +381,7 @@ class DeltaVBudget:
         Returns
         -------
         frame : pd.DataFrame
-            A copy, so nothing downstream writes back into the budget
+            A copy, so no later code can write back into the budget
         """
         return self._frame.copy()
 
@@ -392,10 +392,10 @@ class DeltaVBudget:
         Returns
         -------
         frame : pd.DataFrame
-            The manoeuvres, with `deltav_each` and `deltav_total` columns in m/s
-            and the effective `occurrences` the count resolves to. `deltav_each`
-            carries the row's `loss_factor`, so it is what the manoeuvre costs to
-            fly rather than the closed form's impulsive ideal
+            The manoeuvres, with `deltav_each` and `deltav_total` columns in m/s, and
+            the number of `occurrences` that the count comes to. `deltav_each` includes
+            the row's `loss_factor`. So it is the delta-V needed to fly the manoeuvre,
+            not the closed form's impulsive ideal
         """
         frame = self._frame
         years = self.mission.duration.to_value("yr")
@@ -466,14 +466,14 @@ class DeltaVBudget:
         """
         Propellant needed to deliver the budget, from the rocket equation.
 
-        With no `dry_mass`, takes it from the attached mass budget as the in-orbit
-        mass with the tanks empty -- the final mass of the last burn. Passing one
-        overrides that, which is how a what-if is asked without touching the
-        equipment file, and is the only way to use this method at all when no mass
+        With no `dry_mass`, it takes the dry mass from the attached mass budget. This is
+        the in-orbit mass with the tanks empty, which is the mass after the last burn. A
+        `dry_mass` passed in overrides it. This tries a different case without changing
+        the equipment file. It is also the only way to use this method when no mass
         budget is attached.
 
-        Nothing is written back either way: the equipment CSV stays the source of
-        truth for what is actually loaded, and the comparison is left to a human.
+        Nothing is written back in either direction. The equipment CSV stays the only
+        record of the propellant actually loaded, and a person compares the two.
 
         Parameters
         ----------
@@ -523,8 +523,8 @@ class DeltaVBudget:
         comments : bool
             Show the manoeuvre file's comments column
         loss_factor : bool
-            Show the loss factor each manoeuvre's delta-V was scaled by. Off by
-            default, since on a budget flown as impulsive it is a column of ones
+            Show the loss factor that scaled each manoeuvre's delta-V. Off by default,
+            because in a budget of impulsive burns it is a column of ones
 
         Returns
         -------
@@ -593,9 +593,9 @@ def _frame_from_items(manoeuvres: list[Manoeuvre]) -> pd.DataFrame:
     """
     Flattens validated manoeuvres into the working table.
 
-    `value` stays a Quantity rather than being reduced to a float: unlike the
-    mass budget's single dimension, these are lengths, angles and velocities in one
-    column, so there is no canonical unit to convert to.
+    `value` stays a Quantity, rather than being reduced to a float. The mass budget has
+    a single dimension. Here, one column holds lengths, angles and velocities, so there
+    is no single unit to convert to.
 
     Parameters
     ----------

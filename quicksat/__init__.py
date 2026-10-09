@@ -20,7 +20,7 @@ Q_ = Quantity
 """Shorthand for astropy's `Quantity`, exported the way opticks exports it.
 
 The package builds quantities with the constructor, `Q_(123, "m")`, and parses
-text with `Q_("123 m")`; the notebooks write `123 * u.m` instead.
+text with `Q_("123 m")`. The notebooks write `123 * u.m` instead.
 """
 
 # astropy.constants creates its constants at import, so pyright cannot see them
@@ -31,6 +31,6 @@ MU_EARTH = constants.GM_earth  # pyright: ignore[reportAttributeAccessIssue]
 """Earth gravitational parameter: astropy's default, the IAU 2015 nominal GM.
 
 A GM rather than G times astropy's `M_earth`. GM is the measured quantity, known
-to about nine significant figures where G is known to about five, and astropy
-derives `M_earth` from the two anyway.
+to about nine significant figures, and G is known to about five. astropy itself
+derives `M_earth` from the two.
 """
