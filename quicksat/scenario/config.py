@@ -45,13 +45,14 @@ from pydantic import (
 
 from quicksat import Q_, u
 from quicksat.orbit.attitude import slew_duration, slew_progress
-from quicksat.scenario.spacecraft import read_glb_json
+from quicksat.scenario.spacecraft import node_index, read_glb_json
 from quicksat.utils.intervals import TIME_GRID
 from quicksat.utils.parser_helpers import (
     AngularAccelerationQty,
     AngularRateQty,
     LengthQty,
     PlainQty,
+    SignedAngleQty,
     TimeQty,
 )
 
@@ -934,6 +935,93 @@ class Slew(BaseModel):
         )
 
 
+FULL_TURN = (Q_(-180, "deg"), Q_(180, "deg"))
+"""The range of an articulation that can turn all the way round."""
+
+
+class Articulation(BaseModel):
+    """
+    A part of the 3D model that turns about one body axis to face the sun.
+
+    At each step, the part turns about `axis` until `sun_axis` points as close to
+    the sun as the turn allows. The angle is zero where the model draws the part,
+    and turns right-handed about the axis. In a mode that `park` names, the part
+    holds the angle given there instead.
+
+    Parameters
+    ----------
+    part : str
+        The name of the GLB node that turns. It turns about the axis through its
+        own origin, and its children turn with it.
+    axis : str
+        The drive axis, in body axes, such as `+y`
+    sun_axis : str
+        The part's axis to turn to the sun, as the model draws the part. It must
+        use a different body axis from `axis`.
+    range : tuple of Quantity, optional
+        The lowest and the highest angle, from -180 to 180 degrees. All the way
+        round by default. Where the sun asks for an angle outside it, the part
+        stops at the nearer end.
+    park : dict of str to Quantity, optional
+        A fixed angle for each mode named, inside the range
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+    part: str
+    axis: Axis
+    sun_axis: Axis
+    range: tuple[SignedAngleQty, SignedAngleQty] = FULL_TURN
+    park: dict[str, SignedAngleQty] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check(self):
+        """Checks the axes, the range, and that each park angle is in the range."""
+        _different_axes(self.axis, self.sun_axis, "axis and sun_axis")
+        low, high = self.range
+        if not FULL_TURN[0] <= low < high <= FULL_TURN[1]:
+            raise ValueError(
+                f"range must rise from low to high within -180 to 180 deg, got "
+                f"[{low}, {high}]"
+            )
+        for mode, angle in self.park.items():
+            if not low <= angle <= high:
+                raise ValueError(
+                    f"the park angle for '{mode}', {angle}, is outside the range "
+                    f"[{low}, {high}]"
+                )
+        return self
+
+
+def _model_mapping(value):
+    """A `3d_model` given as a file name, as the mapping with only `file`."""
+    if isinstance(value, (str, Path)):
+        return {"file": value}
+    return value
+
+
+class SpacecraftModel(BaseModel):
+    """
+    The spacecraft's 3D model, and the parts of it that turn.
+
+    `3d_model` in the scenario file is either the name of the GLB file, or a
+    mapping with `file` and `articulations`.
+
+    Parameters
+    ----------
+    file : Path
+        The GLB file, in body axes and metres. A relative path is taken from the
+        folder of the scenario file.
+    articulations : dict of str to Articulation, optional
+        The parts that turn to face the sun, each under a name of your choice
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+    file: Path
+    articulations: dict[str, Articulation] = Field(default_factory=dict)
+
+
 class Scenario(BaseModel):
     """
     A scenario: the orbit, the period of the run, and the activities.
@@ -959,10 +1047,10 @@ class Scenario(BaseModel):
     slew : Slew, optional
         How the body turns between attitudes. Without it, attitude changes are
         instant.
-    spacecraft_model : Path, optional
-        The spacecraft's 3D model, a GLB file in body axes and metres, written
-        `3d_model` in the file. A relative path is taken from the folder of the
-        scenario file. The viewer draws it, or a 1 m cube without it.
+    spacecraft_model : SpacecraftModel, optional
+        The spacecraft's 3D model, written `3d_model` in the file: a GLB file in
+        body axes and metres, and the parts of it that turn. The viewer draws it,
+        or a 1 m cube without it.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -974,7 +1062,9 @@ class Scenario(BaseModel):
     attitudes: Attitudes
     activities: list[Activity]
     slew: Slew | None = None
-    spacecraft_model: Path | None = Field(None, alias="3d_model")
+    spacecraft_model: Annotated[
+        SpacecraftModel | None, BeforeValidator(_model_mapping)
+    ] = Field(None, alias="3d_model")
 
     _source_file: Path | None = PrivateAttr(None)
     _source_text: str | None = PrivateAttr(None)
@@ -1071,20 +1161,32 @@ class Scenario(BaseModel):
 
     @field_validator("spacecraft_model")
     @classmethod
-    def _read_model(cls, path: Path | None, info: ValidationInfo) -> Path | None:
+    def _read_model(
+        cls, model: SpacecraftModel | None, info: ValidationInfo
+    ) -> SpacecraftModel | None:
         """
-        Takes a relative path from the folder of the scenario file, and checks
-        that the viewer can read the model.
+        Takes a relative path from the folder of the scenario file, checks that
+        the viewer can read the model, and that each articulation names one of
+        its nodes.
         """
-        if path is None:
+        if model is None:
             return None
+        path = model.file
         base_dir = (info.context or {}).get("base_dir")
         if base_dir is not None and not path.is_absolute():
             path = Path(base_dir) / path
         if not path.is_file():
             raise ValueError(f"no such file: {path}")
-        read_glb_json(path)
-        return path
+        gltf = read_glb_json(path)
+        problems = []
+        for name, articulation in model.articulations.items():
+            try:
+                node_index(gltf, articulation.part)
+            except ValueError as exc:
+                problems.append(f"articulation '{name}': {exc}")
+        if problems:
+            raise ValueError("\n".join(problems))
+        return model.model_copy(update={"file": path})
 
     @field_validator("activities", mode="before")
     @classmethod
@@ -1125,6 +1227,15 @@ class Scenario(BaseModel):
                     f"activity {number}: attitude '{activity.attitude}' is not "
                     f"defined in attitudes, which define: {defined}"
                 )
+        if self.spacecraft_model is not None:
+            modes = sorted({activity.mode for activity in self.activities})
+            for name, articulation in self.spacecraft_model.articulations.items():
+                for mode in articulation.park:
+                    if mode not in modes:
+                        problems.append(
+                            f"articulation '{name}': park names the mode '{mode}', "
+                            f"which no activity has. The activities have: {modes}"
+                        )
         if problems:
             raise ValueError("\n".join(problems))
         return self

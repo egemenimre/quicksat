@@ -19,7 +19,7 @@ from importlib.resources import files
 
 import pytest
 
-from quicksat.scenario.config import Scenario
+from quicksat.scenario.config import Scenario, SpacecraftModel
 from quicksat.scenario.spacecraft import read_glb_json
 from quicksat.scenario.viewer import VERSION, scenario_data, viewer_page
 
@@ -56,6 +56,10 @@ def test_the_sample_model_reads(model):
     names = [node["name"] for node in gltf["nodes"]]
     assert "Bus" in names
     assert "Wing +y inner cells" in names
+    # each wing is one node, with its panels as children, so that it can turn
+    wing = gltf["nodes"][names.index("Wing +y")]
+    children = [gltf["nodes"][i]["name"] for i in wing["children"]]
+    assert "Wing +y inner cells" in children
 
 
 @pytest.mark.parametrize(
@@ -94,7 +98,8 @@ def test_an_extension_the_viewer_decodes_is_accepted(tmp_path):
 
 def test_the_model_is_taken_from_the_folder_of_the_file(text, data_dir):
     scenario = Scenario.from_yaml_text("3d_model: spacecraft.glb\n" + text, data_dir)
-    assert scenario.spacecraft_model == data_dir / "spacecraft.glb"
+    assert scenario.spacecraft_model is not None
+    assert scenario.spacecraft_model.file == data_dir / "spacecraft.glb"
 
 
 def test_without_a_model_there_is_none(run):
@@ -118,7 +123,9 @@ def test_without_a_model_the_data_has_none(run):
 
 
 def test_the_data_carries_the_model_byte_for_byte(run, model):
-    scenario = run.scenario.model_copy(update={"spacecraft_model": model})
+    scenario = run.scenario.model_copy(
+        update={"spacecraft_model": SpacecraftModel(file=model)}
+    )
     data = scenario_data(dataclasses.replace(run, scenario=scenario))
     assert data["model"]["name"] == "spacecraft.glb"
     assert base64.b64decode(data["model"]["glb_base64"]) == model.read_bytes()

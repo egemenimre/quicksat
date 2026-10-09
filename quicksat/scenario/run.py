@@ -19,6 +19,7 @@ overlaps.
 
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from functools import cached_property
 
 import numpy as np
 import pandas as pd
@@ -40,6 +41,7 @@ from quicksat.orbit.sso import sso_tle
 from quicksat.orbit.tle import Tle, read_tle_file, warn_if_far_from_epoch
 from quicksat.orbit.trajectory import Trajectory
 from quicksat.orbit.trajectory_files import read_trajectory_file
+from quicksat.scenario.articulation import articulation_angles
 from quicksat.scenario.attitude import SLEW, SlewWindow, plan_slews
 from quicksat.scenario.config import (
     LATITUDE_CROSSING,
@@ -682,6 +684,22 @@ class ScenarioRun:
     occurrences: list[Occurrence]
     slews: list[SlewWindow]
     activity_table: pd.DataFrame
+
+    @cached_property
+    def articulations(self) -> dict[str, Quantity]:
+        """
+        The angle of each articulation of the 3D model, from `articulation_angles`.
+
+        Worked out on first use, because it needs the body's orientation at each
+        step.
+
+        Returns
+        -------
+        angles : dict of str to Quantity
+            For each articulation, by its name, its angles in degrees on the grid.
+            Empty without articulations.
+        """
+        return articulation_angles(self)
 
     @property
     def activity_summary(self) -> str:

@@ -238,7 +238,11 @@ orbit:
   sso: {altitude: 510 km, ltan: "13:30"}
 start: 2026-10-01T09:00:00
 duration: 3 orbits
-3d_model: spacecraft.glb       # optional: the viewer draws a 1 m cube without it
+3d_model:                      # optional: the viewer draws a 1 m cube without it
+  file: spacecraft.glb
+  articulations:               # the parts that turn to face the sun
+    wing +y: {part: Wing +y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
+    wing -y: {part: Wing -y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
 
 attitudes:
   nadir: {nadir_axis: +z, orbit_normal: -y}
@@ -274,7 +278,7 @@ len(run.slews)        # 10 slews, from 92 s to 214 s
 write_scenario_viewer(run, "sample/scenario/output")
 ```
 
-The activity table and a Gantt chart show which activities miss their constraint, and by how much. The viewer is a web page, `scenario_viewer.html`, with the run's data in `scenario.js` beside it. It shows the run in 3D, with the ground track and the timeline. The spacecraft is drawn from the GLB file that `3d_model` names in the scenario file, or as a 1 m cube without one. The page needs no Python and no server. So the folder can be sent to anyone, who opens the page with a double-click.
+The activity table and a Gantt chart show which activities miss their constraint, and by how much. The viewer is a web page, `scenario_viewer.html`, with the run's data in `scenario.js` beside it. It shows the run in 3D, with the ground track and the timeline. The spacecraft is drawn from the GLB file that `3d_model` names in the scenario file, or as a 1 m cube without one. The parts that `3d_model` lists as articulations, such as the solar wings, turn to face the sun. In a mode that parks them, they hold a fixed angle instead. The page needs no Python and no server. So the folder can be sent to anyone, who opens the page with a double-click.
 
 ## Documentation
 

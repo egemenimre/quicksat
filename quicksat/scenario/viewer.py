@@ -51,18 +51,20 @@ from quicksat.orbit.tle import Tle
 from quicksat.scenario.attitude import SLEW, SlewWindow, body_rotations
 from quicksat.scenario.plots import scenario_colours
 from quicksat.scenario.run import ScenarioRun
+from quicksat.scenario.spacecraft import node_index, read_glb_json
 from quicksat.utils.intervals import TimeArray
 
 FORMAT = "quicksat-scenario"
 """The `format` field of the scenario data."""
 
-VERSION = 4
+VERSION = 5
 """The `version` field of the scenario data. It goes up when a field changes.
 Version 2 added `light` to the grid, and `penumbra` and `umbra` to the
 illumination track, in place of `eclipse`. Version 3 added `model`, the
 spacecraft's 3D model. Version 4 added `orbit.trajectory` for an orbit from a
 trajectory file, ECSV or OEM, where `orbit.tle` is null, and renamed
-`orbit.nodal_period_s` to `orbit.period_s`."""
+`orbit.nodal_period_s` to `orbit.period_s`. Version 5 added
+`model.articulations`, the parts of the model that turn, with their angles."""
 
 DATA_FILE = "scenario.js"
 """Name of the file the scenario data is written to."""
@@ -151,26 +153,43 @@ def _attitudes_between_slews(run: ScenarioRun) -> P.IntervalDict:
     return row
 
 
-def _model_data(path: Path | None) -> dict | None:
+def _model_data(run: ScenarioRun) -> dict | None:
     """
     The spacecraft's 3D model, as the page reads it.
 
     Parameters
     ----------
-    path : Path or None
-        The GLB file, or None for no model
+    run : ScenarioRun
+        The run, whose scenario may name a model
 
     Returns
     -------
     model : dict or None
-        `name`, the file name, and `glb_base64`, the file's bytes in base64. None
-        without a model, for which the page draws a 1 m cube.
+        `name`, the file name, `glb_base64`, the file's bytes in base64, and
+        `articulations`. Each articulation has its `name`, its `part`, the index
+        of that `node` in the glTF, its `axis`, the `park_modes` it parks in, and
+        `angle_deg`, its angle at each time of the grid. None without a model,
+        for which the page draws a 1 m cube.
     """
-    if path is None:
+    model = run.scenario.spacecraft_model
+    if model is None:
         return None
+    gltf = read_glb_json(model.file)
+    angles = run.articulations
     return {
-        "name": path.name,
-        "glb_base64": base64.b64encode(path.read_bytes()).decode("ascii"),
+        "name": model.file.name,
+        "glb_base64": base64.b64encode(model.file.read_bytes()).decode("ascii"),
+        "articulations": [
+            {
+                "name": name,
+                "part": articulation.part,
+                "node": node_index(gltf, articulation.part),
+                "axis": articulation.axis,
+                "park_modes": sorted(articulation.park),
+                "angle_deg": _flat(np.asarray(angles[name].to_value(u.deg)), 3),
+            }
+            for name, articulation in model.articulations.items()
+        ],
     }
 
 
@@ -229,8 +248,9 @@ def scenario_data(run: ScenarioRun) -> dict:
     data : dict
         The fields of `scenario.js`. `grid` holds the values at each time step.
         `tracks` holds the three rows of the Gantt chart, and `occurrences` the
-        activity table. `model` holds the spacecraft's 3D model, or None. `id` is the first 16 hex digits of the SHA-256 of the
-        JSON text of the other fields.
+        activity table. `model` holds the spacecraft's 3D model and the angles
+        of its articulations, or None. `id` is the first 16 hex digits of the
+        SHA-256 of the JSON text of the other fields.
     """
     start: TimeArray = run.times[0]
 
@@ -308,7 +328,7 @@ def scenario_data(run: ScenarioRun) -> dict:
         "earth_radius_km": R_EARTH.to_value(u.km),
         "orbit": _orbit_data(run),
         "colours": scenario_colours(run.scenario),
-        "model": _model_data(run.scenario.spacecraft_model),
+        "model": _model_data(run),
         "grid": {
             "t_s": _flat((run.times - start).to_value(u.s), 3),
             "r_km": _flat(position, 3),

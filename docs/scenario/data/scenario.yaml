@@ -11,8 +11,13 @@ start: 2026-10-01T00:00:00
 duration: 3 orbits
 step: 10 s
 
-# The spacecraft's 3D model, which the viewer draws, in body axes and metres
-3d_model: spacecraft.glb
+# The spacecraft's 3D model, which the viewer draws, in body axes and metres, and
+# the wings that turn to face the sun, parked in imaging
+3d_model:
+  file: spacecraft.glb
+  articulations:
+    wing +y: {part: Wing +y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
+    wing -y: {part: Wing -y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
 
 attitudes:
   nadir: {nadir_axis: +z, orbit_normal: -y}

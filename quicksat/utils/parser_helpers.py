@@ -94,6 +94,37 @@ def non_negative_quantity(unit, label: str):
     ]
 
 
+def signed_quantity(unit, label: str):
+    """
+    Builds an Annotated Quantity type for one dimension, with values of either sign.
+
+    Parameters
+    ----------
+    unit : Unit
+        Any unit of the required dimension, such as `u.deg` for an angle. The value
+        must be convertible to it
+    label : str
+        Name of the quantity, used in the error messages
+
+    Returns
+    -------
+    annotated : type
+        A type usable as a Pydantic field annotation
+    """
+
+    def _validate(v):
+        if not v.unit.is_equivalent(unit):
+            raise ValueError(f"Value must have {label} dimensions, got '{v}'")
+        return v
+
+    return Annotated[
+        u.Quantity,
+        BeforeValidator(_parse_quantity),
+        AfterValidator(_validate),
+        PlainSerializer(_serialize_quantity, return_type=str),
+    ]
+
+
 MassQty = non_negative_quantity(u.kg, "mass")
 """Annotated Quantity type restricted to non-negative masses.
 
@@ -110,6 +141,9 @@ AngleQty = non_negative_quantity(u.deg, "angle")
 astropy gives angles a dimension of their own, so this rejects both `500 km` and a
 bare `97.4`. An inclination must say whether it is in degrees or radians.
 """
+
+SignedAngleQty = signed_quantity(u.deg, "angle")
+"""Annotated Quantity type for angles of either sign, such as `-90 deg`."""
 
 
 PlainQty = Annotated[

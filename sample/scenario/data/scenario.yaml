@@ -28,8 +28,18 @@ step: 10 s
 
 # The spacecraft's 3D model, which the viewer draws: a GLB file in body axes and
 # metres, with its origin at the point the body turns about. A relative path is
-# taken from the folder of this file. Leave it out for a plain 1 m cube.
-3d_model: spacecraft.glb
+# taken from the folder of this file. Leave it out for a plain 1 m cube. Without
+# articulations, the file name alone will do: 3d_model: spacecraft.glb
+3d_model:
+  file: spacecraft.glb
+  # The parts of the model that turn to face the sun. Each wing is one node of the
+  # model, with its origin on the wing's drive axis. The wing turns about y until
+  # its cells, which face -z as the model draws them, point as close to the sun as
+  # they can. In imaging, the wings park at 0 deg instead, as the model draws them.
+  # An optional range, such as range: [-90 deg, 90 deg], limits the turn.
+  articulations:
+    wing +y: {part: Wing +y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
+    wing -y: {part: Wing -y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
 
 # The body axes that each attitude points.
 attitudes:

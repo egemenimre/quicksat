@@ -83,7 +83,24 @@ The viewer draws the spacecraft from a GLB file, the binary form of glTF. Put th
 
 Without it, the viewer draws a 1 m cube. Build the model in body axes and in metres, with its origin at the point the body turns about. Then the model's x, y and z are the body's. In Blender, untick "+Y Up" when you export it, or the axes turn. Export it without Draco or meshopt compression, because the viewer cannot decode them.
 
-Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), section "The spacecraft's 3D model".
+Parts of the model can turn to face the sun, such as solar wings. Make each such part one node, with its origin on its drive axis and its pieces as children. Then list it under `articulations`, with `file` for the model:
+
+```yaml
+3d_model:
+  file: spacecraft.glb
+  articulations:
+    wing +y: {part: Wing +y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
+```
+
+- **`part`** is the node's name in the model.
+- **`axis`** is the body axis it turns about.
+- **`sun_axis`** is the part's axis to turn to the sun, as the model draws it. It must use a different body axis from `axis`.
+- **`range`**, optional, limits the turn, as in `range: [-90 deg, 90 deg]`.
+- **`park`**, optional, holds a fixed angle in the modes it names. Each mode must be one that an activity has.
+
+The part tracks the sun at each step, and the viewer turns it.
+
+Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), sections "The spacecraft's 3D model" and "Articulations".
 
 ## 7. Write the activities
 
