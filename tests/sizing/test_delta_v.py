@@ -85,7 +85,7 @@ def test_hohmann_hop_of_200_m():
 
 
 def test_hohmann_is_symmetric():
-    """Going down costs what going up costs."""
+    """Going down needs the same delta-V as going up."""
     mission = Mission.from_yaml_text(MISSION)
     up = hohmann_deltav(mission.radius, mission.radius + Q_(10, "km"))
     down = hohmann_deltav(mission.radius + Q_(10, "km"), mission.radius)
@@ -102,7 +102,7 @@ def test_deorbit_to_the_surface():
 
 
 def test_plane_change_costs_more_than_the_same_altitude_change(budget):
-    """A degree of plane change is expensive; a kilometre of altitude is not."""
+    """A degree of plane change needs far more delta-V than a kilometre of altitude."""
     frame = budget.resolve().set_index("manoeuvre_id")
     assert frame.loc["trim", "deltav_each"] > frame.loc["hop", "deltav_each"]
 
@@ -111,7 +111,7 @@ def test_plane_change_costs_more_than_the_same_altitude_change(budget):
 
 
 def test_recurring_rows_scale_with_the_mission(budget):
-    """4 a year over 7 years is 28; a one-off stays 1."""
+    """4 a year over 7 years is 28, and a one-off stays 1."""
     frame = budget.resolve().set_index("manoeuvre_id")
     assert frame.loc["cam", "occurrences"] == pytest.approx(28.0)
     assert frame.loc["hop", "occurrences"] == pytest.approx(1.0)
@@ -323,12 +323,12 @@ def test_report_without_margin_stops_at_the_subtotal(budget):
 
 
 def test_loss_factor_defaults_to_the_impulsive_ideal(budget):
-    """The column is optional: a file without it is priced as an impulsive burn."""
+    """The column is optional. A file without it is treated as an impulsive burn."""
     assert (budget.manoeuvre_table["loss_factor"] == 1.0).all()
 
 
 def test_loss_factor_scales_the_manoeuvre(tmp_path):
-    """3% of finite-burn loss costs 3% more delta-V, on that row alone."""
+    """3% of finite-burn loss adds 3% to the delta-V, on that row alone."""
     rows = [
         "hop,Altitude hop,Operations,altitude_change,1 km,1,false,1.03,",
         "trim,Plane trim,Commissioning,inclination_change,0.05 deg,1,false,1.0,",
@@ -344,7 +344,7 @@ def test_loss_factor_scales_the_manoeuvre(tmp_path):
 
 
 def test_loss_factor_applies_before_the_count(tmp_path):
-    """A recurring row pays the loss on every occurrence, not once."""
+    """A recurring row adds the loss on every occurrence, not once."""
     row = "cam,Collision avoidance,Operations,collision_avoidance,200 m,4,true,1.10,"
     budget = DeltaVBudget.from_csv(*write_budget(tmp_path, [row], header=LOSS_HEADER))
     frame = budget.resolve().iloc[0]
@@ -354,7 +354,7 @@ def test_loss_factor_applies_before_the_count(tmp_path):
 
 
 def test_loss_factor_below_one_is_rejected(tmp_path):
-    """A burn cannot cost less than the impulsive ideal, so 0.97 is a typo."""
+    """A burn cannot need less than the impulsive ideal, so 0.97 is a typo."""
     row = "hop,Altitude hop,Operations,altitude_change,1 km,1,false,0.97,"
     with pytest.raises(ValueError, match="greater than or equal to 1"):
         DeltaVBudget.from_csv(*write_budget(tmp_path, [row], header=LOSS_HEADER))

@@ -71,7 +71,7 @@ def test_a_higher_orbit_is_slower_and_longer():
 
 
 def test_units_are_converted_on_load():
-    """The file may use any length unit; the derived figures are unaffected."""
+    """The file may use any length unit, and the derived figures do not change."""
     metres = Mission.from_yaml_text(
         "altitude: 500000 m\ninclination: 97.4 deg\nduration: 7 yr"
     )
@@ -123,9 +123,9 @@ def test_inclination_is_carried_but_unused():
     """
     Nothing derives from inclination.
 
-    The delta-V budget's plane-change calculation takes the angle to change by as
-    the manoeuvre's own value, not the plane it starts in, so the inclination is
-    carried through load and validation and no further.
+    The delta-V budget's plane change takes the angle to change by from the
+    manoeuvre's own value, not from the plane it starts in. So the inclination is
+    loaded and validated, and nothing else uses it.
     """
     mission = Mission.from_yaml_text(SAMPLE)
     assert_quantity_allclose(mission.inclination, Q_(97.4, "deg"))

@@ -6,19 +6,24 @@
 """
 The body's orientation over a run, from the attitudes the activities name.
 
-Each attitude points one body axis along a direction, and turns a second body
-axis as close as it can get to another direction:
+Each attitude fixes one body axis on a direction, and turns a second body axis
+as close as it can get to another direction. The directions, at each step:
 
-- `nadir` points `nadir_axis` at the centre of the Earth, and puts
-  `orbit_normal` along the orbit normal. The orbit normal is the position
-  crossed with the velocity. It is always across the nadir, so this attitude is
-  never undefined.
-- `sun pointing` points `sun_axis` at the sun, as seen from the satellite. Its
-  second axis comes as close as it can to the orbit normal, or to the nadir.
+- `nadir`: toward the centre of the Earth.
+- `sun`: toward the sun, as seen from the satellite.
+- `orbit normal`: the position crossed with the velocity.
+- `velocity`: the inertial velocity.
+- `ground velocity`: the velocity relative to the turning Earth, v - w x r. An
+  attitude with `+z` at nadir and `+x` toward it steers in yaw, so that a
+  detector's lines stay across the motion of the ground below.
+- a ground point from the scenario's `targets`: from the satellite to the point,
+  which turns with the Earth.
 
-Sun pointing is undefined where the sun lies along that second direction: along
-the orbit normal at a beta of +-90 degrees, or along the nadir line, deep in an
-eclipse. At such a time the other of the two directions takes its place.
+Where the second direction is parallel to the first, it no longer fixes the turn
+about the first axis. The attitude's fallback direction then takes its place. An
+example is sun pointing with the orbit normal as its second direction, at a beta
+of +-90 degrees. After that, the attitude's offset turns, if any, are applied in
+order, each about a body axis.
 
 Without a `slew` block in the scenario, attitude changes are instant. With one,
 the body turns into each new attitude before the activity that needs it starts,
@@ -42,17 +47,30 @@ from astropy.coordinates import (
     SkyCoord,
 )
 from astropy.units import Quantity
+from scipy.spatial.transform import Rotation
 
 from quicksat import Q_, u
-from quicksat.orbit.attitude import align, axis_vector, rotation_angles, turn_between
-from quicksat.scenario.config import NADIR, SUN_POINTING, Attitudes, Slew
+from quicksat.orbit.attitude import (
+    ParallelDirections,
+    align,
+    axis_vector,
+    rotation_angles,
+    turn_between,
+)
+from quicksat.orbit.geometry import EARTH_ROTATION_RATE, earth_rotations, ground_point
+from quicksat.scenario.config import (
+    GROUND_VELOCITY,
+    NADIR,
+    ORBIT_NORMAL,
+    SUN,
+    VELOCITY,
+    Scenario,
+    Slew,
+)
 from quicksat.utils.intervals import TimeArray, labels_at, round_time
 
 if TYPE_CHECKING:
     from quicksat.scenario.run import Occurrence, ScenarioRun
-
-SLEW = "slew"
-"""The value of the attitude row while the body turns or settles."""
 
 _TURN_TIME_TOLERANCE = Q_(1, "ms")
 """How close two rounds of the turn time must come for the search to stop."""
@@ -61,18 +79,66 @@ _MAX_ROUNDS = 10
 """Most rounds of the search for a turn time."""
 
 
+def directions(
+    scenario: Scenario, names: set[str], state: SkyCoord, sun: CartesianRepresentation
+) -> dict[str, np.ndarray]:
+    """
+    The directions an attitude can use, in GCRS, at each time of a state.
+
+    Parameters
+    ----------
+    scenario : Scenario
+        The scenario, for its ground targets
+    names : set of str
+        The directions to work out: built-in ones and target names
+    state : SkyCoord
+        The satellite's state in GCRS, with its velocities
+    sun : CartesianRepresentation
+        Positions of the sun relative to the centre of the Earth, in GCRS
+
+    Returns
+    -------
+    directions : dict of str to ndarray
+        Each direction asked for, shape (n, 3), not of unit length
+    """
+    cartesian = cast(CartesianRepresentation, state.cartesian)
+    velocity = cast(CartesianDifferential, cartesian.differentials["s"])
+    position = np.atleast_2d(cartesian.xyz.to_value(u.km).T)
+    speed = np.atleast_2d(velocity.d_xyz.to_value(u.km / u.s).T)
+    found = {
+        NADIR: lambda: -position,
+        SUN: lambda: np.atleast_2d(sun.xyz.to_value(u.km).T) - position,
+        ORBIT_NORMAL: lambda: np.cross(position, speed),
+        VELOCITY: lambda: speed,
+    }
+    out = {name: found[name]() for name in names if name in found}
+    earthly = [name for name in names if name not in found]
+    if earthly:
+        # the Earth's orientation, only where a direction turns with the Earth
+        earth = earth_rotations(state.obstime)
+        for name in earthly:
+            if name == GROUND_VELOCITY:
+                spin = EARTH_ROTATION_RATE.to_value(u.rad / u.s) * earth[:, :, 2]
+                out[name] = speed - np.cross(spin, position)
+            else:
+                target = scenario.targets[name]
+                point = ground_point(target.latitude, target.longitude, target.altitude)
+                out[name] = earth @ point - position
+    return out
+
+
 def attitude_rotations(
-    attitudes: Attitudes, name: str, state: SkyCoord, sun: CartesianRepresentation
+    scenario: Scenario, name: str, state: SkyCoord, sun: CartesianRepresentation
 ) -> np.ndarray:
     """
     The orientation one attitude gives, at each time of a state.
 
     Parameters
     ----------
-    attitudes : Attitudes
-        The scenario's attitudes, which set the body axes
+    scenario : Scenario
+        The scenario, which defines the attitude and any ground targets
     name : str
-        `nadir` or `sun pointing`
+        The attitude's name
     state : SkyCoord
         The satellite's state in GCRS, with its velocities
     sun : CartesianRepresentation
@@ -87,38 +153,34 @@ def attitude_rotations(
     Raises
     ------
     ValueError
-        If the attitude is not one the scenario defines
+        If the scenario defines no such attitude, or if its fallback direction is
+        parallel to its pointed one where its constraint's is too
     """
-    cartesian = cast(CartesianRepresentation, state.cartesian)
-    velocity = cast(CartesianDifferential, cartesian.differentials["s"])
-    position = np.atleast_2d(cartesian.xyz.to_value(u.km).T)
-    nadir = -position
-    normal = np.cross(position, np.atleast_2d(velocity.d_xyz.to_value(u.km / u.s).T))
-    to_sun = np.atleast_2d(sun.xyz.to_value(u.km).T) - position
-
-    if name == NADIR and attitudes.nadir is not None:
-        return align(
-            axis_vector(attitudes.nadir.nadir_axis),
-            axis_vector(attitudes.nadir.orbit_normal),
-            nadir,
-            normal,
+    attitude = scenario.attitudes.get(name)
+    if attitude is None:
+        raise ValueError(f"the scenario defines no attitude '{name}'")
+    (point_axis, pointed), (constrain_axis, constrained) = (
+        attitude.point,
+        attitude.constrain,
+    )
+    fallback = attitude.fallback_direction
+    vectors = directions(scenario, {pointed, constrained, fallback}, state, sun)
+    try:
+        rotations = align(
+            axis_vector(point_axis),
+            axis_vector(constrain_axis),
+            vectors[pointed],
+            vectors[constrained],
+            vectors[fallback],
         )
-    pointing = attitudes.sun_pointing
-    if name == SUN_POINTING and pointing is not None:
-        if pointing.constrain_to_nadir is not None:
-            second_axis, second, fallback = pointing.constrain_to_nadir, nadir, normal
-        else:
-            assert pointing.constrain_to_orbit_normal is not None  # exactly one is
-            second_axis = pointing.constrain_to_orbit_normal
-            second, fallback = normal, nadir
-        return align(
-            axis_vector(pointing.sun_axis),
-            axis_vector(second_axis),
-            to_sun,
-            second,
-            fallback,
-        )
-    raise ValueError(f"the scenario defines no attitude '{name}'")
+    except ParallelDirections as exc:
+        times = cast(TimeArray, state.obstime)
+        when = np.atleast_1d(times.utc.isot)[exc.row]
+        raise ValueError(f"attitude '{name}' at {when}: {exc}") from exc
+    for axis, angle in attitude.offset:
+        turn = Rotation.from_rotvec(axis_vector(f"+{axis}") * angle.to_value(u.rad))
+        rotations = rotations @ turn.as_matrix()
+    return rotations
 
 
 @dataclass(frozen=True)
@@ -208,7 +270,7 @@ def _attitude_row(occurrences: "list[Occurrence]") -> P.IntervalDict:
 def plan_slews(
     occurrences: "list[Occurrence]",
     slew: Slew,
-    attitudes: Attitudes,
+    scenario: Scenario,
     interval: P.Interval,
     state_at: Callable[[TimeArray], SkyCoord],
     sun_at: Callable[[TimeArray], CartesianRepresentation],
@@ -229,8 +291,8 @@ def plan_slews(
         The occurrences of the run, in time order
     slew : Slew
         The rate, acceleration and settling time
-    attitudes : Attitudes
-        The scenario's attitudes
+    scenario : Scenario
+        The scenario, which defines the attitudes
     interval : portion.Interval
         The run. No slew starts before it.
     state_at : callable
@@ -249,7 +311,7 @@ def plan_slews(
 
     def rotation_of(name: str, time: TimeArray) -> np.ndarray:
         times = time + Q_(np.zeros(1), "s")
-        return attitude_rotations(attitudes, name, state_at(times), sun_at(times))[0]
+        return attitude_rotations(scenario, name, state_at(times), sun_at(times))[0]
 
     def orientation_at(time: TimeArray) -> np.ndarray:
         # the latest slew under way wins, as it starts from the one before
@@ -436,9 +498,7 @@ def body_rotations(run: "ScenarioRun") -> np.ndarray:
     rotations = np.full((len(run.times), 3, 3), np.nan)
     for name in set(attitude):
         rows = attitude == name
-        rotations[rows] = attitude_rotations(
-            run.scenario.attitudes, name, *state_at(rows)
-        )
+        rotations[rows] = attitude_rotations(run.scenario, name, *state_at(rows))
     slew = run.scenario.slew
     if slew is not None:
         # in time order, so a slew that starts partway through another wins
@@ -446,7 +506,7 @@ def body_rotations(run: "ScenarioRun") -> np.ndarray:
             rows = (run.times >= window.start) & (run.times < window.end)
             if rows.any():
                 targets = attitude_rotations(
-                    run.scenario.attitudes, window.target, *state_at(rows)
+                    run.scenario, window.target, *state_at(rows)
                 )
                 rotations[rows] = _slew_rotations(
                     window, slew, run.times[rows], targets

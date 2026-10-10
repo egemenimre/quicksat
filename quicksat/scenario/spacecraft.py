@@ -15,6 +15,10 @@ A GLB file holds a header, a JSON chunk that describes the scene, and a binary
 chunk with the vertices. This module reads the header and the JSON, to check the
 file before the viewer gets it.
 
+A part of the model can turn, such as a solar wing. The scenario file names it
+as an articulation, by the name of its node. The node turns about an axis
+through its own origin, and its children turn with it.
+
 """
 
 import json
@@ -79,3 +83,44 @@ def read_glb_json(path: Path) -> dict:
             "decode. Export it without compression."
         )
     return gltf
+
+
+def node_index(gltf: dict, name: str) -> int:
+    """
+    The index of the one node in the model's scene with a given name.
+
+    Parameters
+    ----------
+    gltf : dict
+        The glTF JSON, as `read_glb_json` returns it
+    name : str
+        The node's name
+
+    Returns
+    -------
+    index : int
+        The node's index in the glTF `nodes` list
+
+    Raises
+    ------
+    ValueError
+        If no node in the scene has the name, or more than one has it
+    """
+    nodes = gltf.get("nodes", [])
+    scenes = gltf.get("scenes", [])
+    scene = scenes[gltf.get("scene", 0)] if scenes else {"nodes": []}
+    # the nodes the scene draws: its roots and all their children
+    drawn, waiting = set(), list(scene.get("nodes", []))
+    while waiting:
+        index = waiting.pop()
+        if index not in drawn:
+            drawn.add(index)
+            waiting.extend(nodes[index].get("children", []))
+    matches = sorted(i for i in drawn if nodes[i].get("name") == name)
+    if len(matches) != 1:
+        found = "no node" if not matches else f"{len(matches)} nodes"
+        raise ValueError(
+            f"the model has {found} named '{name}' in its scene, and an "
+            "articulation needs exactly one"
+        )
+    return matches[0]

@@ -5,7 +5,7 @@
 # The notebook never writes it.
 
 orbit:
-  # The orbit is given one of three ways. Here, a sun-synchronous orbit, for which
+  # The orbit is given one of four ways. Here, a sun-synchronous orbit, for which
   # quicksat builds the TLE, with its epoch at the start time below. The altitude
   # is averaged over one orbit. Write the LTAN in quotes: YAML reads an unquoted
   # 13:30 as the number 810.
@@ -14,6 +14,8 @@ orbit:
   # of this file. This one is a 510 km orbit at 10:30 LTAN, with its epoch at the
   # start time below.
   # tle_file: sso_510km.tle
+  # Or an OMM file with exactly one element set, in KVN, XML, JSON or CSV.
+  # omm_file: my_satellite.omm
   # Or a trajectory file with positions and velocities at times: ECSV, or a
   # CCSDS OEM in KVN. See docs/scenario/scenario_ref.ipynb for the layouts.
   # trajectory_file: my_orbit.oem
@@ -26,18 +28,49 @@ step: 10 s
 
 # The spacecraft's 3D model, which the viewer draws: a GLB file in body axes and
 # metres, with its origin at the point the body turns about. A relative path is
-# taken from the folder of this file. Leave it out for a plain 1 m cube.
-3d_model: spacecraft.glb
+# taken from the folder of this file. Leave it out for a plain 1 m cube. Without
+# articulations, the file name alone will do: 3d_model: spacecraft.glb
+3d_model:
+  file: spacecraft.glb
+  # The parts of the model that turn to face the sun. Each wing is one node of the
+  # model, with its origin on the wing's drive axis. The wing turns about y until
+  # its cells, which face -z as the model draws them, point as close to the sun as
+  # they can. In imaging, the wings park at 0 deg instead, as the model draws them.
+  # An optional range, such as range: [-90 deg, 90 deg], limits the turn.
+  articulations:
+    wing +y: {part: Wing +y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
+    wing -y: {part: Wing -y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
 
-# The body axes that each attitude points.
+# Ground points that an attitude can point at, by any name. Optional. Here, the
+# SvalSat ground station on Svalbard, which the downlink tracks. The altitude is
+# above the WGS84 ellipsoid, and 0 m if left out. The triggers Svalbard rise and
+# Svalbard set find when it sees the satellite above min_elevation, 5 deg if left
+# out.
+targets:
+  Svalbard: {latitude: 78.229 deg, longitude: 15.408 deg, altitude: 500 m}
+
+# The attitudes, each under a name of your choice, which the activities use. An
+# attitude fixes one body axis on a direction (point), and turns a second body
+# axis as close as it can get to another direction (constrain). The directions are
+# nadir, sun, orbit normal, velocity, ground velocity, and the names in targets.
 attitudes:
   # +z points at the Earth and -y runs along the orbit normal. The body axes then
   # match LVLH: x along the track, y minus the orbit normal and z nadir.
-  nadir: {nadir_axis: +z, orbit_normal: -y}
+  nadir: {point: [+z, nadir], constrain: [-y, orbit normal]}
   # -z points at the sun. The -y axis stays along the orbit normal, so the body
-  # stays still over an orbit. Use constrain_to_nadir to keep one axis facing the
-  # Earth instead, which spins fast when the sun is close to the nadir line.
-  sun pointing: {sun_axis: -z, constrain_to_orbit_normal: -y}
+  # stays still over an orbit. Constraining an axis to nadir instead keeps it
+  # facing the Earth, but the body spins fast when the sun is close to the nadir
+  # line. Where the sun lies along the orbit normal, nadir takes its place.
+  sun pointing: {point: [-z, sun], constrain: [-y, orbit normal]}
+  # For imaging: +z at nadir, and x along the ground's motion below the satellite,
+  # so that the detector's lines stay across it. This is nadir turned in yaw by up
+  # to about 4 degrees, most at the equator.
+  yaw steering: {point: [+z, nadir], constrain: [+x, ground velocity]}
+  # For the downlink: +z, where the antenna is, tracks the ground station.
+  track Svalbard: {point: [+z, Svalbard], constrain: [-y, orbit normal]}
+  # Another example, not used by the activities below: a 30 deg roll off nadir,
+  # a turn about x after the nadir orientation.
+  # roll 30: {point: [+z, nadir], constrain: [-y, orbit normal], offset: [x 30 deg]}
 
 # How the body turns from one attitude to another. Before each activity whose
 # attitude differs from the one before, the body turns from rest to rest about one
@@ -57,17 +90,26 @@ slew:
 #     the activity starts. The events are the shadow edges, eclipse entry, umbra
 #     entry, umbra exit and eclipse exit; ascending node and descending node; and
 #     latitude crossings such as latitude 30 deg ascending, latitude -30 deg
-#     descending, or latitude 45 deg for either direction. An event can take an
-#     offset, such as eclipse entry + 2 min
-#   the attitude: nadir or sun pointing
+#     descending, or latitude 45 deg for either direction; and a target's rise
+#     and set, such as Svalbard rise. An event can take an offset, such as
+#     eclipse entry + 2 min
+#   the attitude: one of the names under attitudes
 #   the mode: any name
 #   the constraint, optional: the illumination it expects. sunlit, penumbra,
 #     umbra, or eclipse for either of the last two
+#
+# Each orbit: idle in sun pointing, imaging around the 45 deg crossing going north,
+# the Svalbard pass near the northern turn, then nadir through the eclipse. The
+# imaging ends 5 min after the crossing, because the turn to Svalbard takes about
+# 1.6 min of it: the imaging holds about 5 min, above the 4% of the orbit it needs.
+# Svalbard rises within a minute or so of that. The downlink ends 2 min after
+# Svalbard sets, because the turn to nadir takes about 2 min of it, so the antenna
+# stays on the station until it sets. The pass ends a few minutes before the
+# eclipse. Neither gap leaves time to turn to sun pointing and back.
 activities:
-  - [eclipse entry, sun pointing, idle, sunlit]
-  - [eclipse exit, nadir, idle, eclipse]
   - [latitude 45 deg -2 min, sun pointing, idle, sunlit]
-  - [latitude 45 deg +4 min, nadir, imaging, sunlit]
-  - [10 min, nadir, downlink]
-  # - [5 min, nadir, idle]
+  - [latitude 45 deg +5 min, yaw steering, imaging, sunlit]
+  - [Svalbard set + 2 min, track Svalbard, downlink]
+  - [eclipse entry, nadir, idle, sunlit]
+  - [eclipse exit, nadir, idle, eclipse]
 

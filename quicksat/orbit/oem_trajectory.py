@@ -42,7 +42,6 @@ gives one, and all its data otherwise.
 
 """
 
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
@@ -56,6 +55,7 @@ from astropy.coordinates import (
 from astropy.time import Time
 
 from quicksat import Q_, u
+from quicksat.orbit.ccsds import key_value, normalised_epoch
 from quicksat.orbit.trajectory import Trajectory, frame_of
 from quicksat.utils.intervals import TimeArray
 
@@ -94,9 +94,6 @@ as TAI, less `GPS_BEHIND_TAI`."""
 GPS_BEHIND_TAI = Q_(19, "s")
 """GPS time runs this far behind TAI."""
 
-_DAY_OF_YEAR = re.compile(r"^(\d{4})-(\d{3})T(.+)$")
-"""An epoch given as a day of the year, such as 2026-274T00:00:00."""
-
 
 @dataclass
 class _OemSegment:
@@ -122,35 +119,6 @@ class _OemSegment:
     epochs: list[str] = field(default_factory=list)
     lines: list[int] = field(default_factory=list)
     values: list[list[float]] = field(default_factory=list)
-
-
-def _key_value(line: str, number: int, path: Path) -> tuple[str, str]:
-    """
-    The key and the value of a `KEY = value` line.
-
-    Parameters
-    ----------
-    line : str
-        The line, without the spaces at its ends
-    number : int
-        Its line number, for the message
-    path : Path
-        The file, for the message
-
-    Returns
-    -------
-    key, value : str
-        The key in upper case, and the value without the spaces at its ends
-
-    Raises
-    ------
-    ValueError
-        If the line has no `=`, or nothing before it
-    """
-    key, equals, value = line.partition("=")
-    if not equals or not key.strip():
-        raise ValueError(f"{path}, line {number}: expected KEY = value, got '{line}'")
-    return key.strip().upper(), value.strip()
 
 
 def _data_line(line: str, number: int, path: Path, segment: _OemSegment) -> None:
@@ -248,7 +216,7 @@ class _Parser:
         """The version, which comes first."""
         if not line.startswith("CCSDS_OEM_VERS"):
             raise self._error(number, "an OEM starts with CCSDS_OEM_VERS")
-        key, value = _key_value(line, number, self.path)
+        key, value = key_value(line, number, self.path)
         if value not in VERSIONS:
             raise self._error(
                 number,
@@ -259,7 +227,7 @@ class _Parser:
 
     def _in_header(self, line: str, number: int) -> None:
         """A key of the header."""
-        key, value = _key_value(line, number, self.path)
+        key, value = key_value(line, number, self.path)
         self.header[key] = (value, number)
 
     def _in_meta(self, line: str, number: int) -> None:
@@ -271,7 +239,7 @@ class _Parser:
                 number, "a data line inside the metadata. Is META_STOP missing?"
             )
         else:
-            key, value = _key_value(line, number, self.path)
+            key, value = key_value(line, number, self.path)
             self.segments[-1].meta[key] = (value, number)
 
     def _in_data(self, line: str, number: int) -> None:
@@ -355,28 +323,6 @@ def _parse(
     return parser.finish()
 
 
-def _normalised(epoch: str) -> str:
-    """
-    An OEM epoch as astropy reads it: a date in ISO form, or a day of the year
-    in astropy's `yday` form.
-
-    Parameters
-    ----------
-    epoch : str
-        The epoch as written, with an optional `Z`
-
-    Returns
-    -------
-    epoch : str
-    """
-    epoch = epoch.strip().removesuffix("Z")
-    match = _DAY_OF_YEAR.match(epoch)
-    if match:
-        year, day, clock = match.groups()
-        return f"{year}:{day}:{clock}"
-    return epoch
-
-
 def _epochs(texts: list[str], lines: list[int], system: str, path: Path) -> TimeArray:
     """
     OEM epochs as times, in the segment's time system.
@@ -404,11 +350,11 @@ def _epochs(texts: list[str], lines: list[int], system: str, path: Path) -> Time
     """
     scale = TIME_SYSTEMS[system]
     try:
-        times = Time([_normalised(text) for text in texts], scale=scale)
+        times = Time([normalised_epoch(text) for text in texts], scale=scale)
     except ValueError:
         for text, line in zip(texts, lines, strict=True):
             try:
-                Time(_normalised(text), scale=scale)
+                Time(normalised_epoch(text), scale=scale)
             except ValueError as error:
                 raise ValueError(
                     f"{path}, line {line}: '{text}' is not an epoch"

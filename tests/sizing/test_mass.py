@@ -101,7 +101,7 @@ def test_four_mass_cases(budget, in_orbit, propellant, expected):
     [(100, 60.32), (75, 59.07), (50, 57.82), (25, 56.57), (0, 55.32)],
 )
 def test_propellant_depletes_linearly(budget, propellant, expected):
-    """The 5 kg load burns off in proportion; the endpoints are wet and dry mass."""
+    """The 5 kg load is used up in proportion. The ends are the wet and dry masses."""
     assert_quantity_allclose(
         budget.in_orbit_mass(propellant=propellant), Q_(expected, "kg")
     )
@@ -307,7 +307,7 @@ def test_tabulated_excludes_propellant_from_the_blocks(budget):
 
 
 def test_subsystem_subtotals_are_off_by_default(budget):
-    """The blocks stay grouped by subsystem either way; only the lines come and go."""
+    """The blocks stay grouped by subsystem either way. Only the subtotal lines vary."""
     default = budget.tabulated_mass().data
     detailed = budget.tabulated_mass(subsystem_subtotals=True).data
 
@@ -332,7 +332,7 @@ def test_hidden_columns_stay_in_the_frame(budget):
     plain = budget.tabulated_mass().to_html()
     annotated = budget.tabulated_mass(comments=True).to_html()
 
-    # location is always hidden -- the subtotal rows already name it
+    # location is always hidden, because the subtotal rows already name it
     assert "Location" not in plain
     assert "Location" not in annotated
 

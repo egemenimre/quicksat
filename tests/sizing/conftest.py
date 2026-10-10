@@ -6,8 +6,8 @@ but they serve different purposes. `sample/` is documentation and changes with
 the notebooks. `tests/sizing/data/` is a fixture and changes only when a test
 is meant to change with it. So editing one does not break the other.
 
-The directory is resolved from this file rather than from a relative path, so
-the suite passes wherever pytest is invoked from -- an IDE or a subdirectory,
+The directory is resolved from this file rather than from a relative path. So
+the suite passes wherever pytest is run from, such as an IDE or a subdirectory,
 not only the repository root.
 """
 

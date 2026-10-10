@@ -333,12 +333,12 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
         <table class="list">
           <thead><tr>
             <th class="num">Repeat</th><th class="num">#</th><th>Start, UTC</th><th>End, UTC</th>
-            <th class="num">Length</th><th>Trigger</th><th>Attitude</th><th>Mode</th><th>Constraint</th>
+            <th class="num">Length</th><th>Trigger</th><th>Attitude</th><th class="num">Slew</th><th>Mode</th><th>Constraint</th>
             <th class="num">Outside</th><th>Status</th>
           </tr></thead>
           <tbody id="activity-rows"></tbody>
         </table>
-        <p class="note">Every occurrence of every activity, in time order. Click a row to see it on the Scenario page.</p>
+        <p class="note">Every occurrence of every activity, in time order. Slew is the time of the turn into the activity's attitude, settling included. Click a row to see it on the Scenario page.</p>
       </div>
     </div>
   </section>
@@ -5038,7 +5038,7 @@ var uPlot=function(){"use strict";const l="u-off",e="u-label",t="width",n="heigh
 
 // ---------------------------------------------------------------- Data and its checks
 
-const PAGE_VERSION = 4;
+const PAGE_VERSION = 5;
 
 function stop(message) {
   document.body.innerHTML = "";
@@ -5155,6 +5155,10 @@ const BODY = power ? power.spacecraft.body_m : [1, 1, 1];
 // The spacecraft's 3D model, from version 3 of scenario.js. It takes the place
 // of the cube and the panel boxes once it is decoded.
 const MODEL = scenario.model || null;
+// The parts of the model that turn, such as solar wings, from version 5 of
+// scenario.js. Each has its angle at each time of the grid.
+const ARTICULATIONS = (MODEL && MODEL.articulations) || [];
+const AXIS_VECTORS = { "+x": [1, 0, 0], "-x": [-1, 0, 0], "+y": [0, 1, 0], "-y": [0, -1, 0], "+z": [0, 0, 1], "-z": [0, 0, -1] };
 const MONO = getComputedStyle(document.body).fontFamily;
 
 // ---------------------------------------------------------------- Helpers
@@ -5298,6 +5302,8 @@ const state = {
   lon: 0,
   beta: 0,
   light: 1,
+  // the angle of each articulation, in degrees
+  joints: ARTICULATIONS.map(() => 0),
   k: 0,
 };
 const dirty = { orbit: true, body: true, ground: true, charts: true, readouts: true };
@@ -5318,6 +5324,16 @@ function updateState() {
   if (instant) quaternionAt(Q_BODY, i, state.t < next.start_s ? 0 : 1, state.qBody);
   else quaternionAt(Q_BODY, i, f, state.qBody);
   quaternionAt(Q_EARTH, i, f, state.qEarth);
+  // A mode change parks or frees a part at once. Inside a step that holds one,
+  // keep the angle of the side the time is on, as for an instant attitude change.
+  const modeHere = pieceAt(TRACKS.mode, T[i]);
+  const modeNext = pieceAt(TRACKS.mode, T[i + 1]);
+  ARTICULATIONS.forEach((joint, j) => {
+    const angles = joint.angle_deg;
+    const parks = joint.park_modes.includes(modeHere.value) || joint.park_modes.includes(modeNext.value);
+    state.joints[j] =
+      modeNext.start_s > T[i] && parks ? angles[state.t < modeNext.start_s ? i : i + 1] : angleBetween(angles[i], angles[i + 1], f);
+  });
   state.lat = LAT[i] + (LAT[i + 1] - LAT[i]) * f;
   state.lon = ((angleBetween(LON[i], LON[i + 1], f) + 540) % 360) - 180;
   state.beta = BETA[i] + (BETA[i + 1] - BETA[i]) * f;
@@ -5460,6 +5476,51 @@ function useModel(spacecraft, model) {
   shape.add(model);
   fitShape(shape);
   spacecraft.add(shape);
+  const joints = [];
+  model.traverse((object) => {
+    if (object.userData.joint !== undefined) joints.push(object);
+  });
+  spacecraft.userData.joints = joints;
+}
+
+/**
+ * Marks each node that an articulation turns, so that every copy of the model
+ * finds it: the articulation's number, the axis, and the node's own rotation.
+ * The axis is kept in the frame of the node's parent, which is the body frame
+ * unless a parent node is turned.
+ */
+function markJoints(gltf) {
+  const scene = gltf.scene;
+  scene.updateMatrixWorld(true);
+  const byNode = new Map();
+  scene.traverse((object) => {
+    const association = gltf.parser.associations.get(object);
+    if (association && association.nodes !== undefined) byNode.set(association.nodes, object);
+  });
+  ARTICULATIONS.forEach((joint, j) => {
+    const object = byNode.get(joint.node);
+    if (!object) {
+      console.warn(`The articulation ${joint.name} turns ${joint.part}, which the model's scene does not have.`);
+      return;
+    }
+    const toParent = object.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
+    object.userData.joint = j;
+    object.userData.jointAxis = new THREE.Vector3(...AXIS_VECTORS[joint.axis]).applyQuaternion(toParent).toArray();
+    object.userData.jointBase = object.quaternion.toArray();
+  });
+  return scene;
+}
+
+const jointTurn = new THREE.Quaternion();
+const jointAxis = new THREE.Vector3();
+
+/** Turns each articulated part of a spacecraft to its angle at the time cursor. */
+function turnJoints(spacecraft) {
+  for (const object of spacecraft.userData.joints || []) {
+    const { joint, jointAxis: axis, jointBase: base } = object.userData;
+    jointTurn.setFromAxisAngle(jointAxis.fromArray(axis), state.joints[joint] * D2R);
+    object.quaternion.fromArray(base).premultiply(jointTurn);
+  }
 }
 
 // Why the 3D model could not be shown, if it could not
@@ -5475,7 +5536,7 @@ const modelScene = new Promise((resolve) => {
   };
   try {
     const bytes = Uint8Array.from(atob(MODEL.glb_base64), (c) => c.charCodeAt(0));
-    new THREE.GLTFLoader().parse(bytes.buffer, "", (gltf) => resolve(gltf.scene), failed);
+    new THREE.GLTFLoader().parse(bytes.buffer, "", (gltf) => resolve(markJoints(gltf)), failed);
   } catch (error) {
     failed(error);
   }
@@ -5800,6 +5861,7 @@ const orbitView = (() => {
       earth.quaternion.copy(state.qEarth);
       satellite.position.copy(state.r).multiplyScalar(MM);
       model.quaternion.copy(state.qBody);
+      turnJoints(model);
       sunlight.position.copy(state.sun).multiplyScalar(100);
       sunArrow.setDirection(state.sun);
       sunBall.position.copy(state.sun).multiplyScalar(300);
@@ -5936,6 +5998,7 @@ const bodyView = (() => {
         toDisplay.identity();
       }
       spacecraft.quaternion.copy(toDisplay).multiply(state.qBody);
+      turnJoints(spacecraft);
       const directions = {
         velocity: state.v,
         nadir: nadir.copy(state.r).negate(),
@@ -6432,6 +6495,12 @@ const readouts = (() => {
   const sunFill = element("span", { class: "fill", style: `background:${VECTOR_COLOURS.sun}` });
   const sunValue = element("span");
   $("#now").append(element("dt", { text: "Sunlight", "data-help": "light" }), element("dd", { "data-help": "light" }, [sunFill, sunValue]));
+  // The angle of each articulation, and whether it is parked
+  const jointValues = ARTICULATIONS.map((joint) => {
+    const value = element("span");
+    $("#now").append(element("dt", { text: joint.name, "data-help": "articulation" }), element("dd", { "data-help": "articulation" }, [value]));
+    return value;
+  });
 
   return function update() {
     const k = state.k;
@@ -6462,6 +6531,12 @@ const readouts = (() => {
     const light = state.light;
     setText(sunValue, light >= 1 ? "100 %" : light <= 0 ? "0 %" : `${(100 * light).toFixed(1)} %`);
     sunFill.style.opacity = String(0.15 + 0.85 * light);
+    const mode = pieceAt(TRACKS.mode, state.t).value;
+    ARTICULATIONS.forEach((joint, j) => {
+      const angle = ((state.joints[j] + 540) % 360) - 180;
+      const text = `${angle >= 0 ? "+" : ""}${angle.toFixed(1)}°`;
+      setText(jointValues[j], joint.park_modes.includes(mode) ? `${text}, parked` : text);
+    });
     const occurrence = occurrenceAt(state.t);
     setText($("#now-activity"), `Activity ${occurrence.number} of repeat ${occurrence.repeat}`);
     if (Number(slider.value) !== k) slider.value = String(k);
@@ -6518,6 +6593,8 @@ function showActivities() {
           element("td", { class: "num", text: `${((o.end_s - o.start_s) / 60).toFixed(2)} min` }),
           element("td", { text: o.trigger }),
           element("td", {}, swatch(o.attitude)),
+          // slew_s came with the slews; a run without them, or an older scenario.js, has none
+          element("td", { class: "num", text: o.slew_s == null ? "" : `${numberText(o.slew_s, 1)} s` }),
           element("td", {}, swatch(o.mode)),
           element("td", { text: o.constraint || "" }),
           element("td", { class: "num", text: o.outside_s === null ? "" : `${numberText(o.outside_s)} s` }),
@@ -6669,6 +6746,10 @@ function showResults() {
     ["scenario.js", `version ${scenario.version}, id ${scenario.id}`],
     ["power.js", power ? `version ${power.version}, for scenario ${power.scenario_id}` : DATA.power ? "not shown" : "not in this folder"],
     ["3D model", MODEL ? `${MODEL.name}, ${Math.round((MODEL.glb_base64.length * 3) / 4 / 1024)} kB` : "none, so a 1 m cube"],
+    ...ARTICULATIONS.map((joint) => [
+      "Articulation",
+      `${joint.name}: ${joint.part}, about ${joint.axis}` + (joint.park_modes.length ? `, parked in ${joint.park_modes.join(", ")}` : ""),
+    ]),
   ];
   // Filled in if the model turns out to be unreadable, once it is decoded
   const modelNote = element("p", { class: "note", style: "display: none" });
@@ -6744,7 +6825,8 @@ const HELP = {
       "The spacecraft, with its body axes x, y and z in red, green and blue. The arrows show the velocity, " +
       "the nadir, the orbit normal and the sun. The first three are close to the LVLH axes: x along track, " +
       "z nadir, and y minus the orbit normal. The spacecraft is the 3D model that 3d_model names in the " +
-      "scenario file, or a 1 m cube without one. It is scaled to fit the view.",
+      "scenario file, or a 1 m cube without one. It is scaled to fit the view. The parts that the scenario " +
+      "names as articulations, such as solar wings, turn to face the sun.",
   },
   ground: {
     title: "Ground track",
@@ -6786,9 +6868,10 @@ const HELP = {
   attitude: {
     title: "Attitude",
     text:
-      "How the body is pointed. In nadir, one body axis points at the centre of the Earth. In sun pointing, " +
-      "one body axis points at the sun. The scenario file names the axes. During a slew, the body turns into " +
-      "the next attitude, shown as, for example, nadir (slewing). Without slews, attitude changes are instant.",
+      "How the body is pointed, by the attitude's name in the scenario file. Each attitude fixes one body axis " +
+      "on a direction, such as the nadir, the sun or a ground target, and turns a second axis as close as it can " +
+      "get to another. During a slew, the body turns into the next attitude, shown as, for example, " +
+      "nadir (slewing). Without slews, attitude changes are instant.",
   },
   illumination: {
     title: "Illumination",
@@ -6817,8 +6900,8 @@ const HELP = {
   sunBody: {
     title: "Sun in body axes",
     text:
-      "The unit vector from the spacecraft to the sun, in body axes. In sun pointing, the sun axis reads " +
-      "1 or -1, which checks the pointing.",
+      "The unit vector from the spacecraft to the sun, in body axes. In an attitude that points an axis at " +
+      "the sun, that axis reads 1 or -1, which checks the pointing.",
   },
   panels: {
     title: "Sun on panels",
@@ -6839,6 +6922,13 @@ const HELP = {
       "Show or hide the Earth's shadow: the dark umbra cone, which narrows away from the Earth, and the " +
       "lighter penumbra cone around it, which widens.",
   },
+  articulation: {
+    title: "Articulation",
+    text:
+      "A part of the 3D model that turns about one body axis to face the sun, such as a solar wing. Its " +
+      "angle is zero where the model draws it. In a mode that parks it, it holds a fixed angle instead. " +
+      "The scenario file sets them under 3d_model.",
+  },
   light: {
     title: "Sunlight",
     text:
@@ -6855,7 +6945,7 @@ const HELP = {
     title: "LVLH",
     text:
       "Show the body in LVLH axes, which turn with the orbit: x along track, y minus the orbit normal, and " +
-      "z nadir. A nadir attitude then stands still.",
+      "z nadir. An attitude that points z at the nadir and keeps -y on the orbit normal then stands still.",
   },
   gcrs: {
     title: "GCRS",
@@ -6875,7 +6965,7 @@ const HELP = {
       "with Shift.",
   },
   tabScenario: { title: "Scenario", text: "Run through the scenario: the 3D views, the map, the timeline and the current data." },
-  tabActivities: { title: "Activities", text: "Every occurrence of every activity, with its times and statuses." },
+  tabActivities: { title: "Activities", text: "Every occurrence of every activity, with its times, its slew and its statuses." },
   tabInputs: { title: "Inputs", text: "The scenario file and the power file as written, the orbit, and the conventions." },
   tabResults: { title: "Results", text: "The summary, the checks, and which data files were found." },
 };

@@ -6,9 +6,9 @@
 """
 Tests for the attitude agility budget.
 
-The workbook targets come from the source `Agility (Roll)` tab, independently
-recomputed from the inputs and flown as an envelope case against a 475 kg
-spacecraft handed in directly, so they stay pinned whatever the mass budget says.
+The workbook targets come from the source `Agility (Roll)` tab, recomputed
+independently from the inputs. They are flown as an envelope case, with a 475 kg
+spacecraft passed in directly. So they stay fixed whatever the mass budget says.
 
     inertia, 475 kg box 1.5 x 1.5 x 2.0 m, factor 1.07     264.7 kg*m**2
     projection, cos(26.5 deg) * cos(45 deg)                0.633
@@ -314,7 +314,7 @@ def test_the_config_carries_no_mass(config):
 
 
 def test_pitch_runs_the_same_machinery(budget, config, mission):
-    """Same wheels, same plane; only the inertia can differ."""
+    """Same wheels, same plane. Only the inertia can differ."""
     pitch = AgilityBudget(config, mission, Axis.PITCH, "workbook", mass=WORKBOOK_MASS)
     assert pitch.projection == budget.projection
     assert pitch.axis_momentum() == budget.axis_momentum()

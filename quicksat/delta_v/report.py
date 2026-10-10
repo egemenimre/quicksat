@@ -6,10 +6,10 @@
 """
 Rendering of the delta-V budget as a document.
 
-Presentation only: everything here reads a resolved manoeuvre table and lays it
-out, and nothing in it feeds back into the arithmetic. It takes the frame and the
-config rather than a `DeltaVBudget`, so the dependency runs one way only and the
-layout can be exercised against a bare frame.
+This is presentation only. It reads a resolved manoeuvre table and lays it out, and
+nothing in it changes the arithmetic. It takes the frame and the config rather than a
+`DeltaVBudget`. So the dependency runs one way only, and the layout can be tested
+against a bare frame.
 
 """
 
@@ -68,8 +68,8 @@ def tabulate(
     """
     The delta-V budget laid out as a document.
 
-    Manoeuvres are grouped into mission phases with a subtotal each, then the
-    budget total, the margin, and the total including it.
+    Manoeuvres are grouped into mission phases, each with a subtotal. Then come the
+    budget total, the margin, and the total with margin.
 
     Parameters
     ----------
@@ -82,7 +82,7 @@ def tabulate(
     comments : bool
         Show the manoeuvre file's comments column
     loss_factor : bool
-        Show the loss factor each manoeuvre's delta-V was scaled by
+        Show the loss factor that scaled each manoeuvre's delta-V
 
     Returns
     -------
@@ -125,9 +125,9 @@ def _assemble(
     """
     Builds the report rows from a resolved manoeuvre table.
 
-    Phases come out in order of first appearance rather than sorted, so the report
-    keeps the structure the manoeuvre file was written with -- which is usually
-    chronological, and reads as the mission does.
+    Phases keep the order in which they first appear, rather than being sorted. So the
+    report keeps the structure of the manoeuvre file. That order is usually
+    chronological, so the report follows the mission.
 
     Parameters
     ----------
@@ -136,7 +136,7 @@ def _assemble(
     config : DeltaVConfig
         Budget settings, for the margin
     margin : bool
-        Append the margin and the total including it
+        Add the margin and the total with margin
 
     Returns
     -------
@@ -190,8 +190,8 @@ def _style(report: pd.DataFrame, comments: bool, loss_factor: bool) -> Styler:
     Renders the report for reading: blanks instead of NaN, bold summaries.
 
     Columns are hidden rather than dropped, so `.data` stays complete whatever the
-    flags. Headers are looked up per column rather than passed as a positional
-    list, which would mismatch the moment a column is hidden.
+    flags. Headers are looked up per column, rather than passed as a list by position. A
+    list would no longer match as soon as a column is hidden.
 
     Parameters
     ----------
@@ -200,9 +200,9 @@ def _style(report: pd.DataFrame, comments: bool, loss_factor: bool) -> Styler:
     comments : bool
         Show the comments column
     loss_factor : bool
-        Show the loss factor column. Off by default: on a budget flown as
-        impulsive it is a column of ones, and worth the width only once some
-        manoeuvre carries a correction
+        Show the loss factor column. Off by default, because in a budget of impulsive
+        burns it is a column of ones. It is worth the width only once a manoeuvre has a
+        correction
 
     Returns
     -------
@@ -211,7 +211,7 @@ def _style(report: pd.DataFrame, comments: bool, loss_factor: bool) -> Styler:
     """
 
     def _bold_summary(row):
-        """Bolds a row if it is a subtotal or a total."""
+        """Makes a row bold if it is a subtotal or a total."""
         style = "font-weight: bold" if row["row_type"] in _BOLD_ROW_TYPES else ""
         return [style] * len(row)
 

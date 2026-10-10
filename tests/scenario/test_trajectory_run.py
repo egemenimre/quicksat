@@ -110,7 +110,7 @@ def test_the_viewer_names_the_file(trajectory_run):
     orbit = data["orbit"]
     form = trajectory_run.orbit.format
     name, frame = FORMATS[form]
-    assert data["version"] == VERSION == 4
+    assert data["version"] == VERSION >= 4  # version 4 added the trajectory
     assert orbit["tle"] is None
     assert orbit["name"] == "SSO 510"
     trajectory = orbit["trajectory"]

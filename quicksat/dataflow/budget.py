@@ -4,12 +4,12 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Data and downlink budget: what the payload generates against what the link clears.
+Data and downlink budget: what the payload generates against what the link sends.
 
-Unlike the mass budget there is nothing here to sum. This is one chain of
-calculations from a handful of assumptions to a single comparison, so the input is
-config rather than a CSV and there is no `resolve()` and no `by_*` views — there
-are no rows to filter or group.
+Unlike the mass budget, there is nothing here to sum. This is one chain of calculations,
+from a few assumptions to a single comparison. So the input is a config file rather than
+a CSV. There is no `resolve()` and there are no `by_*` views, because there are no rows
+to filter or group.
 
 """
 
@@ -34,7 +34,7 @@ class Generation(BaseModel):
     raw_datarate : Quantity
         Instrument output before compression
     compression_ratio : float
-        Divides the raw rate; 1 means no compression
+        Divides the raw rate. 1 means no compression
     duty_cycle : Quantity
         Fraction of each orbit spent generating
     """
@@ -56,10 +56,10 @@ class Generation(BaseModel):
 
 class Downlink(BaseModel):
     """
-    What the link clears.
+    What the link sends.
 
-    Quoted per day rather than per orbit: contacts are counted against the ground
-    station's day, and the count does not divide evenly into orbits anyway.
+    It is given per day rather than per orbit. Contacts are counted over the ground
+    station's day, and the count does not divide evenly into orbits either.
 
     Parameters
     ----------
@@ -95,15 +95,15 @@ class DataFlowModel(BaseModel):
     """
     The payload dataflow model: generation, downlink and storage.
 
-    One file, because the budget exists to compare the first two — splitting the
-    halves of a comparison across files makes it harder to read, not easier.
+    They are in one file, because the budget exists to compare the first two. Splitting
+    the two sides of a comparison across files would make it harder to read, not easier.
 
     Parameters
     ----------
     generation : Generation
         What the payload produces
     downlink : Downlink
-        What the link clears
+        What the link sends
     storage : Storage
         The onboard memory sizing case
     """
@@ -159,10 +159,10 @@ class DataBudget:
     """
     A data and downlink budget for one satellite.
 
-    Generation is naturally per orbit — the payload collects for a fraction of each
-    revolution — while downlink is naturally per day, because contacts belong to the
-    ground station's day. Each side is computed in its own period and the two meet
-    at the daily figure, which is where the margin is taken.
+    Generation is counted per orbit, because the payload collects data for a fraction of
+    each orbit. Downlink is counted per day, because the contacts follow the ground
+    station's day. Each side is computed over its own period. The two are compared per
+    day, and the margin is taken there.
 
     Parameters
     ----------
@@ -264,7 +264,7 @@ class DataBudget:
     @property
     def downlinked_per_day(self):
         """
-        Data cleared by the downlink in one day.
+        Data sent by the downlink in one day.
 
         Returns
         -------
@@ -275,7 +275,7 @@ class DataBudget:
     @property
     def downlinked_per_orbit(self):
         """
-        Data cleared by the downlink, averaged over one orbit.
+        Data sent by the downlink, averaged over one orbit.
 
         Derived from the daily figure, since contacts are counted per day.
 
@@ -288,11 +288,11 @@ class DataBudget:
     @property
     def margin(self):
         """
-        How much more the link clears than the payload generates.
+        How much more the link sends than the payload generates.
 
-        Positive means the backlog clears; negative means data accumulates until
-        something is deleted or a pass is added. Being a ratio, it is unaffected by
-        the byte convention.
+        A positive margin means that each day's data is sent down the same day. A
+        negative margin means data builds up until some is deleted or a pass is added.
+        The margin is a ratio, so the byte convention does not affect it.
 
         Returns
         -------
@@ -307,14 +307,15 @@ class DataBudget:
         """
         Onboard storage needed to cover a run of orbits with no usable contact.
 
-        This sizes the gap between passes, not an accumulating backlog. The two
-        coincide only while the budget closes: with a negative margin the backlog
-        never clears and the real demand grows without bound.
+        This sizes the memory for the gap between passes, not for a backlog that grows
+        from day to day. The two are the same only while the budget closes. With a
+        negative margin, the backlog never clears, and the storage needed grows without
+        limit.
 
         Parameters
         ----------
         orbits_without_contact : float, optional
-            Orbits to cover; defaults to the value in the dataflow model
+            Orbits to cover. Defaults to the value in the dataflow model
 
         Returns
         -------
@@ -332,6 +333,6 @@ class DataBudget:
         -------
         report : Styler
             One row per quantity, rendered for reading. The frame is available as
-            `.data`, where every row carries the `row_type` the render hides.
+            `.data`, where every row has the `row_type` that the display hides.
         """
         return tabulate(self)

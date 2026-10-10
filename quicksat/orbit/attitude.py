@@ -35,6 +35,23 @@ _DEGENERATE = 1e-6
 direction then no longer fixes the turn about the first."""
 
 
+class ParallelDirections(ValueError):
+    """
+    Two directions of an attitude are parallel, so they do not fix the turn.
+
+    Parameters
+    ----------
+    message : str
+        What is parallel
+    row : int
+        The first row at which it happens
+    """
+
+    def __init__(self, message: str, row: int):
+        super().__init__(message)
+        self.row = row
+
+
 def axis_vector(axis: str) -> np.ndarray:
     """
     The unit vector of a signed body axis.
@@ -107,9 +124,10 @@ def align(
 
     Raises
     ------
-    ValueError
+    ParallelDirections
         If `second` is parallel to `first` somewhere, and there is no fallback,
-        or the fallback is parallel too
+        or the fallback is parallel too. It is a `ValueError`, and gives the
+        first such row.
     """
     target_first = _unit(first)
 
@@ -125,10 +143,16 @@ def align(
     target_second, parallel = perpendicular(second)
     if parallel.any():
         if fallback is None:
-            raise ValueError("the second direction is parallel to the first")
+            raise ParallelDirections(
+                "the second direction is parallel to the first",
+                int(np.flatnonzero(parallel)[0]),
+            )
         replacement, still_parallel = perpendicular(fallback)
         if (parallel & still_parallel).any():
-            raise ValueError("the fallback direction is parallel to the first too")
+            raise ParallelDirections(
+                "the fallback direction is parallel to the first too",
+                int(np.flatnonzero(parallel & still_parallel)[0]),
+            )
         target_second = np.where(parallel[:, None], replacement, target_second)
     target_second = _unit(target_second)
 

@@ -6,15 +6,15 @@
 """
 The mission, and the quantities every budget derives from it.
 
-The mission is shared: the data budget needs the period and the orbits in a day,
-delta-V needs the circular velocity and the design life, agility needs the ground
-track speed. Stating each fact once and deriving the rest here keeps the budgets
-from drifting apart, which is what happens the first time the same altitude is
-copied into three config files and one of them is retuned.
+The mission is shared. The data budget needs the period and the orbits in a day. Delta-V
+needs the circular velocity and the design life. Agility needs the ground track speed.
+Each fact is stated once, and the rest is derived here, so the budgets cannot disagree.
+They would disagree as soon as the same altitude was copied into three config files, and
+then changed in only one of them.
 
-Where the spacecraft is and how long it flies are both here for the same reason:
-more than one module can use either. A fact only one module can use stays in that
-module's own config -- the Isp in delta_v_config.yaml, say.
+Where the spacecraft is and how long it flies are both here for the same reason: more
+than one module can use them. A fact that only one module uses stays in that module's
+own config, such as the Isp in delta_v_config.yaml.
 
 The orbit is circular throughout. Nothing here models eccentricity, perturbations
 or drag.
@@ -41,10 +41,10 @@ class Mission(BaseModel):
     altitude : Quantity
         Height above the Earth's equatorial radius, `R_EARTH`
     inclination : Quantity
-        Orbit plane inclination; read only by calculations that change the plane
+        Orbit plane inclination. Read only by calculations that change the plane
     duration : Quantity
         Design life. Scales the recurring delta-V manoeuvres, and the power and
-        radiator work will want it too.
+        radiator work will need it too.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -122,8 +122,8 @@ class Mission(BaseModel):
         """
         Revolutions completed in one day.
 
-        Dimensionless rather than a rate, because it is used to turn a per-orbit
-        quantity into a per-day one.
+        Dimensionless rather than a rate, because it turns a quantity per orbit into
+        a quantity per day.
 
         Returns
         -------

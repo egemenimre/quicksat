@@ -11,8 +11,8 @@ start: 2026-10-01T00:00:00
 duration: 2 orbits
 step: 10 s
 attitudes:
-  nadir: {nadir_axis: +z, orbit_normal: -y}
-  sun pointing: {sun_axis: -z, constrain_to_orbit_normal: -y}
+  nadir: {point: [+z, nadir], constrain: [-y, orbit normal]}
+  sun pointing: {point: [-z, sun], constrain: [-y, orbit normal]}
 activities:
   - [eclipse entry - 1 min, sun pointing, idle, sunlit]
   - [eclipse exit, nadir, idle, eclipse]

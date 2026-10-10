@@ -6,9 +6,9 @@
 """
 The document view of the agility model.
 
-Takes the slew frame rather than an `AgilityBudget`, so the
-dependency runs one way and the layout stays exercisable against a bare frame --
-the same arrangement as the mass and delta-V reports.
+It takes the slew frame rather than an `AgilityBudget`. So the dependency runs one way,
+and the layout can be tested against a bare frame. The mass and delta-V reports work the
+same way.
 
 """
 
@@ -55,10 +55,10 @@ def tabulate(frame: pd.DataFrame, target_duration=None) -> Styler:
     """
     The slew table laid out as a document.
 
-    Each row is one slew angle: how long it takes, which limit binds, and how
-    much of the wheel momentum it calls on. Given a target duration, it also says
-    whether the manoeuvre fits -- without one those two columns are left out,
-    since there is nothing to check against.
+    Each row is one slew angle. It gives how long the slew takes, which limit applies,
+    and how much of the wheel momentum it uses. Given a target duration, it also says
+    whether the slew fits. Without one, those two columns are left out, because there is
+    nothing to check against.
 
     Parameters
     ----------
@@ -77,17 +77,17 @@ def tabulate(frame: pd.DataFrame, target_duration=None) -> Styler:
 
 def _assemble(frame: pd.DataFrame, target_duration=None) -> pd.DataFrame:
     """
-    Adds the requirement check to the slew table, when there is one to add.
+    Adds the requirement check to the slew table, when there is a target.
 
-    The verdict is the thing a reader looks for first, so it gets its own column
-    rather than being left implicit in the sign of a number.
+    A reader looks for the verdict first. So it gets its own column, rather than being
+    left to the sign of a number.
 
     Parameters
     ----------
     frame : pd.DataFrame
         A slew table
     target_duration : Quantity, optional
-        Time the operation allows. Without it the check is omitted entirely
+        Time the operation allows. Without it, the check is left out
 
     Returns
     -------
@@ -123,7 +123,7 @@ def _style(report: pd.DataFrame) -> Styler:
     """
 
     def _mark_failures(row):
-        """Reds a row whose manoeuvre does not fit the target duration."""
+        """Colours a row red when its slew does not fit the target duration."""
         failed = row.get("verdict") == "FAILS"
         return ["color: #b00020" if failed else ""] * len(row)
 

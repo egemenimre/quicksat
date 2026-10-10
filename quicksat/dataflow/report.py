@@ -6,15 +6,14 @@
 """
 Rendering of the data budget as a document.
 
-Presentation only: this reads a budget and lays it out, and nothing in it feeds
-back into the arithmetic.
+This is presentation only. It reads a budget and lays it out, and nothing in it changes
+the arithmetic.
 
-It takes the `DataBudget` itself rather than the values, which is the one place
-this differs from `mass/report.py`. The mass report takes a frame and a config so
-it never imports the budget module at all; here the layout needs a dozen scalars,
-and a twelve-argument signature would be worse than the coupling it avoids. The
-import is under `TYPE_CHECKING`, so the dependency still runs one way, and only
-public properties are read.
+It takes the `DataBudget` itself rather than the values. This is the one way it differs
+from `mass/report.py`. The mass report takes a frame and a config, so it never imports
+the budget module at all. Here, the layout needs a dozen scalars, and a function with
+twelve arguments would be worse than the coupling it avoids. The import is under
+`TYPE_CHECKING`, so the dependency still runs one way. Only public properties are read.
 
 """
 
@@ -200,8 +199,8 @@ def _style(report: pd.DataFrame) -> Styler:
     """
     Renders the report for reading: fixed decimals, bold results, no index.
 
-    `row_type` is hidden rather than dropped, so the frame in `.data` can still be
-    filtered to what was typed in versus what was computed.
+    `row_type` is hidden rather than dropped. So the frame in `.data` can still be
+    filtered by what was typed in and what was computed.
 
     Parameters
     ----------
@@ -215,7 +214,7 @@ def _style(report: pd.DataFrame) -> Styler:
     """
 
     def _bold_results(row):
-        """Bolds the rows that carry an answer rather than a step."""
+        """Makes bold the rows that hold a result rather than a step."""
         style = "font-weight: bold" if row["row_type"] in _BOLD_ROW_TYPES else ""
         return [style] * len(row)
 

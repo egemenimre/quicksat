@@ -83,9 +83,9 @@ class MassBudgetConfig(BaseModel):
     """
     Budget settings, keyed on location.
 
-    Location is the single computation axis: it carries both the system margin and
-    the harness parameters, so the derived harness rows are never ambiguous about
-    which margin applies to them.
+    Location is the single computation axis. It holds both the system margin and the
+    harness parameters. So it is always clear which margin applies to a derived harness
+    row.
     """
 
     locations: dict[str, LocationConfig] = Field(default_factory=dict)
@@ -136,9 +136,9 @@ class MassBudgetConfig(BaseModel):
         """
         Settings for a location.
 
-        `Launcher` is reserved and needs no entry: it defaults to no margins, no
-        harness, and being dropped at separation. Any other unlisted location is an
-        error rather than a silent zero, which would quietly understate the budget.
+        `Launcher` is reserved and needs no entry. It defaults to no margins, no
+        harness, and being left behind at separation. Any other unlisted location raises
+        an error. Treating it as zero would make the budget too low, with no warning.
 
         Parameters
         ----------
@@ -165,13 +165,14 @@ class MassBudget:
     """
     A satellite mass budget assembled from a flat equipment list.
 
-    The budget is a table, not a hierarchy. Location, responsibility and subsystem
-    are cross-cutting axes — an item can sit on the platform while being the payload
-    team's responsibility — so any tree would have to privilege one of the three and
-    express the others as side tables. `groupby` gives all three for free.
+    The budget is a table, not a hierarchy. Location, responsibility and subsystem are
+    independent axes. An item can sit on the platform and still be the payload team's
+    responsibility. So a tree would have to make one of the three its main structure,
+    with side tables for the others. `groupby` gives all three views with no extra code.
 
-    Every query takes the same four flags, all defaulting to `True`, so the common
-    question is a bare call and each deviation is one explicit switch:
+    Every query takes the same four flags. By default, they describe the satellite as it
+    flies at the start of life. So the usual query needs no arguments, and each change
+    from it is one explicit flag:
 
     propellant
         Percentage of the propellant load to count: 100 at the start of life, 0 at
@@ -266,8 +267,8 @@ class MassBudget:
         """
         The equipment table for one case, with a `mass` column per the flags.
 
-        Every factor is per row and linear, so the location retention, the margins
-        and the harness rows compose without interfering.
+        Every factor is per row and linear. So the location retention, the margins and
+        the harness rows combine without affecting each other.
 
         Parameters
         ----------
@@ -309,7 +310,7 @@ class MassBudget:
         in_orbit: bool = True,
     ):
         """
-        Total mass. The generic query the others are presets of.
+        Total mass. The general query that the others call with a filter.
 
         Parameters
         ----------
@@ -405,7 +406,7 @@ class MassBudget:
         """
         Platform mass, summed on location or on responsibility.
 
-        Takes no `in_orbit` flag: retention is a property of the location, and the
+        It takes no `in_orbit` flag. Retention is a property of the location, and the
         platform is retained, so the flag could not change the answer.
 
         Parameters
@@ -417,7 +418,7 @@ class MassBudget:
         eqpt_margin : bool
             Apply the per-item equipment margin
         by_responsibility : bool
-            Sum rows whose `responsibility` is Platform; otherwise their `location`
+            Sum rows whose `responsibility` is Platform. Otherwise, sum by `location`
 
         Returns
         -------
@@ -447,7 +448,7 @@ class MassBudget:
         eqpt_margin : bool
             Apply the per-item equipment margin
         by_responsibility : bool
-            Sum rows whose `responsibility` is Payload; otherwise their `location`
+            Sum rows whose `responsibility` is Payload. Otherwise, sum by `location`
 
         Returns
         -------
@@ -462,10 +463,10 @@ class MassBudget:
         """
         Mass of one subsystem.
 
-        Carries no system margin: system margins are held at the platform and
-        payload level and cannot be attributed to a subsystem. Nor does it need a
-        `propellant` flag — a propellant row carries its own `subsystem`, so a propulsion
-        query picks the propellant up and every other subsystem is unaffected.
+        It includes no system margin. System margins are held at the platform and
+        payload level, and cannot be assigned to a subsystem. It needs no `propellant`
+        flag either. A propellant row has its own `subsystem`. So a Propulsion query
+        includes the propellant, and no other subsystem is affected.
 
         Parameters
         ----------
@@ -486,10 +487,10 @@ class MassBudget:
 
     def propellant_mass(self):
         """
-        Propellant mass, at face value.
+        Propellant mass, with no margin.
 
-        Takes no flags: propellant is never margined, and it is present both on the
-        ground and in orbit.
+        It takes no flags. Propellant never takes a margin, and it is present both on
+        the ground and in orbit.
 
         Returns
         -------
@@ -557,38 +558,38 @@ class MassBudget:
         """
         The budget as a document: every item, with subtotals in reading order.
 
-        Equipment is grouped into subsystem blocks within each location, then the
-        location subtotal before its system margin, the margin itself, and the
-        location total after it. The location totals are followed by the dry mass,
-        the propellant, and the wet mass.
+        Equipment is grouped by subsystem within each location. Each location then gets
+        its subtotal before system margin, the margin itself, and its total after
+        margin. The dry mass, the propellant and the wet mass follow the location
+        totals.
 
-        Propellant appears once, at the bottom, and is left out of the blocks above
-        it, so every subtotal on the way down is a dry mass and the column adds up as
-        it reads. `subsystem_mass("Propulsion")` is therefore wet where the
-        propulsion subtotal here is dry — they answer different questions.
+        Propellant appears once, at the bottom, and is left out of the blocks above it.
+        So every subtotal above it is a dry mass, and the column adds up in reading
+        order. So `subsystem_mass("Propulsion")` is wet, while the Propulsion subtotal
+        here is dry. They answer different questions.
 
         Parameters
         ----------
         in_orbit : bool
-            When set, launcher-side hardware is absent and the totals are the
-            in-orbit masses; otherwise a launcher block joins the others and the
+            When set, launcher-side hardware is left out, and the totals are the
+            in-orbit masses. Otherwise, a launcher block joins the others, and the
             totals become the on-ground masses.
         subsystem_subtotals : bool
-            Add a subtotal line after each subsystem block. Off by default: on a
-            table this size the extra lines crowd out the items themselves. The
-            blocks stay grouped by subsystem either way.
+            Add a subtotal line after each subsystem block. Off by default, because on a
+            table this size the extra lines hide the items. The blocks stay grouped by
+            subsystem either way.
         comments : bool
-            Show the equipment file's `comments` column. Off by default because
-            free text stretches the table, but it is where the derived harness rows
-            explain themselves. The column is in `.data` either way.
+            Show the equipment file's `comments` column. Off by default, because free
+            text makes the table wide. The derived harness rows say there how they were
+            derived. The column is in `.data` either way.
 
         Returns
         -------
         report : Styler
-            One row per item and per subtotal. A Styler rather than a plain frame,
-            so that cells which do not apply to a row come out blank instead of
-            NaN. The frame itself is still there as `.data`, where every row also
-            carries the `row_type` that the rendered table hides.
+            One row per item and per subtotal. A Styler rather than a plain frame, so
+            that cells which do not apply to a row are blank instead of NaN. The frame
+            is still there as `.data`, where every row also has the `row_type` that the
+            displayed table hides.
         """
         return tabulate(
             self._frame, self.config, in_orbit, subsystem_subtotals, comments
@@ -654,14 +655,14 @@ class MassBudget:
         """
         Mass per row for a flag combination.
 
-        Building the figure from the flags rather than selecting one of three
-        precomputed columns covers every combination uniformly, including margining
-        by system but not by equipment.
+        The figure is built from the flags, rather than chosen from three precomputed
+        columns. This covers every combination in the same way, including a system
+        margin without the equipment margin.
 
         Parameters
         ----------
         frame : pd.DataFrame
-            The rows to price, already filtered for the case
+            The rows to weigh, already filtered for the case
         sys_margin : bool
             Apply the location's system margin
         eqpt_margin : bool
@@ -681,15 +682,15 @@ class MassBudget:
             mass = mass * frame["location"].map(
                 lambda name: 1.0 + self.config.for_location(name).system_margin / 100.0
             )
-        # propellant is never margined whatever the flags say, and burns off over
-        # the mission rather than being present or absent
+        # propellant never takes a margin, whatever the flags say. It is used up over
+        # the mission, rather than being present or absent
         is_propellant = frame["mass_class"] == MassClass.PROPELLANT.value
         return mass.mask(is_propellant, frame["eqpt_total_mass"] * propellant / 100.0)
 
 
 def _frame_from_items(equipment: list[Equipment]) -> pd.DataFrame:
     """
-    Flattens validated equipment into the working table, in canonical kg.
+    Flattens validated equipment into the working table, in kg.
 
     Parameters
     ----------
@@ -731,8 +732,8 @@ def _check_duplicates(frame: pd.DataFrame) -> None:
     """
     Rejects a repeated equipment id within one location.
 
-    The same id may appear at several locations — physically distinct items often
-    share a name — but not twice in the same place.
+    The same id may appear at several locations, because separate items often share a
+    name. But it may not appear twice in the same place.
 
     Parameters
     ----------
@@ -758,13 +759,13 @@ def _harness_frame(frame: pd.DataFrame, config: MassBudgetConfig) -> pd.DataFram
     """
     Derives one harness row per location.
 
-    The base is the equipment mass at that location before margin: propellant is
-    excluded because cabling scales with the boxes it connects, and the unmargined
-    mass is used so the harness estimate does not compound the equipment margins.
+    The base is the equipment mass at that location, before margin. Propellant is left
+    out, because cabling scales with the boxes it connects. The mass before margin is
+    used, so that the harness estimate does not compound the equipment margins.
 
-    The row takes its location's name as its responsibility, so that summing on
-    either axis includes it. Where a location hosts several responsibilities, that
-    attributes the whole harness to the location's own name.
+    The row takes its location's name as its responsibility, so that a sum over either
+    axis includes it. A location may hold items of several responsibilities. The whole
+    harness then goes to the location's own name.
 
     Parameters
     ----------

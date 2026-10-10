@@ -15,7 +15,7 @@ import yaml
 from astropy.tests.helper import assert_quantity_allclose
 from astropy.units import Quantity
 
-from quicksat import Q_
+from quicksat import Q_, u
 from quicksat.scenario.config import (
     Activity,
     OrbitCount,
@@ -31,8 +31,8 @@ BASE = {
     "start": "2026-10-01T00:00:00",
     "duration": "3 orbits",
     "attitudes": {
-        "nadir": {"nadir_axis": "+z", "orbit_normal": "-y"},
-        "sun pointing": {"sun_axis": "-z", "constrain_to_orbit_normal": "-y"},
+        "nadir": {"point": ["+z", "nadir"], "constrain": ["-y", "orbit normal"]},
+        "sun pointing": {"point": ["-z", "sun"], "constrain": ["-y", "orbit normal"]},
     },
     "activities": [["eclipse entry", "sun pointing", "idle", "sunlit"]],
 }
@@ -176,7 +176,7 @@ def test_the_base_scenario_reads():
     read = scenario()
     assert read.duration == OrbitCount(3)
     assert read.step == Q_(10, "s")
-    assert read.attitudes.names == ["nadir", "sun pointing"]
+    assert list(read.attitudes) == ["nadir", "sun pointing"]
     assert read.source_text is not None
     assert read.source_file is None
 
@@ -268,30 +268,164 @@ def test_the_start_is_an_iso_time_in_utc(start):
 
 
 def test_an_activity_must_name_a_defined_attitude():
-    attitudes = {"nadir": {"nadir_axis": "+z", "orbit_normal": "-y"}}
+    attitudes = {"nadir": BASE["attitudes"]["nadir"]}
     with pytest.raises(ValueError, match="'sun pointing' is not defined"):
         scenario(attitudes=attitudes)
 
 
+def test_an_attitude_reads_its_pairs_fallback_and_offset():
+    roll = {
+        "point": ["+z", "nadir"],
+        "constrain": ["-y", "orbit normal"],
+        "offset": ["x 30 deg", "y -0.1 rad"],
+    }
+    read = scenario(attitudes=BASE["attitudes"] | {"roll": roll})
+    attitude = read.attitudes["roll"]
+    assert (attitude.point, attitude.constrain) == (
+        ("+z", "nadir"),
+        ("-y", "orbit normal"),
+    )
+    assert [(axis, angle.to_value(u.deg)) for axis, angle in attitude.offset] == [
+        ("x", 30),
+        ("y", pytest.approx(-5.729578)),
+    ]
+    # nadir is across the orbit normal, so its fallback is never needed
+    assert attitude.fallback_direction == "velocity"
+
+
 @pytest.mark.parametrize(
-    ("sun_pointing", "message"),
+    ("point", "constrain", "fallback"),
     [
-        ({"sun_axis": "-z"}, "exactly one"),
-        (
-            {
-                "sun_axis": "-z",
-                "constrain_to_nadir": "+y",
-                "constrain_to_orbit_normal": "-y",
-            },
-            "exactly one",
-        ),
-        ({"sun_axis": "-z", "constrain_to_nadir": "+z"}, "different body axes"),
+        (["-z", "sun"], ["-y", "orbit normal"], "nadir"),
+        (["-z", "sun"], ["-y", "nadir"], "orbit normal"),
+        (["-y", "orbit normal"], ["+x", "sun"], "nadir"),
     ],
 )
-def test_sun_pointing_needs_one_constraint_on_another_axis(sun_pointing, message):
-    attitudes = BASE["attitudes"] | {"sun pointing": sun_pointing}
+def test_the_default_fallback_is_a_direction_the_attitude_does_not_use(
+    point, constrain, fallback
+):
+    attitudes = BASE["attitudes"] | {"a": {"point": point, "constrain": constrain}}
+    assert scenario(attitudes=attitudes).attitudes["a"].fallback_direction == fallback
+
+
+@pytest.mark.parametrize(
+    ("text", "event", "target", "offset"),
+    [
+        ("Svalbard rise", "rise", "Svalbard", None),
+        ("Svalbard set + 2 min", "set", "Svalbard", Q_(2, "min")),
+        ("Kiruna  North SET -30 s", "set", "Kiruna North", Q_(-30, "s")),
+    ],
+)
+def test_a_target_rise_or_set_trigger(text, event, target, offset):
+    trigger = parse_trigger(text)
+    assert (trigger.event, trigger.target, trigger.offset) == (event, target, offset)
+    assert trigger.event_key == (event, target)
+
+
+def test_a_rise_or_set_must_name_a_defined_target():
+    activities = [["Svalbard rise", "nadir", "idle"]]
+    with pytest.raises(ValueError, match="names the target 'Svalbard', which targets"):
+        scenario(activities=activities)
+    targets = {"Svalbard": {"latitude": "78.2 deg", "longitude": "15.4 deg"}}
+    read = scenario(activities=activities, targets=targets)
+    assert read.targets["Svalbard"].min_elevation == Q_(5, "deg")
+
+
+@pytest.mark.parametrize("min_elevation", ["-1 deg", "90 deg", "5 m"])
+def test_a_minimum_elevation_must_be_an_angle_above_the_horizon(min_elevation):
+    targets = {
+        "Svalbard": {
+            "latitude": "78.2 deg",
+            "longitude": "15.4 deg",
+            "min_elevation": min_elevation,
+        }
+    }
+    with pytest.raises(ValueError, match="min_elevation|angle"):
+        scenario(targets=targets)
+
+
+def test_a_ground_target_reads_and_an_attitude_can_point_at_it():
+    targets = {"Toulouse": {"latitude": "43.6 deg", "longitude": "1.44 deg"}}
+    track = {"point": ["+z", "Toulouse"], "constrain": ["-y", "orbit normal"]}
+    read = scenario(targets=targets, attitudes=BASE["attitudes"] | {"track": track})
+    target = read.targets["Toulouse"]
+    assert target.latitude == Q_(43.6, "deg")
+    assert target.altitude == Q_(0, "m")
+
+
+TRACK = {"point": ["+z", "Toulouse"], "constrain": ["-y", "orbit normal"]}
+"""An attitude that points at a target named Toulouse."""
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"point": ["+z", "nadir"], "constrain": ["-z", "sun"]}, "different body axes"),
+        ({"point": ["+z", "sun"], "constrain": ["-y", "sun"]}, "different directions"),
+        ({"point": ["+z", "nadir"], "constrain": ["-y"]}, "expected a pair"),
+        ({"point": "+z nadir", "constrain": ["-y", "sun"]}, "expected a pair"),
+        ({"point": ["+q", "nadir"], "constrain": ["-y", "sun"]}, "point"),
+        ({"point": ["+z", "moon"], "constrain": ["-y", "sun"]}, "'moon' is not a"),
+        (
+            {"point": ["+z", "nadir"], "constrain": ["-y", "sun"], "fallback": "x"},
+            "'x' is not a direction",
+        ),
+        (
+            {"point": ["+z", "nadir"], "constrain": ["-y", "sun"], "fallback": "sun"},
+            "fallback must be a direction that point and constrain do not use",
+        ),
+        (
+            {"point": ["+z", "nadir"], "constrain": ["-y", "sun"], "offset": "x 3 deg"},
+            "offset must be a list",
+        ),
+        (
+            {
+                "point": ["+z", "nadir"],
+                "constrain": ["-y", "sun"],
+                "offset": ["q 3 deg"],
+            },
+            "an offset turn is a body axis",
+        ),
+        (
+            {"point": ["+z", "nadir"], "constrain": ["-y", "sun"], "offset": ["x 3"]},
+            "needs an angle",
+        ),
+        (
+            {"point": ["+z", "nadir"], "constrain": ["-y", "sun"], "speed": 1},
+            "speed",
+        ),
+    ],
+)
+def test_a_bad_attitude_stops_the_load(changes, message):
     with pytest.raises(ValueError, match=message):
-        scenario(attitudes=attitudes)
+        scenario(attitudes=BASE["attitudes"] | {"bad": changes})
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"attitudes": {}}, "at least one attitude"),
+        (
+            {"attitudes": BASE["attitudes"] | {"slew": BASE["attitudes"]["nadir"]}},
+            "no attitude may be named 'slew'",
+        ),
+        (
+            {"targets": {"sun": {"latitude": "0 deg", "longitude": "0 deg"}}},
+            "target 'sun' takes the name of a built-in direction",
+        ),
+        (
+            {"targets": {"Toulouse": {"latitude": "95 deg", "longitude": "0 deg"}}},
+            "latitude must be from -90 to 90 deg",
+        ),
+        (
+            {"attitudes": BASE["attitudes"] | {"track": TRACK}},
+            "'Toulouse' is not a direction",
+        ),
+    ],
+)
+def test_bad_attitude_names_or_targets_stop_the_load(changes, message):
+    with pytest.raises(ValueError, match=message):
+        scenario(**changes)
 
 
 def test_a_wrong_activity_is_named_by_its_number():

@@ -23,8 +23,8 @@ class MassClass(str, Enum):
     """Ordinary hardware. Carries margins and is counted in every case."""
 
     PROPELLANT = "propellant"
-    """Consumable. Counted only when `with_propellant` is set, and never margined —
-    propellant uncertainty is defined as a delta-V margin, not as mass contingency."""
+    """Consumable. Scaled by the `propellant` percentage, and never takes a margin.
+    Its uncertainty is covered by a delta-V margin, not by a mass contingency."""
 
 
 def _default_mass_class(v):
@@ -53,8 +53,8 @@ class Equipment(BaseModel):
     """
     A single line item of the mass budget.
 
-    Validated row by row on load, so a malformed CSV reports the offending row and
-    field rather than failing later in the arithmetic.
+    Each row is validated on load. So a malformed CSV raises an error that names the bad
+    row and field, rather than failing later in the arithmetic.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -66,8 +66,8 @@ class Equipment(BaseModel):
     """Full name, free text (e.g. "Jena Astro HP")."""
 
     location: NoSpaceStr
-    """Where the item physically sits. The single computation axis: it drives both
-    the harness fraction and the system margin, and decides what survives separation."""
+    """Where the item sits. The single computation axis: it sets the harness fraction
+    and the system margin, and decides what survives separation."""
 
     responsibility: NoSpaceStr
     """Who is responsible for the item. Reporting axis only."""

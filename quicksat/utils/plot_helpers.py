@@ -61,6 +61,16 @@ PALETTE = (
 )
 """The colours that values take, in this order."""
 
+ILLUMINATION_COLOURS = {
+    "sunlit": "#c9d6e8",
+    "penumbra": "#8197b8",
+    "umbra": "#4a5d7e",
+}
+"""The illumination's colours: one slate hue, light where the sun is seen and dark
+where it is hidden, since the illumination is an amount of light. They take no
+colours from `PALETTE`, which is left for the attitudes and the modes. Each step
+stays clear of both a white background and the viewer's dark one."""
+
 STYLE = {  # noqa: V107
     "axes.spines.top": False,
     "axes.spines.right": False,
