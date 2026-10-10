@@ -145,6 +145,10 @@ bare `97.4`. An inclination must say whether it is in degrees or radians.
 SignedAngleQty = signed_quantity(u.deg, "angle")
 """Annotated Quantity type for angles of either sign, such as `-90 deg`."""
 
+SignedLengthQty = signed_quantity(u.m, "length")
+"""Annotated Quantity type for lengths of either sign, such as an altitude below
+the ellipsoid."""
+
 
 PlainQty = Annotated[
     u.Quantity,

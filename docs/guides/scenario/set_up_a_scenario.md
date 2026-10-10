@@ -45,18 +45,36 @@ Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), section "The
 
 ## 4. Define the attitudes
 
-Define the attitudes your activities use: `nadir`, `sun pointing`, or both. Each names two body axes, written with their sign, such as `+z` or `-y`.
+Define the attitudes your activities use, each under a name of your choice. Every attitude fixes one body axis on a direction, and turns a second body axis as close as it can get to another direction. An axis is written with its sign, such as `+z` or `-y`.
 
 ```yaml
 attitudes:
-  nadir: {nadir_axis: +z, orbit_normal: -y}
-  sun pointing: {sun_axis: -z, constrain_to_orbit_normal: -y}
+  nadir: {point: [+z, nadir], constrain: [-y, orbit normal]}
+  sun pointing: {point: [-z, sun], constrain: [-y, orbit normal]}
 ```
 
-- **`nadir`** points `nadir_axis` at the centre of the Earth. It keeps `orbit_normal` along the orbit normal.
-- **`sun pointing`** points `sun_axis` at the sun, and takes exactly one second axis. `constrain_to_orbit_normal` keeps the body still over an orbit. `constrain_to_nadir` keeps that axis facing the Earth. But then the body spins fast when the sun is close to the nadir line.
+- **`point`** gives the axis and the direction it is fixed on.
+- **`constrain`** gives the second axis, and the direction it turns toward. It must use a different axis, and a different direction.
+- **The directions** are `nadir`, `sun`, `orbit normal`, `velocity`, `ground velocity`, and the names of ground points that you list under `targets`.
+- **`offset`**, optional, adds turns about body axes, in order, such as `offset: [x 30 deg]` for a 30° roll off nadir.
+- **`fallback`**, optional, names the direction that takes the constraint's place where it is parallel to the pointed one. The default is usually right.
 
-Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), section "The attitudes".
+A ground point is written with its latitude and longitude, and an optional altitude and minimum elevation. The minimum elevation, 5° by default, is where the target sees the satellite rise and set:
+
+```yaml
+targets:
+  Toulouse: {latitude: 43.60 deg, longitude: 1.44 deg, altitude: 150 m}
+  Svalbard: {latitude: 78.229 deg, longitude: 15.408 deg, min_elevation: 10 deg}
+```
+
+Two more examples:
+
+- `{point: [+z, nadir], constrain: [+x, ground velocity]}` steers in yaw, so that x follows the ground's motion below.
+- `{point: [+z, Toulouse], constrain: [-y, orbit normal]}` tracks the ground point.
+
+Constraining an axis to the orbit normal keeps a sun-pointing body still over an orbit. Constraining it to nadir keeps it facing the Earth. But the body then spins fast when the sun is close to the nadir line.
+
+Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), sections "The attitudes" and "Offsets, ground targets and yaw steering".
 
 ## 5. Add the slews, if you want them
 
@@ -114,11 +132,11 @@ activities:
 ```
 
 - **The list is one repeat.** The first activity starts at the start of the run. Each later one starts where the one before it ends. The run repeats the list until the duration ends.
-- **The trigger** is a time, such as `20 min`, or the next event after the activity starts. The events are the shadow edges, the nodes and latitude crossings. An event can take an offset, such as `eclipse entry - 1 min`.
+- **The trigger** is a time, such as `20 min`, or the next event after the activity starts. The events are the shadow edges, the nodes, latitude crossings, and a ground target's rise and set, such as `Svalbard rise`. An event can take an offset, such as `eclipse entry - 1 min`.
 - **The mode** is any name. Power will say what each mode draws.
 - **The constraint** is the illumination the activity expects: `sunlit`, `penumbra`, `umbra`, or `eclipse` for either of the last two.
 
-Use event triggers where you can. Events keep the list in step with the orbit, while fixed times drift against it.
+Use event triggers where you can. Events keep the list in step with the orbit, while fixed times drift against it. A rise or a set ends a downlink at the pass itself, with no trial and error over latitudes. But where an orbit has no pass, a list that waits for one runs on to the next.
 
 Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), section "The activities", which lists every trigger.
 

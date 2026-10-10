@@ -48,6 +48,7 @@ from astropy.coordinates import (
     SkyCoord,
     get_sun,
 )
+from astropy.units import Quantity
 
 from quicksat import Q_, u
 from quicksat.utils.intervals import TimeArray, intervals_where
@@ -64,6 +65,9 @@ EARTH_FLATTENING = 1 / 298.257223563
 
 SUN_RADIUS = constants.R_sun  # pyright: ignore[reportAttributeAccessIssue]
 """Radius of the sun: astropy's default, the IAU 2015 nominal 695 700 km."""
+
+EARTH_ROTATION_RATE = Q_(7.292115e-5, "rad / s")
+"""The Earth's rotation rate, the WGS84 value. astropy.constants has none."""
 
 
 def sun_positions(times: TimeArray) -> CartesianRepresentation:
@@ -431,3 +435,62 @@ def earth_rotations(times: TimeArray) -> np.ndarray:
     )
     # xyz has shape (3 components, 3 axes, n): move to (n, components, axes)
     return np.moveaxis(gcrs.xyz.to_value(u.km), -1, 0)
+
+
+def ground_point(
+    latitude: Quantity, longitude: Quantity, altitude: Quantity
+) -> np.ndarray:
+    """
+    A geodetic point's position in ITRS, on the WGS84 ellipsoid.
+
+    Parameters
+    ----------
+    latitude, longitude : Quantity
+        Geodetic latitude, and longitude east
+    altitude : Quantity
+        Height above the ellipsoid
+
+    Returns
+    -------
+    position : ndarray
+        In km, shape (3,)
+    """
+    point = EarthLocation.from_geodetic(
+        longitude, latitude, float(altitude.to(u.m).value), ellipsoid="WGS84"
+    )
+    return np.array([coordinate.to_value(u.km) for coordinate in point.geocentric])
+
+
+def elevations(
+    state: SkyCoord, latitude: Quantity, longitude: Quantity, altitude: Quantity
+) -> np.ndarray:
+    """
+    The satellite's elevation above a ground point's horizon, at each time of a
+    state.
+
+    The horizon is the plane across the WGS84 ellipsoid's normal at the point.
+
+    Parameters
+    ----------
+    state : SkyCoord
+        The satellite's positions in GCRS, with their times
+    latitude, longitude : Quantity
+        The point's geodetic latitude, and longitude east
+    altitude : Quantity
+        The point's height above the ellipsoid
+
+    Returns
+    -------
+    elevations : ndarray
+        In degrees, from -90 to 90
+    """
+    earth = earth_rotations(cast(TimeArray, state.obstime))
+    point = earth @ ground_point(latitude, longitude, altitude)
+    lat, lon = latitude.to_value(u.rad), longitude.to_value(u.rad)
+    normal = np.array(
+        [np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)]
+    )
+    up = earth @ normal
+    line = _km(cast(CartesianRepresentation, state.cartesian)) - point
+    sine = np.sum(line * up, axis=1) / np.linalg.norm(line, axis=1)
+    return np.degrees(np.arcsin(np.clip(sine, -1, 1)))

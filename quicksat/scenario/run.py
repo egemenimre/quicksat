@@ -20,6 +20,7 @@ overlaps.
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from functools import cached_property
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -30,6 +31,7 @@ from astropy.units import Quantity
 from quicksat import Q_, u
 from quicksat.orbit.geometry import (
     beta_angle,
+    elevations,
     geodetic,
     light_fraction,
     shadow_cones,
@@ -42,9 +44,12 @@ from quicksat.orbit.tle import Tle, read_tle_file, warn_if_far_from_epoch
 from quicksat.orbit.trajectory import Trajectory
 from quicksat.orbit.trajectory_files import read_trajectory_file
 from quicksat.scenario.articulation import articulation_angles
-from quicksat.scenario.attitude import SLEW, SlewWindow, plan_slews
+from quicksat.scenario.attitude import SlewWindow, plan_slews
 from quicksat.scenario.config import (
     LATITUDE_CROSSING,
+    RISE,
+    SET,
+    SLEW,
     Activity,
     OrbitCount,
     Scenario,
@@ -316,6 +321,7 @@ def find_events(
     interval: P.Interval,
     illumination: Illumination,
     time_above: Callable[[Quantity], P.Interval],
+    time_visible: Callable[[str], P.Interval] | None = None,
 ) -> Events:
     """
     The events that the activities' triggers name, as the intervals they start.
@@ -325,7 +331,8 @@ def find_events(
     the start of the time outside it. A northward crossing of a latitude is the
     start of the time above it, and a southward crossing is the start of the time
     below it. The time above each latitude is found once, whichever directions the
-    triggers name.
+    triggers name. A target's rise is the start of the time it can see the
+    satellite, and its set the start of the time it cannot.
 
     Parameters
     ----------
@@ -337,6 +344,10 @@ def find_events(
         The intervals of `sunlit`, `penumbra`, `umbra` and `eclipse`
     time_above : callable
         Gives the time at or above a geodetic latitude, as intervals over the run
+    time_visible : callable, optional
+        Gives the time a ground target, by name, sees the satellite at or above
+        its minimum elevation, as intervals over the run. Needed only for the
+        `rise` and `set` triggers.
 
     Returns
     -------
@@ -352,6 +363,7 @@ def find_events(
     }
     events: Events = {}
     above: dict[float, P.Interval] = {}
+    visible: dict[str, P.Interval] = {}
     for activity in activities:
         trigger = activity.trigger
         key = trigger.event_key
@@ -359,6 +371,14 @@ def find_events(
             continue
         if trigger.event in shadow_edges:
             events[key] = (shadow_edges[trigger.event],)
+        elif trigger.event in (RISE, SET):
+            if time_visible is None:
+                raise ValueError(f"trigger '{trigger.text}' needs time_visible")
+            target = cast(str, trigger.target)  # a rise or a set has one
+            if target not in visible:
+                visible[target] = time_visible(target)
+            seen = visible[target]
+            events[key] = (seen,) if trigger.event == RISE else (interval - seen,)
         else:
             assert trigger.event == LATITUDE_CROSSING
             assert trigger.latitude is not None  # a latitude crossing has one
@@ -720,6 +740,57 @@ class ScenarioRun:
         return activity_summary(self.occurrences)
 
 
+def _event_finders(
+    scenario: Scenario,
+    times: TimeArray,
+    state: SkyCoord,
+    latitude: Quantity,
+    positions_at: Callable[[TimeArray], SkyCoord],
+) -> tuple[Callable[[Quantity], P.Interval], Callable[[str], P.Interval]]:
+    """
+    The two finders that `find_events` takes, over a run's grid.
+
+    Parameters
+    ----------
+    scenario : Scenario
+        The scenario, for its ground targets
+    times : Time
+        The run's grid
+    state : SkyCoord
+        The satellite's state on the grid
+    latitude : Quantity
+        The geodetic latitude on the grid
+    positions_at : callable
+        Gives the satellite's positions for any `Time` array
+
+    Returns
+    -------
+    time_above : callable
+        Gives the time at or above a geodetic latitude
+    time_visible : callable
+        Gives the time a ground target, by name, sees the satellite at or above
+        its minimum elevation
+    """
+
+    def time_above(limit: Quantity) -> P.Interval:
+        def above_at(at: TimeArray) -> np.ndarray:
+            return np.asarray(geodetic(positions_at(at))[0] >= limit)
+
+        return intervals_where(times, np.asarray(latitude >= limit), above_at)
+
+    def time_visible(name: str) -> P.Interval:
+        target = scenario.targets[name]
+        place = (target.latitude, target.longitude, target.altitude)
+        lowest = target.min_elevation.to_value(u.deg)
+
+        def visible_at(at: TimeArray) -> np.ndarray:
+            return elevations(positions_at(at), *place) >= lowest
+
+        return intervals_where(times, elevations(state, *place) >= lowest, visible_at)
+
+    return time_above, time_visible
+
+
 def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
     """
     Run a scenario.
@@ -727,8 +798,8 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
     The orbit comes from the TLE file, from a TLE built for the sun-synchronous
     orbit, or from the trajectory file. It is evaluated on the time grid, with
     SGP4 or by interpolation. The edges of the umbra and the penumbra are then
-    located between the grid steps, and so are the latitude crossings that the
-    triggers name. The activities are then repeated over the run and checked
+    located between the grid steps, and so are the latitude crossings and the
+    ground targets' rises and sets that the triggers name. The activities are then repeated over the run and checked
     against the eclipses. The run gets a warning if it starts more than 7 days
     from the epoch of the TLE, or comes close to an end of the trajectory.
 
@@ -776,13 +847,12 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
     }
     latitude, longitude = geodetic(state)
 
-    def time_above(limit: Quantity) -> P.Interval:
-        def above_at(at: TimeArray) -> np.ndarray:
-            return np.asarray(geodetic(positions_at(at))[0] >= limit)
-
-        return intervals_where(times, np.asarray(latitude >= limit), above_at)
-
-    events = find_events(scenario.activities, interval, illumination, time_above)
+    time_above, time_visible = _event_finders(
+        scenario, times, state, latitude, positions_at
+    )
+    events = find_events(
+        scenario.activities, interval, illumination, time_above, time_visible
+    )
     occurrences = resolve_activities(
         scenario.activities, interval, events, illumination
     )
@@ -795,7 +865,7 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
         slews = plan_slews(
             occurrences,
             scenario.slew,
-            scenario.attitudes,
+            scenario,
             interval,
             states_at,
             sun_positions,

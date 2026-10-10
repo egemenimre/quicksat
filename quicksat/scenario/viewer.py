@@ -48,7 +48,8 @@ from quicksat import R_EARTH, u
 from quicksat.orbit.attitude import quaternions
 from quicksat.orbit.geometry import earth_rotations
 from quicksat.orbit.tle import Tle
-from quicksat.scenario.attitude import SLEW, SlewWindow, body_rotations
+from quicksat.scenario.attitude import SlewWindow, body_rotations
+from quicksat.scenario.config import SLEW
 from quicksat.scenario.plots import scenario_colours
 from quicksat.scenario.run import ScenarioRun
 from quicksat.scenario.spacecraft import node_index, read_glb_json

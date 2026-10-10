@@ -6868,9 +6868,10 @@ const HELP = {
   attitude: {
     title: "Attitude",
     text:
-      "How the body is pointed. In nadir, one body axis points at the centre of the Earth. In sun pointing, " +
-      "one body axis points at the sun. The scenario file names the axes. During a slew, the body turns into " +
-      "the next attitude, shown as, for example, nadir (slewing). Without slews, attitude changes are instant.",
+      "How the body is pointed, by the attitude's name in the scenario file. Each attitude fixes one body axis " +
+      "on a direction, such as the nadir, the sun or a ground target, and turns a second axis as close as it can " +
+      "get to another. During a slew, the body turns into the next attitude, shown as, for example, " +
+      "nadir (slewing). Without slews, attitude changes are instant.",
   },
   illumination: {
     title: "Illumination",
@@ -6899,8 +6900,8 @@ const HELP = {
   sunBody: {
     title: "Sun in body axes",
     text:
-      "The unit vector from the spacecraft to the sun, in body axes. In sun pointing, the sun axis reads " +
-      "1 or -1, which checks the pointing.",
+      "The unit vector from the spacecraft to the sun, in body axes. In an attitude that points an axis at " +
+      "the sun, that axis reads 1 or -1, which checks the pointing.",
   },
   panels: {
     title: "Sun on panels",
@@ -6944,7 +6945,7 @@ const HELP = {
     title: "LVLH",
     text:
       "Show the body in LVLH axes, which turn with the orbit: x along track, y minus the orbit normal, and " +
-      "z nadir. A nadir attitude then stands still.",
+      "z nadir. An attitude that points z at the nadir and keeps -y on the orbit normal then stands still.",
   },
   gcrs: {
     title: "GCRS",

@@ -23,13 +23,13 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 from quicksat import u
-from quicksat.scenario.attitude import SLEW
-from quicksat.scenario.config import Scenario
+from quicksat.scenario.config import SLEW, Scenario
 from quicksat.scenario.run import NEGATIVE_DURATION, OUTSIDE_CONSTRAINT, ScenarioRun
 from quicksat.utils.intervals import TimeArray, labels_at
 from quicksat.utils.plot_helpers import (
     AXIS,
     CRITICAL,
+    ILLUMINATION_COLOURS,
     INK,
     MUTED,
     legend_below,
@@ -50,10 +50,11 @@ def scenario_colours(scenario: Scenario) -> dict[str, str]:
     """
     The colour of every value the plots show.
 
-    The values take the colours in a fixed order: the illumination first, as
-    `sunlit`, `penumbra` and `umbra`, then the attitudes, then the modes in the
-    order the activities name them. A `slew` between attitudes is always grey,
-    so it takes no colour from the palette.
+    The illumination, `sunlit`, `penumbra` and `umbra`, has its own colours, one
+    hue from light to dark, from `ILLUMINATION_COLOURS`. The attitudes, then the
+    modes in the order the activities name them, take the palette's colours in a
+    fixed order. A `slew` between attitudes is always grey, so it takes no colour
+    from the palette either.
 
     Parameters
     ----------
@@ -65,11 +66,13 @@ def scenario_colours(scenario: Scenario) -> dict[str, str]:
     colours : dict
         The colour of each value, as a hex string
     """
-    attitudes = ["sunlit", "penumbra", "umbra", *scenario.attitudes.names]
+    attitudes = list(scenario.attitudes)
     modes = [activity.mode for activity in scenario.activities]
     colours = value_colours([*attitudes, *modes])
     # the slew sits after the attitudes, in the order the legends show the values
-    ordered = {value: colours[value] for value in attitudes}
+    ordered = dict(ILLUMINATION_COLOURS) | {
+        value: colours[value] for value in attitudes
+    }
     ordered[SLEW] = MUTED
     return ordered | {value: colours[value] for value in modes}
 

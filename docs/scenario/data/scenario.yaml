@@ -20,8 +20,8 @@ step: 10 s
     wing -y: {part: Wing -y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
 
 attitudes:
-  nadir: {nadir_axis: +z, orbit_normal: -y}
-  sun pointing: {sun_axis: -z, constrain_to_orbit_normal: -y}
+  nadir: {point: [+z, nadir], constrain: [-y, orbit normal]}
+  sun pointing: {point: [-z, sun], constrain: [-y, orbit normal]}
 
 activities:
   - [eclipse entry, sun pointing, idle, sunlit]

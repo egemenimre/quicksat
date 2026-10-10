@@ -7,9 +7,9 @@
 The scenario file: the orbit, the period, the attitudes and the activities.
 
 A scenario is one YAML file. It names the orbit and gives the start time and the
-duration of the run. It also sets the axes of the two attitudes and lists the
-activities. The list is written once, and the run repeats it until the duration
-ends. Each activity is a short list of three or four strings:
+duration of the run. It also defines the attitudes, and lists the activities.
+The list is written once, and the run repeats it until the duration ends. Each
+activity is a short list of three or four strings:
 
     - [10 min, nadir, downlink, eclipse]
 
@@ -53,6 +53,7 @@ from quicksat.utils.parser_helpers import (
     LengthQty,
     PlainQty,
     SignedAngleQty,
+    SignedLengthQty,
     TimeQty,
 )
 
@@ -64,12 +65,24 @@ Illumination = Literal["sunlit", "penumbra", "umbra", "eclipse"]
 `sunlit`, `penumbra` and `umbra`, and `eclipse` means either of the last two."""
 
 EventName = Literal[
-    "eclipse entry", "eclipse exit", "umbra entry", "umbra exit", "latitude crossing"
+    "eclipse entry",
+    "eclipse exit",
+    "umbra entry",
+    "umbra exit",
+    "latitude crossing",
+    "rise",
+    "set",
 ]
 """The kinds of event that can end an activity."""
 
 LATITUDE_CROSSING = "latitude crossing"
 """The event of a latitude trigger, and of the node triggers."""
+
+RISE = "rise"
+"""The event of a ground target rising above its minimum elevation."""
+
+SET = "set"
+"""The event of a ground target setting below its minimum elevation."""
 
 Direction = Literal["ascending", "descending"]
 """The direction of a latitude crossing: northward or southward."""
@@ -81,10 +94,30 @@ NODES: dict[str, Direction] = {
 """The node triggers, and the direction of their crossing of the equator."""
 
 NADIR = "nadir"
-"""Name of the attitude that points one body axis at the nadir."""
+"""Direction: toward the centre of the Earth."""
 
-SUN_POINTING = "sun pointing"
-"""Name of the attitude that points one body axis at the sun."""
+SUN = "sun"
+"""Direction: toward the sun, as seen from the satellite."""
+
+ORBIT_NORMAL = "orbit normal"
+"""Direction: the position crossed with the velocity."""
+
+VELOCITY = "velocity"
+"""Direction: the inertial velocity, in GCRS."""
+
+GROUND_VELOCITY = "ground velocity"
+"""Direction: the velocity relative to the turning Earth, for yaw steering in
+imaging."""
+
+DIRECTIONS = (NADIR, SUN, ORBIT_NORMAL, VELOCITY, GROUND_VELOCITY)
+"""The built-in directions. A ground point named in `targets` is a direction too."""
+
+FALLBACKS = (ORBIT_NORMAL, NADIR, VELOCITY)
+"""The default fallback is the first of these that the attitude does not use."""
+
+SLEW = "slew"
+"""The value of the attitude row while the body turns or settles. No attitude may
+take this name."""
 
 DEFAULT_STEP = Q_(10, "s")
 """The time step, when the scenario does not give one."""
@@ -112,116 +145,208 @@ def _different_axes(first: str, second: str, names: str) -> None:
         )
 
 
-class NadirAttitude(BaseModel):
+def _read_pair(value) -> tuple[str, str]:
     """
-    The nadir attitude: one body axis points at the Earth.
+    An `[axis, direction]` pair, as the file writes it.
 
     Parameters
     ----------
-    nadir_axis : str
-        The body axis that points at the nadir
-    orbit_normal : str
-        The body axis along the orbit normal. With `+z` and `-y` the body axes
-        match LVLH: x along the track, y minus the orbit normal and z nadir.
+    value : list
+        The pair, such as `[+z, nadir]`
+
+    Returns
+    -------
+    pair : tuple of str
+        The axis and the direction, without the spaces at their ends
+
+    Raises
+    ------
+    ValueError
+        If the value is not a list of two strings
     """
-
-    model_config = ConfigDict(extra="forbid")
-
-    nadir_axis: Axis
-    orbit_normal: Axis
-
-    @model_validator(mode="after")
-    def _axes_differ(self):
-        """Checks that the two axes use different body axes."""
-        _different_axes(
-            self.nadir_axis, self.orbit_normal, "nadir_axis and orbit_normal"
+    if (
+        not isinstance(value, (list, tuple))
+        or len(value) != 2
+        or not all(isinstance(item, str) for item in value)
+    ):
+        raise ValueError(
+            f"expected a pair [axis, direction], such as [+z, nadir], got {value!r}"
         )
-        return self
+    return value[0].strip(), value[1].strip()
 
 
-class SunPointingAttitude(BaseModel):
+AxisPair = Annotated[tuple[Axis, str], BeforeValidator(_read_pair)]
+"""A body axis and the direction it goes with, written `[+z, nadir]`."""
+
+_OFFSET_TURN = re.compile(r"\s*([xyz])\s+(.+?)\s*")
+
+
+def _read_offsets(value) -> list[tuple[str, Quantity]]:
     """
-    The sun pointing attitude: one body axis points at the sun.
-
-    A second axis is kept as close as the sun axis allows to one of two
-    directions. Exactly one of `constrain_to_nadir` and `constrain_to_orbit_normal`
-    is given.
+    The turns of an attitude's offset, as the file writes them.
 
     Parameters
     ----------
-    sun_axis : str
-        The body axis that points at the sun
-    constrain_to_nadir : str, optional
-        The body axis that keeps facing the Earth. The body spins fast about the
-        sun axis when the sun comes close to the nadir line.
-    constrain_to_orbit_normal : str, optional
-        The body axis kept along the orbit normal. The body stays still over an
-        orbit, and is undefined only at a beta of +-90 degrees.
+    value : list of str or None
+        Turns such as `x 30 deg`: a body axis and an angle
+
+    Returns
+    -------
+    turns : list of tuple
+        The axis, `x`, `y` or `z`, and the angle in degrees, in order
+
+    Raises
+    ------
+    ValueError
+        If the value is not a list, or a turn is not an axis and an angle
     """
-
-    model_config = ConfigDict(extra="forbid")
-
-    sun_axis: Axis
-    constrain_to_nadir: Axis | None = None
-    constrain_to_orbit_normal: Axis | None = None
-
-    @model_validator(mode="after")
-    def _one_constraint(self):
-        """Checks for exactly one constrained axis, on a different body axis."""
-        given = {
-            "constrain_to_nadir": self.constrain_to_nadir,
-            "constrain_to_orbit_normal": self.constrain_to_orbit_normal,
-        }
-        chosen = {key: axis for key, axis in given.items() if axis is not None}
-        if len(chosen) != 1:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(
+            f"offset must be a list of turns, such as [x 30 deg], got {value!r}"
+        )
+    turns = []
+    for item in value:
+        match = _OFFSET_TURN.fullmatch(item) if isinstance(item, str) else None
+        if match is None:
             raise ValueError(
-                "'sun pointing' needs exactly one of constrain_to_nadir and "
-                f"constrain_to_orbit_normal, got {len(chosen)}"
+                f"an offset turn is a body axis, x, y or z, and an angle, such as "
+                f"'x 30 deg', got {item!r}"
             )
-        ((key, axis),) = chosen.items()
-        _different_axes(self.sun_axis, axis, f"sun_axis and {key}")
-        return self
+        axis, text = match.groups()
+        try:
+            angle = Q_(text)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"the offset turn '{item}' has no angle") from exc
+        if angle.unit is None or not angle.unit.is_equivalent(u.deg):
+            raise ValueError(
+                f"the offset turn '{item}' needs an angle with its unit, such as 30 deg"
+            )
+        turns.append((axis, angle.to(u.deg)))
+    return turns
 
 
-class Attitudes(BaseModel):
+class Attitude(BaseModel):
     """
-    The attitudes the activities can name: `nadir`, `sun pointing`, or both.
+    An attitude: one body axis fixed on a direction, and a second body axis
+    turned as close as it can get to another direction.
+
+    A direction is one of `DIRECTIONS`, or a ground point that the scenario names
+    in `targets`.
 
     Parameters
     ----------
-    nadir : NadirAttitude, optional
-        The nadir attitude
-    sun_pointing : SunPointingAttitude, optional
-        The sun pointing attitude. Its key in the file is `sun pointing`, with a
-        space.
+    point : tuple of str
+        The body axis and the direction it is fixed on, written `[+z, nadir]`
+    constrain : tuple of str
+        The second body axis and the direction it turns as close as it can get
+        to, written `[-y, orbit normal]`. It must use a different body axis.
+    fallback : str, optional
+        The direction that takes the constraint's place where the constraint's
+        direction is parallel to the pointed one. By default, the first of
+        `FALLBACKS` that the attitude does not use.
+    offset : list, optional
+        Turns about the body axes, applied in order after the orientation above,
+        written `[x 30 deg]`. Each is right-handed, about the body's own axis as
+        the turns before it left it.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
-    nadir: NadirAttitude | None = None
-    sun_pointing: SunPointingAttitude | None = Field(None, alias=SUN_POINTING)
+    point: AxisPair
+    constrain: AxisPair
+    fallback: str | None = None
+    offset: Annotated[list[tuple[str, Quantity]], BeforeValidator(_read_offsets)] = (
+        Field(default_factory=list)
+    )
 
     @model_validator(mode="after")
-    def _at_least_one(self):
-        """Checks that at least one attitude is defined."""
-        if not self.names:
+    def _check(self):
+        """Checks the two axes, the two directions, and that a fallback is a third."""
+        _different_axes(self.point[0], self.constrain[0], "point and constrain")
+        if self.point[1] == self.constrain[1]:
             raise ValueError(
-                f"attitudes must define '{NADIR}', '{SUN_POINTING}' or both"
+                f"point and constrain must use different directions, got "
+                f"'{self.point[1]}' for both"
+            )
+        if self.fallback is not None and self.fallback in (
+            self.point[1],
+            self.constrain[1],
+        ):
+            raise ValueError(
+                f"fallback must be a direction that point and constrain do not "
+                f"use, got '{self.fallback}'"
             )
         return self
 
     @property
-    def names(self) -> list[str]:
+    def fallback_direction(self) -> str:
         """
-        The names of the attitudes that are defined, as the activities write them.
+        The direction that replaces the constraint's where it is parallel to the
+        pointed one.
 
         Returns
         -------
-        names : list of str
-            `nadir` and `sun pointing`, as far as they are defined
+        direction : str
+            `fallback`, or by default the first of `FALLBACKS` that the attitude
+            does not use
         """
-        defined = {NADIR: self.nadir, SUN_POINTING: self.sun_pointing}
-        return [name for name, attitude in defined.items() if attitude is not None]
+        if self.fallback is not None:
+            return self.fallback
+        used = {self.point[1], self.constrain[1]}
+        return next(direction for direction in FALLBACKS if direction not in used)
+
+    @property
+    def directions(self) -> list[str]:
+        """
+        Every direction the attitude uses: the pointed one, the constraint's, and
+        the fallback.
+
+        Returns
+        -------
+        directions : list of str
+        """
+        return [self.point[1], self.constrain[1], self.fallback_direction]
+
+
+class GroundTarget(BaseModel):
+    """
+    A point on the ground, which turns with the Earth. An attitude can point at it.
+
+    Parameters
+    ----------
+    latitude : Quantity
+        Geodetic latitude, from -90 to 90 degrees
+    longitude : Quantity
+        Longitude, east
+    altitude : Quantity, optional
+        Height above the WGS84 ellipsoid, 0 m by default
+    min_elevation : Quantity, optional
+        The elevation above the point's horizon at which the satellite rises
+        and sets, for the `rise` and `set` triggers. 5 deg by default.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+    latitude: SignedAngleQty
+    longitude: SignedAngleQty
+    altitude: SignedLengthQty = Q_(0, "m")
+    min_elevation: SignedAngleQty = Q_(5, "deg")
+
+    @model_validator(mode="after")
+    def _check(self):
+        """Checks the latitude and the minimum elevation."""
+        if abs(self.latitude) > Q_(90, "deg"):
+            raise ValueError(
+                f"latitude must be from -90 to 90 deg, got '{self.latitude}'"
+            )
+        if not Q_(0, "deg") <= self.min_elevation < Q_(90, "deg"):
+            raise ValueError(
+                f"min_elevation must be from 0 deg up to 90 deg, got "
+                f"'{self.min_elevation}'"
+            )
+        return self
 
 
 _ORBIT_COUNT = re.compile(r"(\d+(?:\.\d*)?|\.\d+)\s*orbits?", re.IGNORECASE)
@@ -460,15 +585,18 @@ class Trigger(BaseModel):
         The length of the activity, for a duration trigger
     event : str, optional
         The kind of event that ends the activity, for an event trigger:
-        `eclipse entry`, `eclipse exit`, `umbra entry`, `umbra exit` or
-        `latitude crossing`. The node triggers are latitude crossings of 0
-        degrees.
+        `eclipse entry`, `eclipse exit`, `umbra entry`, `umbra exit`,
+        `latitude crossing`, `rise` or `set`. The node triggers are latitude
+        crossings of 0 degrees.
     latitude : Quantity, optional
         The geodetic latitude crossed, from -90 to 90 degrees, for a latitude
         crossing
     direction : str, optional
         `ascending` for a northward crossing, `descending` for a southward one,
         or None for either. Only for a latitude crossing.
+    target : str, optional
+        The ground target that rises or sets, by its name in `targets`. Only for
+        a `rise` or a `set`.
     offset : Quantity, optional
         Time added to the event, negative to end the activity before it. Only for
         an event trigger.
@@ -481,6 +609,7 @@ class Trigger(BaseModel):
     event: EventName | None = None
     latitude: PlainQty | None = None
     direction: Direction | None = None
+    target: str | None = None
     offset: PlainQty | None = None
 
     @model_validator(mode="after")
@@ -494,6 +623,8 @@ class Trigger(BaseModel):
             )
         if self.direction is not None and self.event != LATITUDE_CROSSING:
             raise ValueError("only a latitude crossing has a direction")
+        if (self.event in (RISE, SET)) != (self.target is not None):
+            raise ValueError("a target is given with a rise or a set, and only then")
         if self.offset is not None and self.event is None:
             raise ValueError("only an event trigger has an offset")
         return self
@@ -507,10 +638,13 @@ class Trigger(BaseModel):
         -------
         key : tuple or None
             The kind of event, then the latitude in degrees and the direction for
-            a latitude crossing. None for a duration trigger.
+            a latitude crossing, or the target for a rise or a set. None for a
+            duration trigger.
         """
         if self.event is None:
             return None
+        if self.event in (RISE, SET):
+            return (self.event, self.target)
         if self.event == LATITUDE_CROSSING:
             assert self.latitude is not None  # checked when the trigger is built
             return (self.event, float(self.latitude.to(u.deg).value), self.direction)
@@ -530,6 +664,14 @@ _EVENT_TRIGGER = re.compile(
 )
 """An event trigger, with an optional offset, in text whose spaces are tidied."""
 
+_VISIBILITY_TRIGGER = re.compile(
+    r"(?P<target>.+?) (?P<edge>rise|set)"
+    rf"(?: ?(?P<sign>[+-]) ?(?P<offset>{_NUMBER}.*))?",
+    re.IGNORECASE,
+)
+"""A ground target's rise or set, such as `Svalbard rise`, with an optional
+offset. The target's name keeps its case, and may hold spaces."""
+
 
 def _trigger_forms() -> str:
     """
@@ -543,9 +685,10 @@ def _trigger_forms() -> str:
     return (
         "a positive duration with a unit, such as '20 min', or an event: "
         "'eclipse entry', 'eclipse exit', 'umbra entry', 'umbra exit', "
-        "'ascending node', 'descending node', or a "
-        "latitude crossing such as 'latitude 30 deg ascending'. An event can take "
-        "an offset, such as 'eclipse entry + 2 min'"
+        "'ascending node', 'descending node', a "
+        "latitude crossing such as 'latitude 30 deg ascending', or a target's rise "
+        "or set, such as 'Svalbard rise'. An event can take an offset, such as "
+        "'eclipse entry + 2 min'"
     )
 
 
@@ -622,43 +765,20 @@ def _parse_offset(sign: str, text: str, trigger: str) -> Quantity:
     return -offset if sign == "-" else offset
 
 
-def parse_trigger(text: str) -> Trigger:
+def _event_trigger(tidy: str) -> Trigger | None:
     """
-    Read a trigger, the first field of an activity.
-
-    The accepted forms are:
-
-    - a positive duration with a unit, such as `20 min`. It must be at least as
-      long as the 1 ms time grid.
-    - the shadow edges `eclipse entry`, `umbra entry`, `umbra exit` and
-      `eclipse exit`;
-    - a latitude crossing, such as `latitude 30 deg ascending`, `latitude -30 deg
-      descending`, or `latitude 45 deg` for either direction;
-    - `ascending node` and `descending node`, the crossings of 0 degrees;
-    - any of these events with an offset, such as `eclipse entry + 2 min` or
-      `descending node - 30 s`.
-
-    The words may be in any case.
+    Read an event trigger, if the text is one.
 
     Parameters
     ----------
-    text : str
-        The trigger as written in the scenario file
+    tidy : str
+        The trigger, with its spaces tidied
 
     Returns
     -------
-    trigger : Trigger
-        The parsed trigger
-
-    Raises
-    ------
-    ValueError
-        If the text is none of the accepted forms. The message names them.
+    trigger : Trigger or None
+        The trigger, or None if the text is not an event trigger
     """
-    if not isinstance(text, str):
-        raise ValueError(f"trigger {text!r} is not text. Use {_trigger_forms()}")
-    tidy = " ".join(text.split())
-
     match = _EVENT_TRIGGER.fullmatch(tidy)
     if match:
         name = match["event"].lower()
@@ -683,6 +803,63 @@ def parse_trigger(text: str) -> Trigger:
                 offset=offset,
             )
         return Trigger(text=tidy, event=cast(EventName, name), offset=offset)
+    match = _VISIBILITY_TRIGGER.fullmatch(tidy)
+    if match:
+        offset = None
+        if match["sign"]:
+            offset = _parse_offset(match["sign"], match["offset"], tidy)
+        return Trigger(
+            text=tidy,
+            event=cast(EventName, match["edge"].lower()),
+            target=match["target"],
+            offset=offset,
+        )
+    return None
+
+
+def parse_trigger(text: str) -> Trigger:
+    """
+    Read a trigger, the first field of an activity.
+
+    The accepted forms are:
+
+    - a positive duration with a unit, such as `20 min`. It must be at least as
+      long as the 1 ms time grid.
+    - the shadow edges `eclipse entry`, `umbra entry`, `umbra exit` and
+      `eclipse exit`;
+    - a latitude crossing, such as `latitude 30 deg ascending`, `latitude -30 deg
+      descending`, or `latitude 45 deg` for either direction;
+    - `ascending node` and `descending node`, the crossings of 0 degrees;
+    - a ground target's rise or set, such as `Svalbard rise` or `Svalbard set`:
+      the satellite passing above or below the target's minimum elevation. The
+      target must be one that the scenario names in `targets`.
+    - any of these events with an offset, such as `eclipse entry + 2 min` or
+      `descending node - 30 s`.
+
+    The words may be in any case, except a target's name.
+
+    Parameters
+    ----------
+    text : str
+        The trigger as written in the scenario file
+
+    Returns
+    -------
+    trigger : Trigger
+        The parsed trigger
+
+    Raises
+    ------
+    ValueError
+        If the text is none of the accepted forms. The message names them.
+    """
+    if not isinstance(text, str):
+        raise ValueError(f"trigger {text!r} is not text. Use {_trigger_forms()}")
+    tidy = " ".join(text.split())
+
+    trigger = _event_trigger(tidy)
+    if trigger is not None:
+        return trigger
     if tidy.lower().startswith("latitude"):
         raise ValueError(
             f"trigger '{tidy}' is not understood. Write a latitude crossing such as "
@@ -1039,8 +1216,11 @@ class Scenario(BaseModel):
     step : Quantity
         Time step of the grid that the orbit is evaluated on. Positive, shorter
         than the duration, and 10 s by default.
-    attitudes : Attitudes
-        The two attitudes the activities can name
+    targets : dict of str to GroundTarget, optional
+        Ground points, by name, that an attitude can point at
+    attitudes : dict of str to Attitude
+        The attitudes the activities can name, by a name of your choice. At
+        least one, and none named `slew`.
     activities : list of Activity
         One repeat of the activities. The run repeats the list until the duration
         ends, and cuts the last activity there.
@@ -1059,7 +1239,8 @@ class Scenario(BaseModel):
     start: Annotated[Time, BeforeValidator(_parse_start)]
     duration: Annotated[Quantity | OrbitCount, BeforeValidator(_parse_duration)]
     step: TimeQty = DEFAULT_STEP
-    attitudes: Attitudes
+    targets: dict[str, GroundTarget] = Field(default_factory=dict)
+    attitudes: dict[str, Attitude]
     activities: list[Activity]
     slew: Slew | None = None
     spacecraft_model: Annotated[
@@ -1188,6 +1369,22 @@ class Scenario(BaseModel):
             raise ValueError("\n".join(problems))
         return model.model_copy(update={"file": path})
 
+    @field_validator("attitudes")
+    @classmethod
+    def _name_attitudes(cls, attitudes: dict[str, Attitude]) -> dict[str, Attitude]:
+        """Checks that there is an attitude, and that each name can be used."""
+        if not attitudes:
+            raise ValueError("attitudes must define at least one attitude")
+        for name in attitudes:
+            if not name.strip():
+                raise ValueError("an attitude's name must not be empty")
+            if name == SLEW:
+                raise ValueError(
+                    f"no attitude may be named '{SLEW}': the attitude row uses it "
+                    "while the body turns"
+                )
+        return attitudes
+
     @field_validator("activities", mode="before")
     @classmethod
     def _read_activities(cls, value):
@@ -1206,10 +1403,72 @@ class Scenario(BaseModel):
             raise ValueError("\n".join(problems))
         return activities
 
+    def _direction_problems(self) -> list[str]:
+        """
+        Problems with the names: a target named as a built-in direction, an
+        attitude with a direction that is neither, an activity's attitude that is
+        not defined, and a rise or set of a target that is not defined.
+
+        Returns
+        -------
+        problems : list of str
+            One message for each problem
+        """
+        problems = [
+            f"target '{name}' takes the name of a built-in direction. The built-in "
+            f"directions are: {list(DIRECTIONS)}"
+            for name in self.targets
+            if name in DIRECTIONS
+        ]
+        known = [*DIRECTIONS, *self.targets]
+        for name, attitude in self.attitudes.items():
+            problems += [
+                f"attitude '{name}': '{direction}' is not a direction. The "
+                f"directions are: {known}"
+                for direction in attitude.directions
+                if direction not in known
+            ]
+        defined = list(self.attitudes)
+        problems += [
+            f"activity {number}: attitude '{activity.attitude}' is not defined in "
+            f"attitudes, which define: {defined}"
+            for number, activity in enumerate(self.activities, start=1)
+            if activity.attitude not in defined
+        ]
+        problems += [
+            f"activity {number}: trigger '{activity.trigger.text}' names the target "
+            f"'{activity.trigger.target}', which targets does not define"
+            for number, activity in enumerate(self.activities, start=1)
+            if activity.trigger.target is not None
+            and activity.trigger.target not in self.targets
+        ]
+        return problems
+
+    def _park_problems(self) -> list[str]:
+        """
+        Problems with the articulations: a park mode that no activity has.
+
+        Returns
+        -------
+        problems : list of str
+            One message for each problem
+        """
+        if self.spacecraft_model is None:
+            return []
+        modes = sorted({activity.mode for activity in self.activities})
+        return [
+            f"articulation '{name}': park names the mode '{mode}', which no "
+            f"activity has. The activities have: {modes}"
+            for name, articulation in self.spacecraft_model.articulations.items()
+            for mode in articulation.park
+            if mode not in modes
+        ]
+
     @model_validator(mode="after")
     def _check_together(self):
         """
-        Checks what spans fields: the step against the duration, and the names.
+        Checks what spans fields: the step against the duration, the names and
+        the directions, and the park modes.
 
         A duration in orbits is checked against the step only when the run
         starts, once the nodal period is known.
@@ -1220,22 +1479,7 @@ class Scenario(BaseModel):
                 f"step must be shorter than duration, got '{self.step}' "
                 f"and '{self.duration}'"
             )
-        defined = self.attitudes.names
-        for number, activity in enumerate(self.activities, start=1):
-            if activity.attitude not in defined:
-                problems.append(
-                    f"activity {number}: attitude '{activity.attitude}' is not "
-                    f"defined in attitudes, which define: {defined}"
-                )
-        if self.spacecraft_model is not None:
-            modes = sorted({activity.mode for activity in self.activities})
-            for name, articulation in self.spacecraft_model.articulations.items():
-                for mode in articulation.park:
-                    if mode not in modes:
-                        problems.append(
-                            f"articulation '{name}': park names the mode '{mode}', "
-                            f"which no activity has. The activities have: {modes}"
-                        )
+        problems += self._direction_problems() + self._park_problems()
         if problems:
             raise ValueError("\n".join(problems))
         return self

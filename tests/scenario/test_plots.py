@@ -10,10 +10,11 @@ and the legends expected. They do not check how the plots look.
 
 import matplotlib.pyplot as plt
 import pytest
+from matplotlib.colors import to_rgb
 
 from quicksat.scenario.plots import gantt_chart, ground_track_map, scenario_colours
 from quicksat.scenario.run import NEGATIVE_DURATION, OUTSIDE_CONSTRAINT
-from quicksat.utils.plot_helpers import MUTED
+from quicksat.utils.plot_helpers import ILLUMINATION_COLOURS, MUTED, PALETTE
 
 
 @pytest.fixture(autouse=True)  # noqa: V103
@@ -43,6 +44,14 @@ def test_each_value_has_one_colour(run):
     assert colours["slew"] == MUTED
     assert {"idle", "imaging", "downlink"} <= set(colours)
     assert len(set(colours.values())) == len(colours)
+
+
+def test_the_illumination_runs_from_light_to_dark_and_leaves_the_palette(run):
+    colours = scenario_colours(run.scenario)
+    lightness = [sum(to_rgb(colours[state])) for state in ILLUMINATION_COLOURS]
+    assert lightness == sorted(lightness, reverse=True)
+    # the attitudes then start the palette, so ten values still fit eight colours
+    assert colours["nadir"] == PALETTE[0]
 
 
 def test_the_gantt_chart_has_three_rows_and_no_problem_marks(run):

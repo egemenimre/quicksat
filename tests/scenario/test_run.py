@@ -19,7 +19,7 @@ from astropy.tests.helper import assert_quantity_allclose
 from astropy.time import Time
 
 from quicksat import Q_, u
-from quicksat.orbit.geometry import geodetic
+from quicksat.orbit.geometry import elevations, geodetic
 from quicksat.orbit.omm import write_omm_file
 from quicksat.orbit.tle import Tle, read_tle_file
 from quicksat.scenario.config import Activity, Scenario
@@ -416,3 +416,56 @@ def test_an_omm_file_runs_as_its_tle_does(run, data_dir, tmp_path):
     assert [(o.start, o.end, o.statuses) for o in from_omm.occurrences] == [
         (o.start, o.end, o.statuses) for o in run.occurrences
     ]
+
+
+# ---------------------------------------------------------------- Ground targets
+
+PASSES = """
+orbit: {tle_file: sso_510km.tle}
+start: 2026-10-01T00:00:00
+duration: 3 orbits
+targets:
+  Svalbard: {latitude: 78.229 deg, longitude: 15.408 deg, altitude: 500 m}
+  Overhead: {latitude: 0 deg, longitude: 0 deg, min_elevation: 89.9 deg}
+attitudes:
+  nadir: {point: [+z, nadir], constrain: [-y, orbit normal]}
+  track Svalbard: {point: [+z, Svalbard], constrain: [-y, orbit normal]}
+activities:
+  - [Svalbard rise, nadir, idle]
+  - [Svalbard set, track Svalbard, downlink]
+"""
+"""Three orbits that wait for each Svalbard pass, and track it."""
+
+
+@pytest.fixture(scope="module")
+def pass_run(data_dir):
+    """Three orbits of `PASSES`."""
+    return run_scenario(Scenario.from_yaml_text(PASSES, data_dir))
+
+
+def test_a_pass_runs_from_the_rise_to_the_set_at_the_minimum_elevation(pass_run):
+    target = pass_run.scenario.targets["Svalbard"]
+    place = (target.latitude, target.longitude, target.altitude)
+    passes = [
+        o
+        for o in pass_run.occurrences
+        if o.activity.mode == "downlink" and not o.cut_at_end
+    ]
+    assert len(passes) >= 2
+    for occurrence in passes:
+        span = (occurrence.end - occurrence.start).to_value(u.s)
+        times = occurrence.start + Q_(np.linspace(0, span, 50), "s")
+        seen = elevations(pass_run.orbit.states(times, with_velocity=False), *place)
+        # the ends sit on 5 deg, to the 1 ms grid, and the pass stays above it
+        assert seen[[0, -1]] == pytest.approx([5, 5], abs=0.01)
+        assert seen[1:-1].min() > 5
+    assert all(o.statuses == [STATUS_OK] for o in pass_run.occurrences[:-1])
+
+
+def test_a_target_that_never_rises_never_ends_the_activity(data_dir):
+    text = PASSES.replace(
+        "[Svalbard rise, nadir, idle]", "[Overhead rise, nadir, idle]"
+    )
+    run = run_scenario(Scenario.from_yaml_text(text, data_dir))
+    assert len(run.occurrences) == 1
+    assert run.occurrences[0].statuses == [EVENT_NEVER_CAME]

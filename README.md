@@ -244,9 +244,14 @@ duration: 3 orbits
     wing +y: {part: Wing +y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
     wing -y: {part: Wing -y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
 
-attitudes:
-  nadir: {nadir_axis: +z, orbit_normal: -y}
-  sun pointing: {sun_axis: -z, constrain_to_orbit_normal: -y}
+targets:                       # ground points that an attitude can track
+  Svalbard: {latitude: 78.229 deg, longitude: 15.408 deg, altitude: 500 m}
+
+attitudes:                     # each fixes one body axis and constrains another
+  nadir: {point: [+z, nadir], constrain: [-y, orbit normal]}
+  sun pointing: {point: [-z, sun], constrain: [-y, orbit normal]}
+  yaw steering: {point: [+z, nadir], constrain: [+x, ground velocity]}
+  track Svalbard: {point: [+z, Svalbard], constrain: [-y, orbit normal]}
 
 slew:
   max_rate: 0.7 deg/s
@@ -255,14 +260,14 @@ slew:
 
 # the trigger that ends each activity, its attitude, its mode, and the illumination it expects
 activities:
-  - [eclipse entry, sun pointing, idle, sunlit]
-  - [eclipse exit, nadir, idle, eclipse]
   - [latitude 45 deg -2 min, sun pointing, idle, sunlit]
-  - [latitude 45 deg +4 min, nadir, imaging, sunlit]
-  - [10 min, nadir, downlink]
+  - [latitude 45 deg +5 min, yaw steering, imaging, sunlit]
+  - [Svalbard set + 2 min, track Svalbard, downlink]
+  - [eclipse entry, nadir, idle, sunlit]
+  - [eclipse exit, nadir, idle, eclipse]
 ```
 
-Each activity starts where the one before it ends, and the list repeats until the run ends. An activity ends after a fixed time, or at an event: a shadow edge, a node, or a latitude crossing, with an optional offset. The shadow has an umbra and a penumbra, cast on the WGS84 ellipsoid. Before each change of attitude, the body slews into the new one, at the given rate and acceleration.
+Each activity starts where the one before it ends, and the list repeats until the run ends. An activity ends after a fixed time, or at an event: a shadow edge, a node, a latitude crossing, or a ground target's rise or set, with an optional offset. The shadow has an umbra and a penumbra, cast on the WGS84 ellipsoid. The attitudes take any name. Each fixes one body axis on a direction, such as the nadir, the sun or a ground target, and turns a second axis toward another, with optional offsets such as a roll. Before each change of attitude, the body slews into the new one, at the given rate and acceleration.
 
 ```python
 from quicksat.scenario.config import Scenario
@@ -272,9 +277,9 @@ from quicksat.scenario.viewer import write_scenario_viewer
 scenario = Scenario.from_yaml_file("sample/scenario/data/scenario.yaml")
 run = run_scenario(scenario)
 
-run.activity_summary  # 13 occurrences in 3 repeats, all ok but the last, cut at the end
+run.activity_summary  # 16 occurrences in 4 repeats, all ok but the last, cut at the end
 run.activity_table    # one row per occurrence, with its slew time and status
-len(run.slews)        # 10 slews, from 92 s to 214 s
+len(run.slews)        # 12 slews, from 93 s to 214 s
 write_scenario_viewer(run, "sample/scenario/output")
 ```
 
