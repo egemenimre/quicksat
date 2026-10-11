@@ -173,6 +173,40 @@ button[data-help], select[data-help], input[data-help] { cursor: pointer; }
 }
 .charts.no-power { grid-template-rows: auto minmax(0, 1fr); }
 .charts.no-power > :nth-child(n + 3) { display: none; }
+/* The Power page: the timeline and the detailed power chart, with the time
+   controls moved in from the Scenario page */
+#page-power {
+  grid-template-columns: minmax(0, 1fr) minmax(345px, 0.24fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px; padding: 8px 8px 0;
+}
+#power-charts { grid-area: 1 / 1; }
+.power-side { grid-area: 1 / 2; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px; min-height: 0; min-width: 0; }
+#page-power .controls { grid-area: 2 / 1 / 3 / 3; }
+/* The current power: a label and a value on each line, the panels indented
+   under the total generated */
+.power-now { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 12px; margin: 0; align-items: center; }
+.power-now dt {
+  display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; white-space: nowrap; overflow: hidden;
+}
+.power-now dd { margin: 0; text-align: right; font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.power-now .sub { font-size: 11.5px; }
+.power-now dt.sub { padding-left: 18px; text-transform: none; letter-spacing: 0; }
+.power-now .fill { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+/* The power setup: each block a small table or a list */
+.setup-block + .setup-block { margin-top: 14px; }
+table.setup { width: 100%; border-collapse: collapse; font-size: 10.5px; font-variant-numeric: tabular-nums; }
+table.setup th { color: var(--dim); font-weight: 400; text-align: right; vertical-align: bottom; padding: 2px 0 3px 8px; border-bottom: 1px solid var(--line-2); }
+table.setup td { text-align: right; padding: 3px 0 3px 8px; border-top: 1px solid var(--line); white-space: nowrap; }
+table.setup th:first-child, table.setup td:first-child { text-align: left; padding-left: 0; }
+table.setup .swatch { width: 8px; height: 8px; vertical-align: 0; }
+#vp-power-setup .kv { font-size: 11px; }
+#power-charts { grid-template-rows: auto 96px auto minmax(0, 1fr) auto minmax(0, 0.45fr); }
+#power-charts .chart-head { flex-wrap: wrap; align-items: center; row-gap: 4px; }
+.toggle.series { display: inline-flex; align-items: center; }
+.toggle.series:not(.on) .swatch { opacity: 0.3; }
+.toggle.layout { margin-left: 10px; }
 .chart-head { display: flex; gap: 14px; align-items: baseline; font-size: 10.5px; padding: 3px 0 1px; white-space: nowrap; overflow: hidden; }
 .chart-head .title { color: var(--text); font-weight: 600; letter-spacing: 0.08em; }
 .chart-head .unit, .chart-head .key { color: var(--muted); }
@@ -253,6 +287,20 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
 
 .empty { display: grid; place-items: center; height: 100vh; color: var(--muted); padding: 24px; text-align: center; }
 .empty div { max-width: 640px; }
+/* The wide layout, offered with power: the views in one row, and the charts
+   across the full width under them */
+@media (min-width: 1001px) {
+  #page-scenario.wide {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(170px, 0.32fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1.05fr) auto;
+  }
+  #page-scenario.wide #vp-orbit { grid-area: 1 / 1; }
+  #page-scenario.wide #vp-ground { grid-area: 1 / 2; }
+  #page-scenario.wide #vp-body { grid-area: 1 / 3; }
+  #page-scenario.wide #vp-data { grid-area: 1 / 4; }
+  #page-scenario.wide #charts { grid-area: 2 / 1 / 3 / 5; }
+  #page-scenario.wide .controls { grid-area: 3 / 1 / 4 / 5; }
+}
 
 @media (max-width: 1000px) {
   body { overflow: auto; height: auto; }
@@ -264,6 +312,9 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
   #vp-ground { grid-area: 4 / 1; }
   #charts { grid-area: 5 / 1; }
   .controls { grid-area: 6 / 1; flex-wrap: wrap; }
+  #page-power { grid-template-columns: minmax(0, 1fr); grid-template-rows: 640px auto auto; }
+  .power-side { grid-area: 2 / 1; }
+  #page-power .controls { grid-area: 3 / 1; }
   .blocks, #inputs { grid-template-columns: minmax(0, 1fr); }
 }
 </style>
@@ -274,6 +325,7 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
   <div class="brand">QUICKSAT<span>SCENARIO VIEWER</span></div>
   <nav class="tabs" id="page-tabs">
     <button class="active" data-page="scenario" data-help="tabScenario">Scenario</button>
+    <button data-page="power" data-help="tabPower" hidden>Power</button>
     <button data-page="activities" data-help="tabActivities">Activities</button>
     <button data-page="inputs" data-help="tabInputs">Inputs</button>
     <button data-page="results" data-help="tabResults">Results</button>
@@ -311,8 +363,8 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
     <div class="charts" id="charts">
       <div class="chart-head"><span class="title" data-help="timeline">TIMELINE</span><span class="zooms" id="zooms"></span></div>
       <div class="chart-body" id="chart-gantt"></div>
-      <div class="chart-head" id="head-power"></div>
-      <div class="chart-body" id="chart-power"></div>
+      <div class="chart-head" id="head-net"></div>
+      <div class="chart-body" id="chart-net"></div>
       <div class="chart-head" id="head-soc"></div>
       <div class="chart-body" id="chart-soc"></div>
     </div>
@@ -322,6 +374,27 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
       <select class="speed" id="speed" data-help="speed"></select>
       <input type="range" id="slider" min="0" value="0" step="1" data-help="slider">
       <span class="readout" id="readout"></span>
+    </div>
+  </section>
+
+  <section class="page" id="page-power">
+    <div class="charts" id="power-charts">
+      <div class="chart-head"><span class="title" data-help="timeline">TIMELINE</span><span class="zooms" id="power-zooms"></span></div>
+      <div class="chart-body" id="power-gantt"></div>
+      <div class="chart-head" id="head-detail"></div>
+      <div class="chart-body" id="chart-detail"></div>
+      <div class="chart-head" id="head-soc-detail"></div>
+      <div class="chart-body" id="chart-soc-detail"></div>
+    </div>
+    <div class="power-side">
+      <div class="data-panel" id="vp-power-now">
+        <div class="vp-title" data-help="powerNow"><b>Current power</b></div>
+        <dl class="power-now" id="power-now"></dl>
+      </div>
+      <div class="data-panel" id="vp-power-setup">
+        <div class="vp-title" data-help="powerSetup"><b>Power setup</b></div>
+        <div id="power-setup"></div>
+      </div>
     </div>
   </section>
 
@@ -403,9 +476,14 @@ function checkPower(power) {
   }
   const n = scenario.grid.t_s.length;
   const grid = power.grid;
-  const lengths = [grid.generated_w, grid.consumed_w, grid.soc, ...grid.sun_cos].map((a) => a.length);
+  const lengths = [grid.generated_w, grid.consumed_w, grid.soc, ...grid.sun_cos, ...(grid.panel_w || [])].map(
+    (a) => a.length,
+  );
   if (lengths.some((length) => length !== n)) {
     return [null, "power.js has a different number of time steps from scenario.js."];
+  }
+  if (grid.panel_w && grid.panel_w.length !== power.spacecraft.panels.length) {
+    return [null, "power.js gives the power of a different number of panels from its panel list."];
   }
   return [power, ""];
 }
@@ -422,7 +500,9 @@ const THEME = {
   eclipseBand: "rgba(47, 61, 85, 0.45)",
   generated: "#2dd4bf",
   generatedFill: "rgba(45, 212, 191, 0.13)",
+  netSwatch: "linear-gradient(90deg, #2dd4bf 50%, #f5b13d 50%)",
   consumed: "#f5b13d",
+  consumedFill: "rgba(245, 177, 61, 0.16)",
   soc: "#22d3ee",
   socFill: "rgba(34, 211, 238, 0.12)",
   limit: "#f87171",
@@ -477,6 +557,12 @@ const SCENARIO_FILE = scenario.scenario_file || "the scenario";
 const COLOURS = scenario.colours;
 // Without power.js there are no panels, and the body is a plain 1 m cube
 const PANELS = power ? power.spacecraft.panels : [];
+// The colour of each panel's line on the Power page, apart from the colours
+// of the generated and consumed lines
+const PANEL_COLOURS = ["#a78bfa", "#f472b6", "#60a5fa", "#a3e635", "#fb7185", "#c084fc", "#38bdf8", "#facc15"];
+const panelColour = (j) => PANEL_COLOURS[j % PANEL_COLOURS.length];
+// The net power, which is the generated less the consumed
+const NET_W = power ? power.grid.generated_w.map((generated, k) => generated - power.grid.consumed_w[k]) : [];
 const BODY = power ? power.spacecraft.body_m : [1, 1, 1];
 // The spacecraft's 3D model, from version 3 of scenario.js. It takes the place
 // of the cube and the panel boxes once it is decoded.
@@ -1697,71 +1783,139 @@ const charts = (() => {
     return values;
   }
 
-  // The Gantt chart, with one row for each track
-  const timeline = make(
-    "#chart-gantt",
-    {
-      range: () => [0, ROWS.length],
-      xAxis: power ? hiddenX : shownX,
-      yAxis: {
-        grid: { show: false },
-        ticks: { show: false },
-        splits: () => ROWS.map((_, row) => ROWS.length - row - 0.5),
-        values: (u, splits) => splits.map((s) => ROWS[Math.round(ROWS.length - 0.5 - s)][1]),
+  // The Gantt chart, with one row for each track. The Scenario page has one,
+  // and the Power page another.
+  function gantt(target, xAxis) {
+    const chart = make(
+      target,
+      {
+        range: () => [0, ROWS.length],
+        xAxis,
+        yAxis: {
+          grid: { show: false },
+          ticks: { show: false },
+          splits: () => ROWS.map((_, row) => ROWS.length - row - 0.5),
+          values: (u, splits) => splits.map((s) => ROWS[Math.round(ROWS.length - 0.5 - s)][1]),
+        },
+        series: [{ stroke: "transparent" }],
+        draw: drawTracks,
       },
-      series: [{ stroke: "transparent" }],
-      draw: drawTracks,
-    },
-    [MINUTES.map(() => null)],
-  );
-  timeline.over.addEventListener("mousemove", (event) => {
-    const time = timeline.posToVal(event.offsetX, "x") * 60;
-    const row = clamp(Math.floor((event.offsetY / timeline.over.clientHeight) * ROWS.length), 0, ROWS.length - 1);
-    const piece = pieceAt(TRACKS[ROWS[row][0]], time);
-    const occurrence = occurrenceAt(time);
-    timeline.over.title =
-      `${pieceText(piece)}: ${clockText(piece.start_s)} to ${clockText(piece.end_s)}\n` +
-      `Activity ${occurrence.number} of repeat ${occurrence.repeat}: until ${occurrence.trigger} · ${occurrence.statuses.join(", ")}`;
-  });
+      [MINUTES.map(() => null)],
+    );
+    chart.over.addEventListener("mousemove", (event) => {
+      const time = chart.posToVal(event.offsetX, "x") * 60;
+      const row = clamp(Math.floor((event.offsetY / chart.over.clientHeight) * ROWS.length), 0, ROWS.length - 1);
+      const piece = pieceAt(TRACKS[ROWS[row][0]], time);
+      const occurrence = occurrenceAt(time);
+      chart.over.title =
+        `${pieceText(piece)}: ${clockText(piece.start_s)} to ${clockText(piece.end_s)}\n` +
+        `Activity ${occurrence.number} of repeat ${occurrence.repeat}: until ${occurrence.trigger} · ${occurrence.statuses.join(", ")}`;
+    });
+    return chart;
+  }
+  gantt("#chart-gantt", power ? hiddenX : shownX);
+
+  // Round a chart's range out to the next 50 W, with some room
+  const roundOut = (value) => (value >= 0 ? Math.ceil((value * 1.1) / 50) * 50 : Math.floor((value * 1.1) / 50) * 50);
 
   const values = {};
   if (power) {
     const grid = power.grid;
+
+    // The Scenario page: the net power, which is the generated less the
+    // consumed, above the battery's charge. The surplus and the deficit are
+    // two series, so that each fills to zero in its own colour.
+    const net = NET_W;
+    const netLow = roundOut(Math.min(0, ...net));
+    const netHigh = roundOut(Math.max(0, ...net)) || 50;
     make(
-      "#chart-power",
+      "#chart-net",
       {
-        range: (u, lo, hi) => [0, Math.ceil(((hi || 1) * 1.1) / 50) * 50],
+        range: () => [netLow, netHigh],
         xAxis: hiddenX,
         yAxis: {},
         series: [
-          { stroke: THEME.generated, fill: THEME.generatedFill },
-          { stroke: THEME.consumed, paths: uPlot.paths.stepped({ align: 1 }) },
+          { stroke: THEME.generated, fill: THEME.generatedFill, fillTo: 0 },
+          { stroke: THEME.consumed, fill: THEME.consumedFill, fillTo: 0 },
         ],
         drawClear: shadeEclipses,
       },
-      [grid.generated_w, grid.consumed_w],
+      [net.map((value) => Math.max(value, 0)), net.map((value) => Math.min(value, 0))],
     );
+    [values.net] = head("#head-net", "NET POWER", "W", [["Generated less consumed", THEME.netSwatch]], "net");
+
+    // The battery's charge, at the foot of both pages. Its title gives the
+    // charge at the time cursor on the Scenario page. The Power page has its
+    // current power panel for that.
     const soc = grid.soc.map((value) => 100 * value);
     const floor = 100 * (1 - power.battery.max_depth_of_discharge);
     const lowest = Math.floor(Math.min(floor, ...soc) - 5);
-    make(
-      "#chart-soc",
+    function battery(target, headTarget) {
+      make(
+        target,
+        {
+          range: () => [lowest, 102],
+          xAxis: shownX,
+          yAxis: {},
+          series: [
+            { stroke: THEME.soc, fill: THEME.socFill },
+            { stroke: THEME.limit, dash: [6, 4], width: 1.2 },
+          ],
+          drawClear: shadeEclipses,
+        },
+        [soc, soc.map(() => floor)],
+      );
+      const [socValue, limitValue] = head(headTarget, "BATTERY", "%", [["State of charge", THEME.soc], ["Limit", THEME.limit]], "battery");
+      limitValue.textContent = `${numberText(floor)} %`;
+      return socValue;
+    }
+    values.soc = battery("#chart-soc", "#head-soc");
+
+    // The Power page: the timeline, the detailed power chart under it, and
+    // the battery's charge at the foot. Each line has a button that shows or
+    // hides it. The totals start shown, and the panels hidden.
+    $("#page-tabs").querySelector('[data-page="power"]').hidden = false;
+    gantt("#power-gantt", hiddenX);
+    const lines = [
+      { label: "Generated", data: grid.generated_w, shown: true, help: "generated", series: { stroke: THEME.generated, fill: THEME.generatedFill } },
+      { label: "Consumed", data: grid.consumed_w, shown: true, help: "consumed", series: { stroke: THEME.consumed, paths: uPlot.paths.stepped({ align: 1 }) } },
+      ...(grid.panel_w || []).map((data, j) => ({
+        label: PANELS[j].name,
+        data,
+        shown: false,
+        help: "panelPower",
+        series: { stroke: panelColour(j), width: 1.3 },
+      })),
+    ];
+    const detail = make(
+      "#chart-detail",
       {
-        range: () => [lowest, 102],
-        xAxis: shownX,
+        range: (u, lo, hi) => [0, roundOut(hi || 1)],
+        xAxis: hiddenX,
         yAxis: {},
-        series: [
-          { stroke: THEME.soc, fill: THEME.socFill },
-          { stroke: THEME.limit, dash: [6, 4], width: 1.2 },
-        ],
+        series: lines.map((line) => ({ ...line.series, show: line.shown })),
         drawClear: shadeEclipses,
       },
-      [soc, soc.map(() => floor)],
+      lines.map((line) => line.data),
     );
-    [values.generated, values.consumed] = head("#head-power", "POWER", "W", [["Generated", THEME.generated], ["Consumed", THEME.consumed]], "power");
-    const [socValue, limitValue] = head("#head-soc", "BATTERY", "%", [["State of charge", THEME.soc], ["Limit", THEME.limit]], "battery");
-    values.soc = socValue;
-    limitValue.textContent = `${numberText(floor)} %`;
+    lines.forEach((line, j) => {
+      const button = element("button", { class: `toggle series${line.shown ? " on" : ""}`, "data-help": line.help }, [
+        element("span", { class: "swatch", style: `background:${line.series.stroke}` }),
+        line.label,
+      ]);
+      button.addEventListener("click", () => {
+        const shown = !button.classList.contains("on");
+        button.classList.toggle("on", shown);
+        detail.setSeries(j + 1, { show: shown });
+      });
+      line.button = button;
+    });
+    $("#head-detail").replaceChildren(
+      element("span", { class: "title", text: "POWER", "data-help": "power" }),
+      element("span", { class: "unit", text: "W" }),
+      ...lines.map((line) => line.button),
+    );
+    battery("#chart-soc-detail", "#head-soc-detail");
   }
 
   function zoom(from, to) {
@@ -1773,8 +1927,38 @@ const charts = (() => {
     ["1 orbit", () => zoom(now() - PERIOD / 120, now() + PERIOD / 120), "zoomOrbit"],
     ["30 min", () => zoom(now() - 15, now() + 15), "zoom30"],
   ];
-  for (const [label, action, help] of zooms) {
-    $("#zooms").append(element("button", { class: "toggle", text: label, onclick: action, "data-help": help }));
+  for (const target of power ? ["#zooms", "#power-zooms"] : ["#zooms"]) {
+    for (const [label, action, help] of zooms) {
+      $(target).append(element("button", { class: "toggle", text: label, onclick: action, "data-help": help }));
+    }
+  }
+
+  // With power, a button that puts the charts across the full width, under the
+  // views. The browser remembers the choice, where it can.
+  if (power) {
+    const page = $("#page-scenario");
+    const button = element("button", { class: "toggle layout", text: "Wide", "data-help": "wide" });
+    const setWide = (on) => {
+      page.classList.toggle("wide", on);
+      button.classList.toggle("on", on);
+    };
+    let stored = false;
+    try {
+      stored = localStorage.getItem("quicksat-viewer-wide") === "1";
+    } catch {
+      // No storage, as in some private windows: start narrow
+    }
+    setWide(stored);
+    button.addEventListener("click", () => {
+      const on = !page.classList.contains("wide");
+      setWide(on);
+      try {
+        localStorage.setItem("quicksat-viewer-wide", on ? "1" : "0");
+      } catch {
+        // The choice then lasts until the page is closed
+      }
+    });
+    $("#zooms").append(button);
   }
 
   return {
@@ -1822,6 +2006,27 @@ const readouts = (() => {
   const sunValue = element("span");
   $("#now").append(element("dt", { text: "Sunlight", "data-help": "light" }), element("dd", { "data-help": "light" }, [sunFill, sunValue]));
   // The angle of each articulation, and whether it is parked
+  // The Power page's current power: the total generated with each panel under
+  // it, the consumed, the net and the battery's charge. Each colour matches
+  // the line on the charts.
+  const watts = (value) => `${value.toFixed(1)} W`;
+  const powerNow = [];
+  if (power) {
+    const grid = power.grid;
+    const line = (label, colour, data, format, sub = false) => {
+      const value = element("dd", { class: sub ? "sub" : "" });
+      $("#power-now").append(
+        element("dt", { class: sub ? "sub" : "" }, [element("span", { class: "fill", style: `background:${colour}` }), label]),
+        value,
+      );
+      powerNow.push([value, data, format]);
+    };
+    line("Generated", THEME.generated, grid.generated_w, watts);
+    (grid.panel_w || []).forEach((data, j) => line(PANELS[j].name, panelColour(j), data, watts, true));
+    line("Consumed", THEME.consumed, grid.consumed_w, watts);
+    line("Net", THEME.netSwatch, NET_W, (value) => `${value >= 0 ? "+" : ""}${value.toFixed(1)} W`);
+    line("Battery", THEME.soc, grid.soc, (value) => `${(100 * value).toFixed(1)} %`);
+  }
   const jointValues = ARTICULATIONS.map((joint) => {
     const value = element("span");
     $("#now").append(element("dt", { text: joint.name, "data-help": "articulation" }), element("dd", { "data-help": "articulation" }, [value]));
@@ -1832,9 +2037,9 @@ const readouts = (() => {
     const k = state.k;
     if (power) {
       PANELS.forEach((_, j) => setText(bodyValues[j], power.grid.sun_cos[j][k].toFixed(3)));
-      setText(charts.values.generated, `${power.grid.generated_w[k].toFixed(1)} W`);
-      setText(charts.values.consumed, `${power.grid.consumed_w[k].toFixed(1)} W`);
+      setText(charts.values.net, `${NET_W[k] >= 0 ? "+" : ""}${NET_W[k].toFixed(1)} W`);
       setText(charts.values.soc, `${(100 * power.grid.soc[k]).toFixed(1)} %`);
+      for (const [value, data, format] of powerNow) setText(value, format(data[k]));
     } else {
       sunBody.copy(state.sun).applyQuaternion(inverse.copy(state.qBody).invert());
       ["x", "y", "z"].forEach((name, j) => setText(bodyValues[j], (sunBody[name] >= 0 ? " " : "") + sunBody[name].toFixed(3)));
@@ -1960,6 +2165,30 @@ function fileText(text) {
     pre.append("\n");
   }
   return pre;
+}
+
+/** The Power page's setup panel: each block of power.js's setup, as a small table or a list. */
+function showPowerSetup() {
+  if (!power) return;
+  const panelIndex = new Map(PANELS.map((panel, j) => [panel.name, j]));
+  // A table's first column names the rows. A panel's name gets the colour of its line.
+  const cell = (text, column) => {
+    const j = column === 0 ? panelIndex.get(text) : undefined;
+    return element("td", {}, j === undefined ? [text] : [element("span", { class: "swatch", style: `background:${panelColour(j)}` }), text]);
+  };
+  const blocks = (power.setup || []).map((part) =>
+    element("div", { class: "setup-block" }, [
+      element("div", { class: "section-title", text: part.title }),
+      part.columns
+        ? element("table", { class: "setup" }, [
+            element("thead", {}, [element("tr", {}, part.columns.map((column) => element("th", { text: column })))]),
+            element("tbody", {}, part.rows.map((row) => element("tr", {}, row.map(cell)))),
+          ])
+        : kv(part.items.map((item) => [item.label, `${item.value} ${item.unit}`.trim()])),
+    ]),
+  );
+  const note = power.setup ? `From ${power.power_file}. The file itself is on the Inputs tab.` : "power.js gives no setup.";
+  $("#power-setup").replaceChildren(...blocks, element("p", { class: "note", text: note }));
 }
 
 function showInputs() {
@@ -2172,8 +2401,36 @@ const HELP = {
   power: {
     title: "Power",
     text:
-      "The power that the panels generate, and the power that the modes consume, in watts. The shaded " +
-      "bands are eclipses. Both come from power.js.",
+      "The power that the panels generate, and the power that the modes consume, in watts. The buttons show " +
+      "or hide each line. The shaded bands are eclipses. All of it comes from power.js.",
+  },
+  powerNow: {
+    title: "Current power",
+    text:
+      "The power at the time cursor: the total generated, with each panel under it, the consumed, the net and " +
+      "the battery's charge. Each colour matches its line on the charts.",
+  },
+  powerSetup: {
+    title: "Power setup",
+    text:
+      "The power setup as power.js gives it, such as the panels, the battery and what each mode consumes. It " +
+      "does not change with time. The power file itself is on the Inputs tab.",
+  },
+  net: {
+    title: "Net power",
+    text:
+      "The power generated less the power consumed, in watts. Above zero, the surplus can charge the battery. " +
+      "Below zero, the battery covers the deficit. The Power page shows the two apart, and each panel. The " +
+      "shaded bands are eclipses.",
+  },
+  generated: { title: "Generated", text: "Show or hide the power that all the panels generate together." },
+  consumed: { title: "Consumed", text: "Show or hide the power that the spacecraft consumes, set by the mode." },
+  panelPower: { title: "Panel", text: "Show or hide the power that this panel generates." },
+  wide: {
+    title: "Wide",
+    text:
+      "Put the charts across the full width, under the views. The 3D views and the map get smaller. Click " +
+      "again to go back. The browser remembers the choice.",
   },
   battery: {
     title: "Battery",
@@ -2290,7 +2547,14 @@ const HELP = {
       "The time cursor. Drag it to move through the run. The arrow keys step one time step, or a minute " +
       "with Shift.",
   },
-  tabScenario: { title: "Scenario", text: "Run through the scenario: the 3D views, the map, the timeline and the current data." },
+  tabScenario: {
+    title: "Scenario",
+    text: "Run through the scenario: the 3D views, the map, the timeline and the current data. With power, the net power and the battery too.",
+  },
+  tabPower: {
+    title: "Power",
+    text: "The timeline over a larger power chart and the battery, with the current power and the power setup beside them.",
+  },
   tabActivities: { title: "Activities", text: "Every occurrence of every activity, with its times, its slew and its statuses." },
   tabInputs: { title: "Inputs", text: "The scenario file and the power file as written, the orbit, and the conventions." },
   tabResults: { title: "Results", text: "The summary, the checks, and which data files were found." },
@@ -2349,6 +2613,8 @@ const HELP = {
 
 function showPage(page) {
   state.page = page;
+  // The Scenario and Power pages share the time controls
+  if (page === "scenario" || page === "power") $(`#page-${page}`).append($(".controls"));
   for (const button of $("#page-tabs").querySelectorAll("button")) button.classList.toggle("active", button.dataset.page === page);
   for (const section of document.querySelectorAll(".page")) section.classList.toggle("active", section.id === `page-${page}`);
   markAll();
@@ -2417,6 +2683,7 @@ setupControls();
 showActivities();
 showInputs();
 showResults();
+showPowerSetup();
 trackColours.start();
 observe("#vp-orbit", (w, h) => orbitView.resize(w, h));
 observe("#vp-body", (w, h) => bodyView.resize(w, h));
@@ -2435,6 +2702,10 @@ function frame(now) {
     }
     setTime(next);
   }
+  if (dirty.charts && (state.page === "scenario" || state.page === "power")) {
+    charts.redraw();
+    dirty.charts = false;
+  }
   if (state.page === "scenario") {
     if (dirty.orbit) {
       orbitView.update();
@@ -2449,10 +2720,6 @@ function frame(now) {
     if (dirty.ground) {
       groundView.render();
       dirty.ground = false;
-    }
-    if (dirty.charts) {
-      charts.redraw();
-      dirty.charts = false;
     }
   }
   if (dirty.readouts) {
