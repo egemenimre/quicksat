@@ -30,12 +30,10 @@ that first one. If the sun never leaves the axis, the angle is zero.
 from typing import TYPE_CHECKING
 
 import numpy as np
-from astropy.coordinates import CartesianRepresentation
 from astropy.units import Quantity
 
 from quicksat import Q_, u
 from quicksat.orbit.attitude import axis_vector
-from quicksat.scenario.attitude import body_rotations
 from quicksat.utils.intervals import labels_at
 
 if TYPE_CHECKING:  # a type annotation only, as run.py imports this module
@@ -141,13 +139,7 @@ def articulation_angles(run: "ScenarioRun") -> dict[str, Quantity]:
     model = run.scenario.spacecraft_model
     if model is None or not model.articulations:
         return {}
-    cartesian = run.state.cartesian
-    assert isinstance(cartesian, CartesianRepresentation)
-    position = cartesian.xyz.to_value(u.km).T
-    sun = run.sun.xyz.to_value(u.km).T - position
-    sun /= np.linalg.norm(sun, axis=1, keepdims=True)
-    # the rotations turn body vectors into GCRS, so their transposes turn back
-    suns = np.einsum("nji,nj->ni", body_rotations(run), sun)
+    suns = run.sun_body
     modes = labels_at(run.mode, run.times)
     # the run is open at its end, so the last time takes the last activity's mode
     modes[-1] = run.occurrences[-1].activity.mode

@@ -44,7 +44,7 @@ from quicksat.orbit.tle import Tle, read_tle_file, warn_if_far_from_epoch
 from quicksat.orbit.trajectory import Trajectory
 from quicksat.orbit.trajectory_files import read_trajectory_file
 from quicksat.scenario.articulation import articulation_angles
-from quicksat.scenario.attitude import SlewWindow, plan_slews
+from quicksat.scenario.attitude import SlewWindow, body_rotations, plan_slews
 from quicksat.scenario.config import (
     LATITUDE_CROSSING,
     RISE,
@@ -727,6 +727,26 @@ class ScenarioRun:
             Empty without articulations.
         """
         return articulation_angles(self)
+
+    @cached_property
+    def sun_body(self) -> np.ndarray:
+        """
+        The direction from the satellite to the sun in body axes, on the grid.
+
+        Worked out on first use, from `body_rotations`, so that it follows the
+        body through its slews.
+
+        Returns
+        -------
+        suns : ndarray
+            Unit vectors, shape (n, 3), one for each time of the grid
+        """
+        cartesian = self.state.cartesian
+        assert isinstance(cartesian, CartesianRepresentation)
+        to_sun = self.sun.xyz.to_value(u.km).T - cartesian.xyz.to_value(u.km).T
+        to_sun /= np.linalg.norm(to_sun, axis=1, keepdims=True)
+        # the rotations turn body vectors into GCRS, so their transposes turn back
+        return np.einsum("nji,nj->ni", body_rotations(self), to_sun)
 
     @property
     def activity_summary(self) -> str:

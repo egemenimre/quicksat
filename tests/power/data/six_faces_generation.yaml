@@ -1,0 +1,11 @@
+# The six 1 m2 faces of the Orekit case, typed in, as the case has no 3D model.
+# With no losses, each face's power is the flux times its cosine and the light.
+cell_efficiency: 1
+loss_factor: 1
+panels:
+  velocity: {normal: +x, area: 1 m2, fill_ratio: 1}
+  anti-velocity: {normal: -x, area: 1 m2, fill_ratio: 1}
+  orbit normal: {normal: -y, area: 1 m2, fill_ratio: 1}
+  anti orbit normal: {normal: +y, area: 1 m2, fill_ratio: 1}
+  nadir: {normal: +z, area: 1 m2, fill_ratio: 1}
+  anti-nadir: {normal: -z, area: 1 m2, fill_ratio: 1}

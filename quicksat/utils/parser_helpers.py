@@ -135,6 +135,9 @@ float would have accepted it without an error.
 LengthQty = non_negative_quantity(u.m, "length")
 """Annotated Quantity type restricted to non-negative lengths."""
 
+AreaQty = non_negative_quantity(u.m**2, "area")
+"""Annotated Quantity type restricted to non-negative areas, such as `0.2 m2`."""
+
 AngleQty = non_negative_quantity(u.deg, "angle")
 """Annotated Quantity type for angles.
 

@@ -1,0 +1,12 @@
+# The Orekit case in this folder: a 510 km sun-synchronous orbit at 10:30 LTAN,
+# in nadir pointing for one day. The body axes match LVLH: x along the track,
+# y minus the orbit normal and z nadir, as Orekit's LVLH_CCSDS.
+orbit:
+  tle_file: sso_510km.tle
+start: 2026-10-01T00:00:00
+duration: 24 h
+step: 10 s
+attitudes:
+  nadir: {point: [+z, nadir], constrain: [-y, orbit normal]}
+activities:
+  - [24 h, nadir, idle]

@@ -3,7 +3,7 @@
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/egemenimre/quicksat/tree/master.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/egemenimre/quicksat/tree/master)
 [![codecov](https://codecov.io/github/egemenimre/quicksat/graph/badge.svg?token=ANT5QB5UB8)](https://codecov.io/github/egemenimre/quicksat)
 
-Basic satellite sizing tool. It covers the mass, data, delta-V and attitude agility budgets, and a mission scenario with a 3D viewer. Power, battery and radiator sizing will follow. quicksat is kept simple on purpose. It gives a first-pass sizing, not a full systems engineering environment.
+Basic satellite sizing tool. It covers the mass, data, delta-V and attitude agility budgets, a mission scenario with a 3D viewer, and the power that the solar panels generate over a scenario. Power consumption, battery and radiator sizing will follow. quicksat is kept simple on purpose. It gives a first-pass sizing, not a full systems engineering environment.
 
 ## Status
 
@@ -14,7 +14,8 @@ Basic satellite sizing tool. It covers the mass, data, delta-V and attitude agil
 | **Delta-V budget** | implemented |
 | **Attitude agility budget** | implemented |
 | **Mission scenario** | implemented |
-| **Power, battery and radiator sizing** | not yet specified |
+| **Power generation** | implemented |
+| **Power consumption, battery and radiator sizing** | not yet specified |
 
 ## The shared mission
 
@@ -229,7 +230,7 @@ Roll and pitch use the same calculation. The pyramid's symmetry axis is along ya
 
 ## Mission scenario
 
-The scenario flies the satellite through a list of activities on a real orbit. It checks the timeline: whether each activity falls in sunlight or in eclipse as planned, and how long the body takes to turn between attitudes. Power will build on it.
+The scenario flies the satellite through a list of activities on a real orbit. It checks the timeline: whether each activity falls in sunlight or in eclipse as planned, and how long the body takes to turn between attitudes. Power builds on it.
 
 The orbit comes from a TLE or OMM file, from a sun-synchronous orbit that quicksat builds as a TLE, or from a trajectory file, in ECSV or CCSDS OEM. SGP4 flies a TLE, a trajectory is interpolated between its samples, and astropy gives the sun and the frames. The scenario does not read `mission.yaml`, because it needs a real orbit, with an epoch and a node. One file holds the whole scenario:
 
@@ -285,11 +286,46 @@ write_scenario_viewer(run, "sample/scenario/output")
 
 The activity table and a Gantt chart show which activities miss their constraint, and by how much. The viewer is a web page, `scenario_viewer.html`, with the run's data in `scenario.js` beside it. It shows the run in 3D, with the ground track and the timeline. The spacecraft is drawn from the GLB file that `3d_model` names in the scenario file, or as a 1 m cube without one. The parts that `3d_model` lists as articulations, such as the solar wings, turn to face the sun. In a mode that parks them, they hold a fixed angle instead. The page needs no Python and no server. So the folder can be sent to anyone, who opens the page with a double-click.
 
+## Power generation
+
+Power works out what the solar panels generate over a scenario run. It keeps its own copy of the scenario file, and reads a power generation file beside it:
+
+```yaml
+cell_efficiency: 30 %
+loss_factor: 0.80              # every other loss, set for the year being sized
+panels:                        # each names its cells in the 3D model
+  wing +y inner: {part: Wing +y inner cells, fill_ratio: 85 %}
+  wing +y outer: {part: Wing +y outer cells, fill_ratio: 85 %}
+  wing -y inner: {part: Wing -y inner cells, fill_ratio: 85 %}
+  wing -y outer: {part: Wing -y outer cells, fill_ratio: 85 %}
+  deck: {part: Deck cells, fill_ratio: 80 %}
+self_shadowing: {enabled: true, points: 512}
+```
+
+A panel takes its area and its normal from its part in the scenario's 3D model, and turns with the wing it sits on. At each step, its power is the solar flux × its area × the fill ratio × the cell efficiency × the loss factor × the cosine of the sun's angle to it. That is scaled by the light that the Earth does not hide. With self-shadowing on, rays from points on each panel find where the rest of the model shades it. A panel can also be typed in, with a normal and an area, for a scenario with no model or a quick try. It is never shaded, and the output notes it.
+
+```python
+from quicksat.power.config import PowerGeneration
+from quicksat.power.generation import run_generation
+from quicksat.scenario.config import Scenario
+from quicksat.scenario.run import run_scenario
+
+run = run_scenario(Scenario.from_yaml_file("sample/power/data/scenario.yaml"))
+generation = PowerGeneration.from_yaml_file("sample/power/data/power_generation.yaml")
+generation_run = run_generation(generation, run)
+
+generation_run.orbit_table         # each whole orbit: 274.6 W mean and 434.1 Wh in the first
+generation_run.panel_energy_table  # each panel's energy per orbit
+generation_run.shading_table       # the housing costs the deck cells 8.1% of their energy
+```
+
+The orbits are counted from the start of the run, one period each, and a cut orbit at the end is left out. Plots show each panel's power, the total with each orbit's mean, and the panels in 3D. The generation is checked against Orekit on a six-face case: the cosines agree to 1.0 × 10⁻⁴, and the whole-orbit means to 0.024%.
+
 ## Documentation
 
-The documentation follows the [Diátaxis](https://diataxis.fr/) split. The samples are tutorials to follow, and the docs explain how things work. Files under `docs/` take a `_ref` suffix, so a sample and its reference cannot be confused. Each reads its own input files, from `sample/sizing/data/` or `docs/sizing/data/`. So a change to a sample's inputs cannot change a figure quoted in a reference.
+The documentation follows the [Diátaxis](https://diataxis.fr/) split. The samples are tutorials to follow, and the docs explain how things work. Files under `docs/` take a `_ref` suffix, so a sample and its reference cannot be confused. Each reads its own input files, such as `sample/sizing/data/` or `docs/sizing/data/`. So a change to a sample's inputs cannot change a figure quoted in a reference.
 
-The notebooks and their data are grouped by domain. `sizing` covers the mission, mass, data, delta-V and agility budgets below. `scenario` covers the orbit and the timeline of activities. `power` will hold power generation, built on the scenario. The tests follow the same split, under `tests/sizing/`, `tests/scenario/` and `tests/power/`. The orbit and shadow code that the scenario and power share is tested in `tests/orbit/`.
+The notebooks and their data are grouped by domain. `sizing` covers the mission, mass, data, delta-V and agility budgets below. `scenario` covers the orbit and the timeline of activities. `power` holds power generation, built on the scenario. The tests follow the same split, under `tests/sizing/`, `tests/scenario/` and `tests/power/`. The orbit and shadow code that the scenario and power share is tested in `tests/orbit/`.
 
 | | tutorial and how-to | explanation and reference |
 |---|---|---|
@@ -299,6 +335,7 @@ The notebooks and their data are grouped by domain. `sizing` covers the mission,
 | Delta-V | [`sample/sizing/delta_v_budget.ipynb`](sample/sizing/delta_v_budget.ipynb) | [`docs/sizing/delta_v_ref.ipynb`](docs/sizing/delta_v_ref.ipynb) |
 | Agility | [`sample/sizing/agility_roll.ipynb`](sample/sizing/agility_roll.ipynb), [`sample/sizing/agility_pitch.ipynb`](sample/sizing/agility_pitch.ipynb) | [`docs/sizing/agility_ref.ipynb`](docs/sizing/agility_ref.ipynb) |
 | Scenario | [`sample/scenario/scenario.ipynb`](sample/scenario/scenario.ipynb) | [`docs/scenario/scenario_ref.ipynb`](docs/scenario/scenario_ref.ipynb) |
+| Power generation | [`sample/power/power_generation.ipynb`](sample/power/power_generation.ipynb) | [`docs/power/power_generation_ref.ipynb`](docs/power/power_generation_ref.ipynb) |
 
 Three Markdown documents sit beside the notebooks. They cover the project as a whole rather than one budget.
 
@@ -308,7 +345,7 @@ Three Markdown documents sit beside the notebooks. They cover the project as a w
 | [`docs/reference/conventions.md`](docs/reference/conventions.md) | The rules the code and the notebooks follow: how to handle units and constants, and how to write tests. Read it before changing the code. |
 | [`docs/guides/`](docs/guides/) | Guides for getting a specific task done. Start with [how to initialise a satellite](docs/guides/sizing/initialise_a_satellite.md). For the timeline, see [how to set up and run a scenario](docs/guides/scenario/set_up_a_scenario.md). |
 
-The sizing samples work through each budget for one sample satellite, in the order you would do it. The satellite is a small Earth observation platform in a 500 km sun-synchronous orbit. The scenario sample flies a 510 km sun-synchronous orbit for three orbits, with five activities. The reference notebooks explain why each part behaves as it does. They cover the data model, unit handling, and the input files field by field. They also show how the derived quantities and the margin layers are worked out, and where each budget stops.
+The sizing samples work through each budget for one sample satellite, in the order you would do it. The satellite is a small Earth observation platform in a 500 km sun-synchronous orbit. The scenario sample flies a 510 km sun-synchronous orbit for three orbits, with five activities. The power sample works out what its solar panels generate over the same three orbits. The reference notebooks explain why each part behaves as it does. They cover the data model, unit handling, and the input files field by field. They also show how the derived quantities and the margin layers are worked out, and where each budget stops.
 
 ## Installation
 

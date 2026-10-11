@@ -6,6 +6,24 @@ Newest first. When a decision replaces an earlier one, the earlier one is kept i
 
 ---
 
+## 11. The solar panels come from the 3D model
+
+**2026-10-08, agreed. Built on 2026-10-11.**
+
+A panel in `power_generation.yaml` names its part in the scenario's 3D model, such as `Wing +y inner cells`. quicksat reads the part's triangles from the GLB file, and takes the panel's area and normal from them. The part must be flat, so the face of cells is a part of its own.
+
+Entry 9 first gave each panel a named face, such as `+x`. The model replaced that for three reasons:
+
+- **The geometry is typed in once.** The model already holds the panels' sizes and directions, for the viewer.
+- **Turning panels follow the model.** A panel under an articulation's node, such as a wing panel, turns with that articulation. The node tree says which, so the power file does not repeat it.
+- **Self-shadowing needs the shapes.** A part that lies between a panel and the sun shades it, and only the model knows where the parts are.
+
+**Typed-in panels are kept,** with a normal and an area, for a scenario with no model, or a model with no clear panels. They also let a panel be tried without editing the model. They have no shape, so they stay fixed in body axes, are never shaded, and shade nothing. The run notes each one in its output, as text, so that the two kinds are not mixed without the user knowing.
+
+**The self-shadowing needs no new package.** All rays at one step share the sun's direction, so the model is projected along it, and each sample point is tested against the projected triangles. trimesh would do it, but would be a new dependency, and its fast engine is hard to install on Windows. Strings of cells are not modelled: quicksat gives a first-pass sizing.
+
+---
+
 ## 10. Scenario is its own domain, and power depends on it
 
 **2026-10-02. Settled.**

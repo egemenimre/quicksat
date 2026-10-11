@@ -1,8 +1,17 @@
-# Power generation reference data
+# Power test data
 
-Fixture for the power module's first regression test. **No test reads it yet**; the test arrives with the module. It is committed ahead of the code because it cannot be rebuilt in CI: it comes from Orekit, which needs a JVM and the `orekit-data` bundle.
+The Orekit case below is the power module's regression test, in `tests/power/test_generation.py`. It was committed ahead of the code because it cannot be rebuilt in CI: it comes from Orekit, which needs a JVM and the `orekit-data` bundle.
 
-## The scenario
+The folder also holds the inputs that the tests read:
+
+| File | Contents |
+|---|---|
+| `six_faces_scenario.yaml`, `six_faces_generation.yaml`, `sso_510km.tle` | The Orekit case as quicksat files: the orbit, nadir pointing for one day, and the six faces typed in, with no losses |
+| `scenario.yaml`, `power_generation.yaml`, `spacecraft.glb` | One orbit with the power sample's model: turning wings, fixed deck cells, and one typed-in panel |
+
+`spacecraft.glb` is a copy of `sample/power/data/spacecraft.glb`.
+
+## The Orekit case
 
 - 510 km sun-synchronous orbit, 10:30 LTAN, inclination 97.4398°.
 - SGP4 from the TLE in `scenario.json`, built from those parameters and tuned to a mean altitude of 510.00 km.
@@ -10,7 +19,7 @@ Fixture for the power module's first regression test. **No test reads it yet**; 
 - Nadir pointing in LVLH: x along track, y is minus the orbit normal, z is nadir. Orekit's `LOFType.LVLH_CCSDS` is the same frame.
 - Six 1 m² faces, with normals along ±velocity, ±orbit normal and ±nadir.
 
-## Files
+## Orekit's files
 
 | File | Contents |
 |---|---|
@@ -41,7 +50,14 @@ These offsets have measured causes:
 - **20.5 arcsec in sun direction:** annual aberration. astropy's `get_sun` is the apparent sun, Orekit's the geometric one. This is also where the 7.9e-5 of cosine comes from.
 - **Eclipse edges:** a symmetric 0.041 s per edge, because a point sun's shadow widens behind the Earth (R_E/D, 111 m at the edges) while a cylinder's does not; plus about 0.05 s of common shift from the same aberration.
 
-Two things to hold to when the test is written:
+How the test holds to the two rules that came with this data:
 
-- **Average over whole orbits.** Use the `whole` mask, 14 orbits. Averaging over the full day skews per-face means by up to 3.4%.
-- **Pick the reference that matches the shadow model.** `sphere_point_sun` is the counterpart of a cylindrical shadow. A conical or oblate model should be compared with the matching umbra and penumbra entries instead, and its lit flags will then differ from `reference_orekit.npz` at the edges.
+- **Average over whole orbits.** The test uses the `whole` mask, 14 orbits. Averaging over the full day skews per-face means by up to 3.4%.
+- **Pick the reference that matches the shadow model.** `sphere_point_sun` is the counterpart of a cylindrical shadow. quicksat's shadow has a penumbra on WGS84, so its light differs from `reference_orekit.npz` at the edges, and the whole-orbit means would differ by up to 3.9%, on the nadir face. So the test takes the means with the reference's `lit` flag, which checks the geometry. The shadow is checked against `eclipse_orekit.json` in `tests/orbit/test_geometry.py`.
+
+The module reached these, on 2026-10-11:
+
+- Per-sample cosine: 1.02e-4, against 7.9e-5 for the prototype.
+- Sun direction: 15.7 to 27.1 arcsec. The reference's sun is seen from the centre of the Earth, and quicksat's from the satellite, which adds up to 9.5 arcsec of parallax to the 20.5 arcsec of aberration.
+- Flux: 8.7e-5, for the same reason: the distance is from the satellite.
+- Whole-orbit means with the reference's `lit`: 0.024% at most.
