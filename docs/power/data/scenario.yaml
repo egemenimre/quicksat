@@ -96,7 +96,8 @@ slew:
 #     and set, such as Svalbard rise. An event can take an offset, such as
 #     eclipse entry + 2 min
 #   the attitude: one of the names under attitudes
-#   the mode: any name
+#   the mode: any name but slew, which the run gives the mode while the body
+#     turns
 #   the constraint, optional: the illumination it expects. sunlit, penumbra,
 #     umbra, or eclipse for either of the last two
 #

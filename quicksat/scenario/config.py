@@ -924,7 +924,8 @@ class Activity(BaseModel):
     attitude : str
         The name of the attitude, which must be one of the scenario's attitudes
     mode : str
-        The name of the mode. Any name that is not empty.
+        The name of the mode. Any name that is not empty, except `slew`, which
+        the run gives the mode row while the body turns.
     constraint : str, optional
         The illumination the activity expects: `sunlit`, `penumbra`, `umbra`,
         or `eclipse` for either of the last two
@@ -968,6 +969,11 @@ class Activity(BaseModel):
                 raise ValueError(
                     f"the {name} must be a name in text that is not empty, got {value!r}"
                 )
+        if fields[2].strip() == SLEW:
+            raise ValueError(
+                f"no mode may be named '{SLEW}': the run gives the mode row that "
+                "name while the body turns"
+            )
         return cls(
             trigger=parse_trigger(fields[0]),
             attitude=fields[1].strip(),
@@ -1448,6 +1454,9 @@ class Scenario(BaseModel):
         """
         Problems with the articulations: a park mode that no activity has.
 
+        `slew` counts as a mode when the scenario has slews, since the mode row
+        takes it while the body turns.
+
         Returns
         -------
         problems : list of str
@@ -1456,9 +1465,11 @@ class Scenario(BaseModel):
         if self.spacecraft_model is None:
             return []
         modes = sorted({activity.mode for activity in self.activities})
+        if self.slew is not None:
+            modes.append(SLEW)
         return [
-            f"articulation '{name}': park names the mode '{mode}', which no "
-            f"activity has. The activities have: {modes}"
+            f"articulation '{name}': park names the mode '{mode}', which the run "
+            f"never has. It has: {modes}"
             for name, articulation in self.spacecraft_model.articulations.items()
             for mode in articulation.park
             if mode not in modes

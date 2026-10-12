@@ -621,8 +621,8 @@ def gantt_rows(
     occurrences : list of Occurrence
         The occurrences from `resolve_activities`
     slews : list of SlewWindow
-        The slews, from `plan_slews`. They take the attitude row's time over
-        from the activities.
+        The slews, from `plan_slews`. They take the attitude row's and the mode
+        row's time over from the activities.
 
     Returns
     -------
@@ -631,7 +631,8 @@ def gantt_rows(
     attitude : portion.IntervalDict
         The attitude names, and `slew` while the body turns or settles
     mode : portion.IntervalDict
-        The mode names
+        The mode names, and `slew` while the body turns or settles. A slew takes
+        the end of the activity before it, so the payload is not at its task then.
     """
     row = P.IntervalDict()
     for state in ("sunlit", "penumbra", "umbra"):
@@ -643,6 +644,7 @@ def gantt_rows(
         mode[occurrence.interval] = occurrence.activity.mode
     for window in slews:
         attitude[window.interval] = SLEW
+        mode[window.interval] = SLEW
     return row, attitude, mode
 
 

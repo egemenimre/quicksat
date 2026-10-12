@@ -18,14 +18,14 @@ import numpy as np
 import pytest
 
 from quicksat import Q_, u
-from quicksat.power.config import PowerGeneration
+from quicksat.power.config import PowerSystem
 from quicksat.power.generation import (
-    _energy_until,
     flat_panel,
     panel_geometry,
     panel_notes,
     turned_normals,
 )
+from quicksat.power.orbits import energy_until
 from quicksat.scenario.config import Scenario
 from quicksat.utils.intervals import duration
 
@@ -58,8 +58,8 @@ def test_a_part_that_is_not_flat_is_refused():
         flat_panel(np.zeros((1, 3, 3)))
 
 
-def test_the_panels_come_from_the_model(generation, model_run):
-    panels, model = panel_geometry(generation, model_run.scenario)
+def test_the_panels_come_from_the_model(power_system, model_run):
+    panels, model = panel_geometry(power_system, model_run.scenario)
     assert model is not None
     wing = panels["wing +y outer"]
     assert wing.area.to_value(u.m**2) == pytest.approx(0.4026, abs=1e-6)
@@ -97,15 +97,15 @@ def scenario_with(data_dir, articulations: str) -> Scenario:
 def test_a_part_that_does_not_suit_is_refused(model_run, part, message):
     text = f"cell_efficiency: 1\nloss_factor: 1\npanels:\n  only: {{part: {part}, fill_ratio: 1}}\n"
     with pytest.raises(ValueError, match=message):
-        panel_geometry(PowerGeneration.from_yaml_text(text), model_run.scenario)
+        panel_geometry(PowerSystem.from_yaml_text(text), model_run.scenario)
 
 
-def test_a_part_without_a_model_is_refused(generation, six_faces_run):
+def test_a_part_without_a_model_is_refused(power_system, six_faces_run):
     with pytest.raises(ValueError, match="has no 3D model"):
-        panel_geometry(generation, six_faces_run.run.scenario)
+        panel_geometry(power_system, six_faces_run.run.scenario)
 
 
-def test_a_panel_turns_with_one_articulation_only(generation, data_dir):
+def test_a_panel_turns_with_one_articulation_only(power_system, data_dir):
     scenario = scenario_with(
         data_dir,
         "  articulations:\n"
@@ -113,19 +113,19 @@ def test_a_panel_turns_with_one_articulation_only(generation, data_dir):
         "    panel: {part: Wing +y inner cells, axis: +y, sun_axis: -z}\n",
     )
     with pytest.raises(ValueError, match="sits under 2 articulations"):
-        panel_geometry(generation, scenario)
+        panel_geometry(power_system, scenario)
 
 
 # ------------------------------------------------------------------ the notes
 
 
-def panels_file(*lines: str, shading: bool = False) -> PowerGeneration:
+def panels_file(*lines: str, shading: bool = False) -> PowerSystem:
     """A file with the panels in `lines`, each a name and its YAML mapping."""
     text = "cell_efficiency: 1\nloss_factor: 1\npanels:\n"
     text += "".join(f"  {line}\n" for line in lines)
     if shading:
         text += "self_shadowing: {enabled: true}\n"
-    return PowerGeneration.from_yaml_text(text)
+    return PowerSystem.from_yaml_text(text)
 
 
 TYPED = "side: {normal: +x, area: 1 m2, fill_ratio: 1}"
@@ -208,7 +208,7 @@ def test_the_energy_is_exact_for_a_power_that_changes_linearly():
     power = 3.0 + 2.0 * seconds
     at = np.array([0.0, 4.0, 10.0, 17.5, 25.0])
     np.testing.assert_allclose(
-        _energy_until(seconds, power, at), 3.0 * at + at**2, rtol=1e-14
+        energy_until(seconds, power, at), 3.0 * at + at**2, rtol=1e-14
     )
 
 

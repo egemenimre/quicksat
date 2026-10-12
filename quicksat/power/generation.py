@@ -38,7 +38,14 @@ from astropy.units import Quantity
 
 from quicksat import Q_, u
 from quicksat.orbit.attitude import axis_vector
-from quicksat.power.config import PowerGeneration
+from quicksat.power.config import PowerSystem
+from quicksat.power.orbits import (
+    energy_until,
+    interval_pieces,
+    overlap,
+    run_seconds,
+    whole_orbits,
+)
 from quicksat.power.shadowing import SHADED_LIMIT, lit_fractions
 from quicksat.scenario.config import Scenario
 from quicksat.scenario.run import ScenarioRun
@@ -48,7 +55,6 @@ from quicksat.scenario.spacecraft import (
     read_glb_json,
     read_model,
 )
-from quicksat.utils.intervals import TIME_GRID
 
 # astropy.constants creates its constants at import, so pyright cannot see them
 SOLAR_LUMINOSITY = constants.L_sun  # pyright: ignore[reportAttributeAccessIssue]
@@ -144,15 +150,15 @@ def flat_panel(triangles: np.ndarray) -> tuple[float, np.ndarray]:
 
 
 def panel_geometry(
-    generation: PowerGeneration, scenario: Scenario
+    power_system: PowerSystem, scenario: Scenario
 ) -> tuple[dict[str, PanelGeometry], ModelGeometry | None]:
     """
     The area and normal of each panel, with the scenario's 3D model.
 
     Parameters
     ----------
-    generation : PowerGeneration
-        The power generation file
+    power_system : PowerSystem
+        The power system file
     scenario : Scenario
         The scenario, for its 3D model and its articulations
 
@@ -182,7 +188,7 @@ def panel_geometry(
         }
 
     panels, problems = {}, []
-    for name, panel in generation.panels.items():
+    for name, panel in power_system.panels.items():
         if panel.part is None:
             assert panel.normal is not None and panel.area is not None
             panels[name] = PanelGeometry(
@@ -228,7 +234,7 @@ def panel_geometry(
     return panels, model
 
 
-def panel_notes(generation: PowerGeneration, has_model: bool) -> list[str]:
+def panel_notes(power_system: PowerSystem, has_model: bool) -> list[str]:
     """
     Notes on the panels for the reader, such as which are typed in.
 
@@ -238,8 +244,8 @@ def panel_notes(generation: PowerGeneration, has_model: bool) -> list[str]:
 
     Parameters
     ----------
-    generation : PowerGeneration
-        The power generation file
+    power_system : PowerSystem
+        The power system file
     has_model : bool
         Whether the scenario has a 3D model
 
@@ -249,9 +255,9 @@ def panel_notes(generation: PowerGeneration, has_model: bool) -> list[str]:
         One sentence or two for each note. Empty when every panel comes from the
         model.
     """
-    typed = [name for name, panel in generation.panels.items() if panel.part is None]
+    typed = [name for name, panel in power_system.panels.items() if panel.part is None]
     notes = []
-    if typed and len(typed) == len(generation.panels):
+    if typed and len(typed) == len(power_system.panels):
         if has_model:
             notes.append(
                 "All panels are typed in, not taken from the 3D model. They stay "
@@ -268,7 +274,7 @@ def panel_notes(generation: PowerGeneration, has_model: bool) -> list[str]:
             f"{', '.join(typed)}. They stay fixed in body axes, are never shaded, "
             "and shade nothing. The others come from the model."
         )
-    if generation.shading and len(typed) == len(generation.panels):
+    if power_system.shading and len(typed) == len(power_system.panels):
         notes.append(
             "Self-shadowing is on, but no panel comes from the 3D model, so "
             "nothing is shaded."
@@ -329,35 +335,6 @@ def solar_flux(run: ScenarioRun) -> Quantity:
     return (SOLAR_LUMINOSITY / (4 * np.pi * distance**2)).to(u.W / u.m**2)
 
 
-def _energy_until(seconds: np.ndarray, power: np.ndarray, at: np.ndarray):
-    """
-    The energy from the start of the grid up to each given time, in joules.
-
-    The power is taken to change linearly between the times of the grid, so the
-    energy is exact for it, also between those times.
-
-    Parameters
-    ----------
-    seconds : ndarray
-        The times of the grid, in seconds from its start, rising
-    power : ndarray
-        The power at each time of the grid, in watts
-    at : ndarray
-        The times to give the energy at, in seconds, inside the grid
-
-    Returns
-    -------
-    energy : ndarray
-        In joules, one for each time in `at`
-    """
-    steps = np.diff(seconds)
-    gained = np.concatenate([[0.0], np.cumsum((power[1:] + power[:-1]) / 2 * steps)])
-    index = np.clip(np.searchsorted(seconds, at, side="right") - 1, 0, len(steps) - 1)
-    into = at - seconds[index]
-    slope = (power[index + 1] - power[index]) / steps[index]
-    return gained[index] + power[index] * into + slope * into**2 / 2
-
-
 @dataclass(frozen=True)
 class GenerationRun:
     """
@@ -365,8 +342,8 @@ class GenerationRun:
 
     Parameters
     ----------
-    generation : PowerGeneration
-        The power generation file
+    power_system : PowerSystem
+        The power system file
     run : ScenarioRun
         The scenario run
     panels : dict of str to PanelGeometry
@@ -390,7 +367,7 @@ class GenerationRun:
         Notes for the reader, from `panel_notes`
     """
 
-    generation: PowerGeneration
+    power_system: PowerSystem
     run: ScenarioRun
     panels: dict[str, PanelGeometry]
     flux: Quantity
@@ -415,41 +392,14 @@ class GenerationRun:
     @cached_property
     def orbits(self) -> list[tuple[float, float]]:
         """
-        The whole orbits in the run, counted from its start, one period each.
-
-        A cut orbit at the end of the run is left out. So is every orbit of a run
-        shorter than one period.
+        The whole orbits in the run, from `quicksat.power.orbits.whole_orbits`.
 
         Returns
         -------
         orbits : list of tuple of float
             The start and the end of each orbit, in seconds from the run's start
         """
-        period = float(self.run.orbit.period.to(u.s).value)
-        length = float((self.run.times[-1] - self.run.times[0]).to_value(u.s))
-        # the end of the run sits on the 1 ms grid, so it may fall short of a
-        # whole number of periods by up to 1 ms
-        count = int((length + float(TIME_GRID.to(u.s).value)) // period)
-        return [
-            (number * period, min((number + 1) * period, length))
-            for number in range(count)
-        ]
-
-    def _seconds(self) -> np.ndarray:
-        """The grid, in seconds from the run's start."""
-        return np.asarray((self.run.times - self.run.times[0]).to_value(u.s))
-
-    def _pieces(self, intervals) -> list[tuple[float, float]]:
-        """The pieces of an interval of the run, in seconds from its start."""
-        start = self.run.times[0]
-        return [
-            (
-                float((piece.lower - start).to_value(u.s)),
-                float((piece.upper - start).to_value(u.s)),
-            )
-            for piece in intervals
-            if not piece.empty
-        ]
+        return whole_orbits(self.run)
 
     def energy(self, power: Quantity) -> list[Quantity]:
         """
@@ -466,7 +416,9 @@ class GenerationRun:
             In W h, one for each of `orbits`
         """
         bounds = np.array(self.orbits).reshape(-1)
-        joules = _energy_until(self._seconds(), np.asarray(power.to_value(u.W)), bounds)
+        joules = energy_until(
+            run_seconds(self.run), np.asarray(power.to_value(u.W)), bounds
+        )
         return [
             Q_(end - start, "J").to(u.W * u.h) for start, end in joules.reshape(-1, 2)
         ]
@@ -486,7 +438,7 @@ class GenerationRun:
         """
         rows = []
         for name, panel in self.panels.items():
-            entry = self.generation.panels[name]
+            entry = self.power_system.panels[name]
             rows.append(
                 {
                     "panel": name,
@@ -518,10 +470,10 @@ class GenerationRun:
             sunlit time in W, and the energy generated in W h. Empty for a run
             shorter than one orbit.
         """
-        seconds = self._seconds()
+        seconds = run_seconds(self.run)
         total = np.asarray(self.total.to_value(u.W))
-        eclipses = self._pieces(self.run.eclipses)
-        sunlit = self._pieces(self.run.sunlit)
+        eclipses = interval_pieces(self.run, self.run.eclipses)
+        sunlit = interval_pieces(self.run, self.run.sunlit)
         rows = []
         for number, (start, end) in enumerate(self.orbits, start=1):
             clipped = [
@@ -530,12 +482,9 @@ class GenerationRun:
                 if upper > start and lower < end
             ]
             sunlit_time = sum(upper - lower for lower, upper in clipped)
-            eclipse_time = sum(
-                max(0.0, min(upper, end) - max(lower, start))
-                for lower, upper in eclipses
-            )
+            eclipse_time = overlap(eclipses, start, end)
             ends = np.array([start, end, *[t for piece in clipped for t in piece]])
-            joules = _energy_until(seconds, total, ends)
+            joules = energy_until(seconds, total, ends)
             in_sun = float(np.sum(joules[3::2] - joules[2::2]))
             whole = float(joules[1] - joules[0])
             rows.append(
@@ -587,9 +536,9 @@ class GenerationRun:
             what the panel would generate unshaded, in percent. Empty without the
             self-shadowing.
         """
-        if not self.generation.shading:
+        if not self.power_system.shading:
             return pd.DataFrame()
-        seconds = self._seconds()
+        seconds = run_seconds(self.run)
         steps = np.diff(seconds)
         rows = []
         for name, panel in self.panels.items():
@@ -599,8 +548,8 @@ class GenerationRun:
             unshaded = np.asarray(self.unshaded[name].to_value(u.W))
             power = np.asarray(self.power[name].to_value(u.W))
             ends = np.array([seconds[0], seconds[-1]])
-            full = np.diff(_energy_until(seconds, unshaded, ends))[0]
-            lost = full - np.diff(_energy_until(seconds, power, ends))[0]
+            full = np.diff(energy_until(seconds, unshaded, ends))[0]
+            lost = full - np.diff(energy_until(seconds, power, ends))[0]
             rows.append(
                 {
                     "panel": name,
@@ -615,14 +564,14 @@ class GenerationRun:
         return pd.DataFrame(rows)
 
 
-def run_generation(generation: PowerGeneration, run: ScenarioRun) -> GenerationRun:
+def run_generation(power_system: PowerSystem, run: ScenarioRun) -> GenerationRun:
     """
     Work out the power that each panel generates over a scenario run.
 
     Parameters
     ----------
-    generation : PowerGeneration
-        The power generation file
+    power_system : PowerSystem
+        The power system file
     run : ScenarioRun
         The scenario run, with its 3D model if any panel names a part
 
@@ -636,13 +585,13 @@ def run_generation(generation: PowerGeneration, run: ScenarioRun) -> GenerationR
     ValueError
         If a panel's part does not suit, as `panel_geometry` checks
     """
-    panels, model = panel_geometry(generation, run.scenario)
+    panels, model = panel_geometry(power_system, run.scenario)
     spacecraft = run.scenario.spacecraft_model
     flux = solar_flux(run)
     suns = run.sun_body
-    efficiency = float(generation.cell_efficiency.to_value("")) * float(
-        generation.loss_factor.to_value("")
-    )
+    efficiency = float(
+        power_system.cell_efficiency.to(u.dimensionless_unscaled).value
+    ) * float(power_system.loss_factor.to(u.dimensionless_unscaled).value)
 
     cosines = {}
     for name, panel in panels.items():
@@ -662,13 +611,13 @@ def run_generation(generation: PowerGeneration, run: ScenarioRun) -> GenerationR
         for name, panel in panels.items()
         if panel.node is not None
     ]
-    if generation.self_shadowing and generation.shading and from_model:
+    if power_system.self_shadowing and power_system.shading and from_model:
         assert model is not None and spacecraft is not None
         lit |= lit_fractions(
             model,
             spacecraft,
             from_model,
-            generation.self_shadowing.points,
+            power_system.self_shadowing.points,
             suns,
             cosines,
             run.light,
@@ -677,7 +626,9 @@ def run_generation(generation: PowerGeneration, run: ScenarioRun) -> GenerationR
 
     unshaded, power = {}, {}
     for name, panel in panels.items():
-        fill = float(generation.panels[name].fill_ratio.to_value(""))
+        fill = float(
+            power_system.panels[name].fill_ratio.to(u.dimensionless_unscaled).value
+        )
         unshaded[name] = (
             flux
             * panel.area
@@ -688,7 +639,7 @@ def run_generation(generation: PowerGeneration, run: ScenarioRun) -> GenerationR
         power[name] = unshaded[name] * lit[name]
 
     return GenerationRun(
-        generation,
+        power_system,
         run,
         panels,
         flux,
@@ -696,5 +647,5 @@ def run_generation(generation: PowerGeneration, run: ScenarioRun) -> GenerationR
         lit,
         unshaded,
         power,
-        panel_notes(generation, spacecraft is not None),
+        panel_notes(power_system, spacecraft is not None),
     )

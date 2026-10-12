@@ -351,7 +351,9 @@ def scenario_data(run: ScenarioRun) -> dict:
     return header | {"id": data_id} | content
 
 
-def write_scenario_js(run: ScenarioRun, folder: str | Path) -> Path:
+def write_scenario_js(
+    run: ScenarioRun, folder: str | Path, data: dict | None = None
+) -> Path:
     """
     Write the viewer's data for a run, as `scenario.js` in a folder.
 
@@ -364,13 +366,16 @@ def write_scenario_js(run: ScenarioRun, folder: str | Path) -> Path:
         The run
     folder : str | Path
         The folder to write to
+    data : dict, optional
+        The run's data, from `scenario_data`, if it is already worked out. Power
+        needs its `id` before writing `power.js`.
 
     Returns
     -------
     path : Path
         The file written
     """
-    data = scenario_data(run)
+    data = data if data is not None else scenario_data(run)
     source = data["scenario_file"] or "a scenario"
     text = (
         f"// Written by quicksat from {source}. Rerun the notebook instead of "

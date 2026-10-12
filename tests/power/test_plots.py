@@ -18,6 +18,9 @@ from quicksat import u
 from quicksat.power.plots import (
     ECLIPSE,
     MODEL,
+    balance_plot,
+    charge_plot,
+    consumption_plot,
     panel_colours,
     panel_drawing,
     panel_power_plot,
@@ -93,3 +96,32 @@ def test_without_a_model_the_drawing_shows_the_typed_in_normals(six_faces_run):
     ax = panel_drawing(six_faces_run)
     assert legend_labels(ax) == list(six_faces_run.panels)
     assert len(ax.collections) == len(six_faces_run.panels) + 3
+
+
+def test_the_consumption_plot_stacks_the_subsystems(consumption_run):
+    ax = consumption_plot(consumption_run)
+    subsystems = list(consumption_run.subsystem_power())
+    assert legend_labels(ax) == [*subsystems, ECLIPSE]
+    # the top of the stack is the total
+    top = max(
+        float(np.asarray(p.get_paths()[0].vertices)[:, 1].max()) for p in ax.collections
+    )
+    assert top == pytest.approx(consumption_run.total.to_value(u.W).max())
+
+
+def test_the_balance_plot_draws_generated_and_consumed(budget):
+    ax = balance_plot(budget)
+    generated, consumed = ax.get_lines()
+    np.testing.assert_allclose(
+        np.asarray(consumed.get_ydata()), budget.load.to_value(u.W)
+    )
+    assert legend_labels(ax) == ["generated", "consumed", ECLIPSE]
+    assert generated.get_label() == "generated"
+
+
+def test_the_charge_plot_marks_the_lowest_allowed(budget):
+    ax = charge_plot(budget)
+    charge, limit = ax.get_lines()
+    np.testing.assert_allclose(np.asarray(charge.get_ydata()), 100 * budget.charge)
+    assert np.asarray(limit.get_ydata()) == pytest.approx([70, 70])
+    assert legend_labels(ax) == ["charge", "lowest allowed", ECLIPSE]

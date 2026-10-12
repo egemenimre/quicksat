@@ -4,11 +4,11 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The power generation file: the solar panels, their efficiencies and losses.
+The power system file: the solar panels, the battery and the power conditioning.
 
-The file is `power_generation.yaml`. Each panel either names a part of the
-scenario's 3D model, which gives its area and its normal, or gives a normal and
-an area itself:
+The file is `power_system.yaml`. Each panel either names a part of the scenario's
+3D model, which gives its area and its normal, or gives a normal and an area
+itself:
 
     cell_efficiency: 30 %
     loss_factor: 0.80
@@ -16,6 +16,22 @@ an area itself:
       wing +y inner: {part: Wing +y inner cells, fill_ratio: 85 %}
       side +x: {normal: +x, area: 0.2 m2, fill_ratio: 80 %}
     self_shadowing: {enabled: true, points: 512}
+    battery:
+      capacity: 1024 W h
+      capacity_factor: 0.80
+      max_depth_of_discharge: 30 %
+    conditioning:
+      array_regulator: 0.96
+      battery_charge: 0.95
+      battery_discharge: 0.95
+      distribution: 0.97
+    system_margin: 5 %
+
+The losses sit in three places, so that none is counted twice. `loss_factor`
+takes every loss up to the array's output. The conditioning's efficiencies take
+the energy from there to the loads and through the battery, each on its own path.
+The fixed overheads, such as the power unit's own electronics, are loads in the
+consumption file.
 
 This module reads and checks the file on its own. The parts are checked against
 the scenario's model when the generation is worked out, in
@@ -42,9 +58,9 @@ from pydantic import (
     model_validator,
 )
 
-from quicksat import u
+from quicksat import Q_, u
 from quicksat.orbit.attitude import axis_vector
-from quicksat.utils.parser_helpers import AreaQty, FractionQty
+from quicksat.utils.parser_helpers import AreaQty, EnergyQty, FractionQty
 
 DEFAULT_POINTS = 512
 """Sample points on each panel for the self-shadowing, if the file gives none.
@@ -219,28 +235,132 @@ class SelfShadowing(BaseModel):
     points: int = Field(DEFAULT_POINTS, gt=0)
 
 
-class PowerGeneration(BaseModel):
+class Battery(BaseModel):
     """
-    The power generation file: the panels, their efficiencies and losses.
+    The battery: its size, how much of it is left, and how deep it may go.
+
+    Parameters
+    ----------
+    capacity : Quantity
+        The energy the battery holds when new and full, such as `1024 W h`.
+        Positive.
+    capacity_factor : Quantity
+        The share of the capacity left in the year being sized, after fade, such
+        as `0.80`. Above 0 and at most 1.
+    max_depth_of_discharge : Quantity
+        The deepest the battery may go, as a share of what it holds, such as
+        `30 %`. The power budget checks that the charge never falls below 1 less
+        this. Above 0 and at most 1.
+    initial_charge : Quantity, optional
+        The charge at the start of the run, as a share of what it holds. Full,
+        `100 %`, by default.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+    capacity: EnergyQty
+    capacity_factor: FractionQty
+    max_depth_of_discharge: FractionQty
+    initial_charge: FractionQty = Q_(100, "%")
+
+    @field_validator("capacity")
+    @classmethod
+    def _positive(cls, value: Quantity) -> Quantity:
+        """Checks that the capacity is above zero."""
+        if value.value == 0:
+            raise ValueError("capacity must be above zero")
+        return value
+
+    @field_validator("capacity_factor", "max_depth_of_discharge", "initial_charge")
+    @classmethod
+    def _fraction(cls, value: Quantity, info: ValidationInfo) -> Quantity:
+        """Checks that each share is in (0, 1]."""
+        return _check_unit_fraction(value, str(info.field_name))
+
+    @property
+    def usable(self) -> Quantity:
+        """
+        The energy the battery holds when full, in the year being sized.
+
+        Returns
+        -------
+        usable : Quantity
+            The capacity times the capacity factor, in W h
+        """
+        return (self.capacity * self.capacity_factor).to(u.W * u.h)
+
+
+class Conditioning(BaseModel):
+    """
+    The efficiencies of the power conditioning, one for each path energy takes.
+
+    Each is above 0 and at most 1. For a bus fed straight from the battery, with
+    no charge and discharge regulators, give the cells' own efficiencies.
+
+    Parameters
+    ----------
+    array_regulator : Quantity
+        From the array to the bus, through the array regulator, such as a
+        maximum power point tracker
+    battery_charge : Quantity
+        From the bus into the battery: the charge regulator and the cells
+    battery_discharge : Quantity
+        From the battery to the bus: the discharge regulator and the cells
+    distribution : Quantity
+        From the bus to the loads: the switches, the fuses and the harness
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+    array_regulator: FractionQty
+    battery_charge: FractionQty
+    battery_discharge: FractionQty
+    distribution: FractionQty
+
+    @field_validator(
+        "array_regulator", "battery_charge", "battery_discharge", "distribution"
+    )
+    @classmethod
+    def _fraction(cls, value: Quantity, info: ValidationInfo) -> Quantity:
+        """Checks that each efficiency is in (0, 1]."""
+        return _check_unit_fraction(value, str(info.field_name))
+
+
+class PowerSystem(BaseModel):
+    """
+    The power system file: the panels, the battery and the conditioning.
 
     The power of a panel is the solar flux × its area × its fill ratio × the cell
     efficiency × the loss factor × the cosine of the sun's angle to its normal.
     It is scaled by the light from the sun that the Earth does not hide, and by
-    the panel's lit fraction when the self-shadowing is on.
+    the panel's lit fraction when the self-shadowing is on. That is the power at
+    the array's output. The conditioning's efficiencies take it from there to the
+    loads and the battery.
+
+    The generation needs only the panels. The power budget also needs the
+    battery, the conditioning and the system margin.
 
     Parameters
     ----------
     cell_efficiency : Quantity
-        The cells' efficiency, at their working temperature. Above 0 and at most
-        1, such as `30 %` or `0.30`.
+        The cells' efficiency, at their rated temperature. Above 0 and at most 1,
+        such as `30 %` or `0.30`.
     loss_factor : Quantity
-        All other losses, as the share of the power left: wiring, the power
-        converter, temperature, cell mismatch and ageing, for the year being
-        sized. Above 0 and at most 1, such as `0.80`.
+        Every loss up to the array's output, as the share of the power left: the
+        cells' temperature, ageing, mismatch between cells, UV, and the array's
+        own wiring, for the year being sized. Above 0 and at most 1, such as
+        `0.80`.
     panels : dict of str to Panel
         The panels, each under a name of your choice. At least one.
     self_shadowing : SelfShadowing, optional
         Whether the 3D model shades the panels. Off without it.
+    battery : Battery, optional
+        The battery, for the power budget
+    conditioning : Conditioning, optional
+        The efficiencies of the power conditioning, for the power budget
+    system_margin : Quantity, optional
+        The margin on all the loads together, on top of each equipment's own,
+        such as `5 %`. For the power budget.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -249,13 +369,17 @@ class PowerGeneration(BaseModel):
     loss_factor: FractionQty
     panels: dict[str, Panel]
     self_shadowing: SelfShadowing | None = None
+    battery: Battery | None = None
+    conditioning: Conditioning | None = None
+    system_margin: FractionQty | None = None
 
     _source_file: Path | None = PrivateAttr(None)
+    _source_text: str | None = PrivateAttr(None)
 
     @property
     def source_file(self) -> Path | None:
         """
-        The file the generation was read from.
+        The file the power system was read from.
 
         Returns
         -------
@@ -263,6 +387,18 @@ class PowerGeneration(BaseModel):
             None when it was read from text
         """
         return self._source_file
+
+    @property
+    def source_text(self) -> str | None:
+        """
+        The text the power system was read from, as written.
+
+        Returns
+        -------
+        text : str or None
+            None when it was built in code
+        """
+        return self._source_text
 
     @property
     def shading(self) -> bool:
@@ -292,9 +428,9 @@ class PowerGeneration(BaseModel):
         return panels
 
     @classmethod
-    def from_yaml_file(cls, file_path: str | Path) -> "PowerGeneration":
+    def from_yaml_file(cls, file_path: str | Path) -> "PowerSystem":
         """
-        Initialise the power generation from a YAML file.
+        Initialise the power system from a YAML file.
 
         Parameters
         ----------
@@ -303,8 +439,8 @@ class PowerGeneration(BaseModel):
 
         Returns
         -------
-        generation : PowerGeneration
-            The power generation from the file
+        power_system : PowerSystem
+            The power system from the file
 
         Raises
         ------
@@ -314,24 +450,24 @@ class PowerGeneration(BaseModel):
         if not os.path.isfile(file_path):
             raise FileNotFoundError(f"File does not exist: {file_path}")
         path = Path(file_path)
-        generation = cls.from_yaml_text(path.read_text())
-        generation._source_file = path
-        return generation
+        power_system = cls.from_yaml_text(path.read_text())
+        power_system._source_file = path
+        return power_system
 
     @classmethod
-    def from_yaml_text(cls, yaml_text: str) -> "PowerGeneration":
+    def from_yaml_text(cls, yaml_text: str) -> "PowerSystem":
         """
-        Initialise the power generation from YAML text.
+        Initialise the power system from YAML text.
 
         Parameters
         ----------
         yaml_text : str
-            Text containing the power generation (YAML)
+            Text containing the power system (YAML)
 
         Returns
         -------
-        generation : PowerGeneration
-            The power generation from the text
+        power_system : PowerSystem
+            The power system from the text
 
         Raises
         ------
@@ -342,7 +478,7 @@ class PowerGeneration(BaseModel):
             raise ValueError("Text content is None.")
         data = yaml.safe_load(yaml_text)
         if not isinstance(data, dict):
-            raise ValueError(
-                "A power generation file must be a mapping of keys to values."
-            )
-        return cls.model_validate(data)
+            raise ValueError("A power system file must be a mapping of keys to values.")
+        power_system = cls.model_validate(data)
+        power_system._source_text = yaml_text
+        return power_system

@@ -1,0 +1,17 @@
+equipment_id,equipment_name,subsystem,units_on,eqpt_margin,idle,imaging,downlink,slew,comments
+obc,SSTL OBC750,OBDH,1,5,10 W,10 W,10 W,10 W,Cold redundant: one of two on
+star_tracker,Jena Astro HP optical head,ADCS,2,5,6 W,6 W,6 W,6 W,Both heads on
+reaction_wheel,Rockwell RSI 45,ADCS,4,5,10 W,12 W,15 W,10 W,Holding speed; tracking Svalbard changes it most
+magnetorquer,ZARM MT30,ADCS,3,5,1 W,1 W,1 W,1 W,Averaged over the momentum dumps
+imu,Northrop LN-200S,ADCS,1,5,12 W,12 W,12 W,12 W,
+gps_receiver,RUAG PODRIX,ADCS,1,5,10 W,10 W,10 W,10 W,
+pcdu,Airbus PCDU housekeeping,EPS,1,10,15 W,15 W,15 W,15 W,Its own electronics; its conversion losses are in power_system.yaml
+sadm,Solar array drive,EPS,2,10,4 W,1 W,4 W,4 W,Not in the mass budget's list; holding a parked wing in imaging
+s_band_rx,S-band transceiver receivers,COMM,2,5,4 W,4 W,4 W,4 W,Both receivers on for commands
+s_band_tx,S-band transceiver transmitter,COMM,1,5,0 W,0 W,15 W,0 W,Telemetry during the station pass
+x_band_tx,X-band transmitter,COMM,1,10,0 W,0 W,55 W,0 W,About 5-10 W of radio output
+mass_memory,SSDR 2 TB,OBDH,1,10,10 W,30 W,25 W,10 W,"Standby, recording, playback"
+payload_electronics,Video processing unit,Payload,1,10,5 W,40 W,5 W,5 W,Compresses the images
+focal_plane,Focal plane assembly,Payload,1,20,0 W,45 W,0 W,0 W,"Detectors, their electronics and coolers; new design"
+payload_heaters,Payload heater lines,Thermal,1,20,35 W,35 W,35 W,35 W,Hold the telescope near its focus temperature
+platform_heaters,Platform heater lines,Thermal,1,20,20 W,20 W,20 W,20 W,"Battery, tank and propellant lines"

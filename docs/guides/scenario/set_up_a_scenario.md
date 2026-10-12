@@ -114,7 +114,7 @@ Parts of the model can turn to face the sun, such as solar wings. Make each such
 - **`axis`** is the body axis it turns about.
 - **`sun_axis`** is the part's axis to turn to the sun, as the model draws it. It must use a different body axis from `axis`.
 - **`range`**, optional, limits the turn, as in `range: [-90 deg, 90 deg]`.
-- **`park`**, optional, holds a fixed angle in the modes it names. Each mode must be one that an activity has.
+- **`park`**, optional, holds a fixed angle in the modes it names. Each mode must be one that an activity has, or `slew` when the scenario has slews.
 
 The part tracks the sun at each step, and the viewer turns it.
 
@@ -133,7 +133,7 @@ activities:
 
 - **The list is one repeat.** The first activity starts at the start of the run. Each later one starts where the one before it ends. The run repeats the list until the duration ends.
 - **The trigger** is a time, such as `20 min`, or the next event after the activity starts. The events are the shadow edges, the nodes, latitude crossings, and a ground target's rise and set, such as `Svalbard rise`. An event can take an offset, such as `eclipse entry - 1 min`.
-- **The mode** is any name. Power will say what each mode draws.
+- **The mode** is any name except `slew`. During each slew, the run sets the mode to `slew`, because the payload is not at its task while the body turns. Power's consumption gives each mode its power, `slew` included.
 - **The constraint** is the illumination the activity expects: `sunlit`, `penumbra`, `umbra`, or `eclipse` for either of the last two.
 
 Use event triggers where you can. Events keep the list in step with the orbit, while fixed times drift against it. A rise or a set ends a downlink at the pass itself, with no trial and error over latitudes. But where an orbit has no pass, a list that waits for one runs on to the next.

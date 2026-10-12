@@ -410,6 +410,10 @@ def test_a_bad_attitude_stops_the_load(changes, message):
             "no attitude may be named 'slew'",
         ),
         (
+            {"activities": [["10 min", "nadir", "slew"]]},
+            "no mode may be named 'slew'",
+        ),
+        (
             {"targets": {"sun": {"latitude": "0 deg", "longitude": "0 deg"}}},
             "target 'sun' takes the name of a built-in direction",
         ),

@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from quicksat import Q_, u
-from quicksat.power.config import PowerGeneration
+from quicksat.power.config import PowerSystem
 from quicksat.power.generation import run_generation, turned_normals
 from quicksat.power.shadowing import (
     RAY_OFFSET,
@@ -114,12 +114,12 @@ def test_the_turns_match_the_turned_normals():
 
 @pytest.fixture(scope="module")
 def shaded_run(data_dir, model_run):
-    """`power_generation.yaml` with the self-shadowing on, over `model_run`."""
-    text = (data_dir / "power_generation.yaml").read_text()
-    generation = PowerGeneration.from_yaml_text(
+    """`power_system.yaml` with the self-shadowing on, over `model_run`."""
+    text = (data_dir / "power_system.yaml").read_text()
+    power_system = PowerSystem.from_yaml_text(
         text + "self_shadowing: {enabled: true, points: 128}\n"
     )
-    return run_generation(generation, model_run)
+    return run_generation(power_system, model_run)
 
 
 def test_the_housing_shades_the_deck_cells(shaded_run, model_run):

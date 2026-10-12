@@ -135,6 +135,13 @@ float would have accepted it without an error.
 LengthQty = non_negative_quantity(u.m, "length")
 """Annotated Quantity type restricted to non-negative lengths."""
 
+PowerQty = non_negative_quantity(u.W, "power")
+"""Annotated Quantity type restricted to non-negative powers, such as `10 W`."""
+
+EnergyQty = non_negative_quantity(u.W * u.h, "energy")
+"""Annotated Quantity type restricted to non-negative energies, such as `1024 W h`.
+astropy does not read `Wh`, so watt-hours are written with a space."""
+
 AreaQty = non_negative_quantity(u.m**2, "area")
 """Annotated Quantity type restricted to non-negative areas, such as `0.2 m2`."""
 
