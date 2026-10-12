@@ -1,0 +1,18 @@
+# Fixture for the power tests: the power sample's panels, one typed in, and
+# the power sample's battery and conditioning.
+cell_efficiency: 30 %
+loss_factor: 0.80
+panels:
+  wing +y inner: {part: Wing +y inner cells, fill_ratio: 85 %}
+  wing +y outer: {part: Wing +y outer cells, fill_ratio: 85 %}
+  wing -y inner: {part: Wing -y inner cells, fill_ratio: 85 %}
+  wing -y outer: {part: Wing -y outer cells, fill_ratio: 85 %}
+  deck: {part: Deck cells, fill_ratio: 80 %}
+  side +x: {normal: +x, area: 0.2 m2, fill_ratio: 80 %}
+battery: {capacity: 1024 W h, capacity_factor: 0.80, max_depth_of_discharge: 30 %}
+conditioning:
+  array_regulator: 0.96
+  battery_charge: 0.95
+  battery_discharge: 0.95
+  distribution: 0.97
+system_margin: 5 %

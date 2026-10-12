@@ -9,12 +9,13 @@ The scenario file: the orbit, the period, the attitudes and the activities.
 A scenario is one YAML file. It names the orbit and gives the start time and the
 duration of the run. It also defines the attitudes, and lists the activities.
 The list is written once, and the run repeats it until the duration ends. Each
-activity is a short list of three or four strings:
+activity is a short list of four or five strings:
 
-    - [10 min, nadir, downlink, eclipse]
+    - [downlink pass, 10 min, nadir, downlink, eclipse]
 
-They are the trigger that ends the activity, the attitude, the mode, and an
-optional constraint on the illumination. The activities form a chain. Each one
+They are the title, which names what the activity is for, the trigger that ends
+the activity, the attitude, the mode, and an optional constraint on the
+illumination. The activities form a chain. Each one
 starts where the one before it ends, and the first starts at the start time.
 
 This module reads and checks the file. It does not run anything.
@@ -915,16 +916,22 @@ def parse_constraint(text: str) -> Illumination:
 
 class Activity(BaseModel):
     """
-    One activity: what ends it, how the satellite points, and what it does.
+    One activity: what it is for, what ends it, how the satellite points, and
+    what it does.
 
     Parameters
     ----------
+    title : str
+        A short name for what the activity is for, such as `imaging 45 deg lat`.
+        Any text that is not empty. The tables, the Gantt chart, the warnings and
+        the viewer name the activity by it.
     trigger : Trigger
         What ends the activity
     attitude : str
         The name of the attitude, which must be one of the scenario's attitudes
     mode : str
-        The name of the mode. Any name that is not empty.
+        The name of the mode. Any name that is not empty, except `slew`, which
+        the run gives the mode row while the body turns.
     constraint : str, optional
         The illumination the activity expects: `sunlit`, `penumbra`, `umbra`,
         or `eclipse` for either of the last two
@@ -932,6 +939,7 @@ class Activity(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
 
+    title: str
     trigger: Trigger
     attitude: str
     mode: str
@@ -945,7 +953,8 @@ class Activity(BaseModel):
         Parameters
         ----------
         fields : list of str
-            The trigger, the attitude, the mode and an optional constraint
+            The title, the trigger, the attitude, the mode and an optional
+            constraint
 
         Returns
         -------
@@ -955,25 +964,65 @@ class Activity(BaseModel):
         Raises
         ------
         ValueError
-            If the list has the wrong length or a field is not valid
+            If the list has the wrong length or a field is not valid. A list in
+            the form before titles, which starts with its trigger, is named as
+            such.
         """
-        if not isinstance(fields, (list, tuple)) or len(fields) not in (3, 4):
+        if not isinstance(fields, (list, tuple)) or len(fields) not in (4, 5):
             raise ValueError(
-                "an activity is a list of three or four items: the trigger, "
-                f"the attitude, the mode and an optional constraint. Got {fields!r}"
+                "an activity is a list of four or five items: the title, the "
+                "trigger, the attitude, the mode and an optional constraint. Got "
+                f"{fields!r}" + _untitled_hint(fields)
             )
-        names = ("attitude", "mode")
-        for name, value in zip(names, fields[1:3], strict=True):
+        names = ("title", "attitude", "mode")
+        for name, value in zip(names, (fields[0], fields[2], fields[3]), strict=True):
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(
-                    f"the {name} must be a name in text that is not empty, got {value!r}"
+                    f"the {name} must be text that is not empty, got {value!r}"
                 )
+        if fields[3].strip() == SLEW:
+            raise ValueError(
+                f"no mode may be named '{SLEW}': the run gives the mode row that "
+                "name while the body turns"
+            )
+        try:
+            trigger = parse_trigger(fields[1])
+        except ValueError as exc:
+            raise ValueError(f"{exc}{_untitled_hint(fields)}") from exc
         return cls(
-            trigger=parse_trigger(fields[0]),
-            attitude=fields[1].strip(),
-            mode=fields[2].strip(),
-            constraint=parse_constraint(fields[3]) if len(fields) == 4 else None,
+            title=fields[0].strip(),
+            trigger=trigger,
+            attitude=fields[2].strip(),
+            mode=fields[3].strip(),
+            constraint=parse_constraint(fields[4]) if len(fields) == 5 else None,
         )
+
+
+def _untitled_hint(fields) -> str:
+    """
+    A hint for a list written before titles, which starts with its trigger.
+
+    Parameters
+    ----------
+    fields
+        The activity's fields, as written
+
+    Returns
+    -------
+    hint : str
+        A sentence to add to the error, or nothing if the first field is not a
+        trigger
+    """
+    if not isinstance(fields, (list, tuple)) or not fields:
+        return ""
+    try:
+        parse_trigger(fields[0])
+    except (ValueError, TypeError, AttributeError):
+        return ""
+    return (
+        ". The first field reads as a trigger: the title now comes first, such as "
+        f"[my title, {', '.join(str(field) for field in fields)}]"
+    )
 
 
 def _parse_start(value) -> Time:
@@ -1448,6 +1497,9 @@ class Scenario(BaseModel):
         """
         Problems with the articulations: a park mode that no activity has.
 
+        `slew` counts as a mode when the scenario has slews, since the mode row
+        takes it while the body turns.
+
         Returns
         -------
         problems : list of str
@@ -1456,9 +1508,11 @@ class Scenario(BaseModel):
         if self.spacecraft_model is None:
             return []
         modes = sorted({activity.mode for activity in self.activities})
+        if self.slew is not None:
+            modes.append(SLEW)
         return [
-            f"articulation '{name}': park names the mode '{mode}', which no "
-            f"activity has. The activities have: {modes}"
+            f"articulation '{name}': park names the mode '{mode}', which the run "
+            f"never has. It has: {modes}"
             for name, articulation in self.spacecraft_model.articulations.items()
             for mode in articulation.park
             if mode not in modes

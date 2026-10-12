@@ -6,6 +6,44 @@ Newest first. When a decision replaces an earlier one, the earlier one is kept i
 
 ---
 
+## 12. The power losses sit in three places, and a slew is a mode
+
+**2026-10-11. Settled.**
+
+**The losses are counted once, where they happen.** A first-pass budget often takes one efficiency for the whole power system. quicksat splits the losses into three places instead:
+
+1. **Up to the array's output:** `loss_factor` in the power system file. It takes the cells' temperature, ageing, mismatch between cells, UV and the array's own wiring, set for the year being sized. There is no loss per year and no temperature model: the user sets the factor.
+2. **The power conditioning:** one efficiency for each path the energy takes after that. From the array to the bus, into the battery, out of the battery, and from the bus to the loads.
+3. **Fixed overheads, as loads:** the power unit's own electronics and the heaters are rows of the consumption file.
+
+The reason is that energy routed through the battery pays both its paths, about 10%, and the rest does not. One efficiency for the whole system would hide that, and would understate a long eclipse. The split also keeps each loss in the file of the person who knows it.
+
+**The battery and the conditioning sit in the power system file,** with the panels. The file was first `power_generation.yaml`, and was renamed when they joined it. The consumption has its own CSV, since it is a long list.
+
+**Each orbit must have energy to spare.** The budget checks that the battery's charge stays above its limit, and that each whole orbit has a margin of zero or more. The margin counts the energy that a full battery could not take as if it had taken it. So it does not depend on where in the orbit the window starts, nor on how full the battery is. The charge limit alone is not enough: a run that starts full can stay above it for a few orbits while losing energy every orbit.
+
+**A slew is a mode of its own.** During each slew, the run's mode row says `slew`, as its attitude row does. The slew takes the end of the activity before it, so the payload is not at its task then. The consumption file then gives the slew its own column, which the user fills: it is never assumed to equal another mode. `slew` is a reserved mode name. The alternative, a `slew` column that overrides the mode for some equipment only, was dropped as harder to read.
+
+---
+
+## 11. The solar panels come from the 3D model
+
+**2026-10-08, agreed. Built on 2026-10-11.**
+
+A panel in the power system file, `power_system.yaml`, names its part in the scenario's 3D model, such as `Wing +y inner cells`. quicksat reads the part's triangles from the GLB file, and takes the panel's area and normal from them. The part must be flat, so the face of cells is a part of its own.
+
+Entry 9 first gave each panel a named face, such as `+x`. The model replaced that for three reasons:
+
+- **The geometry is typed in once.** The model already holds the panels' sizes and directions, for the viewer.
+- **Turning panels follow the model.** A panel under an articulation's node, such as a wing panel, turns with that articulation. The node tree says which, so the power file does not repeat it.
+- **Self-shadowing needs the shapes.** A part that lies between a panel and the sun shades it, and only the model knows where the parts are.
+
+**Typed-in panels are kept,** with a normal and an area, for a scenario with no model, or a model with no clear panels. They also let a panel be tried without editing the model. They have no shape, so they stay fixed in body axes, are never shaded, and shade nothing. The run notes each one in its output, as text, so that the two kinds are not mixed without the user knowing.
+
+**The self-shadowing needs no new package.** All rays at one step share the sun's direction, so the model is projected along it, and each sample point is tested against the projected triangles. trimesh would do it, but would be a new dependency, and its fast engine is hard to install on Windows. Strings of cells are not modelled: quicksat gives a first-pass sizing.
+
+---
+
 ## 10. Scenario is its own domain, and power depends on it
 
 **2026-10-02. Settled.**

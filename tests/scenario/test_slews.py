@@ -71,6 +71,16 @@ def test_the_attitude_row_shows_the_slews(slew_run):
     assert table["slew [s]"].dropna().tolist() == pytest.approx(durations)
 
 
+def test_the_mode_row_shows_the_slews(slew_run):
+    # a slew takes the end of the activity before it, and the payload is not at
+    # its task then, so the mode row names the slew as the attitude row does
+    assert slew_run.mode.find(SLEW) == slew_run.attitude.find(SLEW)
+    modes = {activity.mode for activity in slew_run.scenario.activities}
+    assert set(slew_run.mode.values()) == modes | {SLEW}
+    # the occurrences keep their activity's mode
+    assert {occurrence.activity.mode for occurrence in slew_run.occurrences} == modes
+
+
 def test_the_body_turns_no_faster_than_the_limit(slew_run):
     assert peak_rate(slew_run) < slew_run.scenario.slew.max_rate + TARGET_RATE
 
@@ -78,6 +88,7 @@ def test_the_body_turns_no_faster_than_the_limit(slew_run):
 def test_without_slews_the_body_jumps(run):
     # the same scenario with instant changes: the body turns tens of degrees in a step
     assert run.slews == []
+    assert SLEW not in run.mode.values()
     assert run.activity_table["slew [s]"].isna().all()
     assert peak_rate(run) > Q_(5, "deg / s")
 
@@ -87,9 +98,9 @@ def test_a_slew_longer_than_the_activity_before_starts_early(data_dir):
     text = (data_dir / "scenario.yaml").read_text().split("activities:")[0]
     text += (
         "activities:\n"
-        "  - [eclipse entry - 1 min, sun pointing, idle]\n"
-        "  - [eclipse entry, nadir, idle]\n"
-        "  - [eclipse exit, sun pointing, idle]\n"
+        "  - [sun before the eclipse, eclipse entry - 1 min, sun pointing, idle]\n"
+        "  - [last minute, eclipse entry, nadir, idle]\n"
+        "  - [eclipse, eclipse exit, sun pointing, idle]\n"
     ) + SLEW_BLOCK
     run = run_scenario(Scenario.from_yaml_text(text, base_dir=data_dir))
     flagged = [o for o in run.occurrences if SLEW_STARTS_EARLY in o.statuses]

@@ -111,6 +111,9 @@ def test_the_occurrences_follow_the_activity_table(data, run):
     assert occurrences[0]["constraint"] is None
     assert occurrences[0]["outside_s"] is None
     assert all(o["slew_s"] is None for o in occurrences)
+    assert [o["title"] for o in occurrences] == [
+        o.activity.title for o in run.occurrences
+    ]
 
 
 def test_each_slew_is_a_piece_that_names_its_target(slew_run):

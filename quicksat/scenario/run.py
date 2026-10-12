@@ -44,7 +44,7 @@ from quicksat.orbit.tle import Tle, read_tle_file, warn_if_far_from_epoch
 from quicksat.orbit.trajectory import Trajectory
 from quicksat.orbit.trajectory_files import read_trajectory_file
 from quicksat.scenario.articulation import articulation_angles
-from quicksat.scenario.attitude import SlewWindow, plan_slews
+from quicksat.scenario.attitude import SlewWindow, body_rotations, plan_slews
 from quicksat.scenario.config import (
     LATITUDE_CROSSING,
     RISE,
@@ -55,6 +55,7 @@ from quicksat.scenario.config import (
     Scenario,
     Trigger,
 )
+from quicksat.scenario.rates import RateExcess, rate_excesses
 from quicksat.utils.intervals import (
     TimeArray,
     duration,
@@ -530,8 +531,8 @@ def activity_table(occurrences: list[Occurrence]) -> pd.DataFrame:
     Returns
     -------
     table : pd.DataFrame
-        The columns are the repeat and activity numbers, the start and end as UTC
-        text, the duration in minutes, the trigger as written, the attitude, the
+        The columns are the repeat and activity numbers, the title, the start and
+        end as UTC text, the duration in minutes, the trigger as written, the attitude, the
         time of the slew into it in seconds, the mode, the constraint, the time
         outside the constraint in seconds, and the status. The duration is
         negative for an activity that ends before it starts. The status is `ok`,
@@ -547,6 +548,7 @@ def activity_table(occurrences: list[Occurrence]) -> pd.DataFrame:
             {
                 "repeat": occurrence.repeat,
                 "activity": occurrence.number,
+                "title": activity.title,
                 "start [UTC]": occurrence.start.utc.isot,
                 "end [UTC]": occurrence.end.utc.isot,
                 "duration [min]": round(
@@ -621,8 +623,8 @@ def gantt_rows(
     occurrences : list of Occurrence
         The occurrences from `resolve_activities`
     slews : list of SlewWindow
-        The slews, from `plan_slews`. They take the attitude row's time over
-        from the activities.
+        The slews, from `plan_slews`. They take the attitude row's and the mode
+        row's time over from the activities.
 
     Returns
     -------
@@ -631,7 +633,8 @@ def gantt_rows(
     attitude : portion.IntervalDict
         The attitude names, and `slew` while the body turns or settles
     mode : portion.IntervalDict
-        The mode names
+        The mode names, and `slew` while the body turns or settles. A slew takes
+        the end of the activity before it, so the payload is not at its task then.
     """
     row = P.IntervalDict()
     for state in ("sunlit", "penumbra", "umbra"):
@@ -643,6 +646,7 @@ def gantt_rows(
         mode[occurrence.interval] = occurrence.activity.mode
     for window in slews:
         attitude[window.interval] = SLEW
+        mode[window.interval] = SLEW
     return row, attitude, mode
 
 
@@ -727,6 +731,54 @@ class ScenarioRun:
             Empty without articulations.
         """
         return articulation_angles(self)
+
+    @cached_property
+    def rate_excesses(self) -> list[RateExcess]:
+        """
+        The occurrences whose attitude turns faster than the slews may.
+
+        Worked out on first use, from `rate_excesses`. Empty without a `slew`
+        block.
+
+        Returns
+        -------
+        excesses : list of RateExcess
+            In time order
+        """
+        return rate_excesses(self)
+
+    @property
+    def warnings(self) -> list[str]:
+        """
+        Warnings for the reader, as text: each occurrence past the slew capacity.
+
+        Returns
+        -------
+        warnings : list of str
+            One sentence or two for each, in time order. Empty when there are
+            none.
+        """
+        return [excess.text for excess in self.rate_excesses]
+
+    @cached_property
+    def sun_body(self) -> np.ndarray:
+        """
+        The direction from the satellite to the sun in body axes, on the grid.
+
+        Worked out on first use, from `body_rotations`, so that it follows the
+        body through its slews.
+
+        Returns
+        -------
+        suns : ndarray
+            Unit vectors, shape (n, 3), one for each time of the grid
+        """
+        cartesian = self.state.cartesian
+        assert isinstance(cartesian, CartesianRepresentation)
+        to_sun = self.sun.xyz.to_value(u.km).T - cartesian.xyz.to_value(u.km).T
+        to_sun /= np.linalg.norm(to_sun, axis=1, keepdims=True)
+        # the rotations turn body vectors into GCRS, so their transposes turn back
+        return np.einsum("nji,nj->ni", body_rotations(self), to_sun)
 
     @property
     def activity_summary(self) -> str:

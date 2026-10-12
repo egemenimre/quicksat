@@ -34,7 +34,9 @@ BASE = {
         "nadir": {"point": ["+z", "nadir"], "constrain": ["-y", "orbit normal"]},
         "sun pointing": {"point": ["-z", "sun"], "constrain": ["-y", "orbit normal"]},
     },
-    "activities": [["eclipse entry", "sun pointing", "idle", "sunlit"]],
+    "activities": [
+        ["power generation", "eclipse entry", "sun pointing", "idle", "sunlit"]
+    ],
 }
 """A valid scenario, for each test to change one part of."""
 
@@ -158,15 +160,34 @@ def test_a_constraint_that_is_not_understood(text, message):
         parse_constraint(text)
 
 
-def test_an_activity_has_three_or_four_fields():
-    three = Activity.from_fields(["10 min", "nadir", "downlink"])
-    four = Activity.from_fields(["10 min", "nadir", "downlink", "sunlit"])
-    assert three.constraint is None
-    assert four.constraint == "sunlit"
-    with pytest.raises(ValueError, match="three or four"):
-        Activity.from_fields(["10 min", "nadir"])
-    with pytest.raises(ValueError, match="mode must be a name"):
-        Activity.from_fields(["10 min", "nadir", " "])
+def test_an_activity_has_a_title_and_four_or_five_fields():
+    four = Activity.from_fields([" downlink pass ", "10 min", "nadir", "downlink"])
+    five = Activity.from_fields(
+        ["downlink pass", "10 min", "nadir", "downlink", "sunlit"]
+    )
+    assert four.title == "downlink pass"
+    assert four.constraint is None
+    assert five.constraint == "sunlit"
+    with pytest.raises(ValueError, match="four or five"):
+        Activity.from_fields(["downlink pass", "10 min", "nadir"])
+    with pytest.raises(ValueError, match="mode must be text"):
+        Activity.from_fields(["downlink pass", "10 min", "nadir", " "])
+    with pytest.raises(ValueError, match="title must be text"):
+        Activity.from_fields(["", "10 min", "nadir", "downlink"])
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        ["10 min", "nadir", "downlink"],
+        ["eclipse entry", "sun pointing", "idle", "sunlit"],
+    ],
+)
+def test_an_activity_without_a_title_is_named_as_such(fields):
+    with pytest.raises(
+        ValueError, match="the title now comes first, such as \\[my title, "
+    ):
+        Activity.from_fields(fields)
 
 
 # ---------------------------------------------------------------- The whole file
@@ -323,7 +344,7 @@ def test_a_target_rise_or_set_trigger(text, event, target, offset):
 
 
 def test_a_rise_or_set_must_name_a_defined_target():
-    activities = [["Svalbard rise", "nadir", "idle"]]
+    activities = [["wait", "Svalbard rise", "nadir", "idle"]]
     with pytest.raises(ValueError, match="names the target 'Svalbard', which targets"):
         scenario(activities=activities)
     targets = {"Svalbard": {"latitude": "78.2 deg", "longitude": "15.4 deg"}}
@@ -410,6 +431,10 @@ def test_a_bad_attitude_stops_the_load(changes, message):
             "no attitude may be named 'slew'",
         ),
         (
+            {"activities": [["turn", "10 min", "nadir", "slew"]]},
+            "no mode may be named 'slew'",
+        ),
+        (
             {"targets": {"sun": {"latitude": "0 deg", "longitude": "0 deg"}}},
             "target 'sun' takes the name of a built-in direction",
         ),
@@ -429,7 +454,10 @@ def test_bad_attitude_names_or_targets_stop_the_load(changes, message):
 
 
 def test_a_wrong_activity_is_named_by_its_number():
-    activities = [["10 min", "nadir", "idle"], ["latitude 30", "nadir", "idle"]]
+    activities = [
+        ["a", "10 min", "nadir", "idle"],
+        ["b", "latitude 30", "nadir", "idle"],
+    ]
     with pytest.raises(ValueError, match="activity 2: trigger 'latitude 30'"):
         scenario(activities=activities)
 

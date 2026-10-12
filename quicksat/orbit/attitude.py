@@ -208,6 +208,43 @@ def rotation_angles(first: np.ndarray, second: np.ndarray) -> np.ndarray:
     return np.atleast_1d(relative.magnitude())
 
 
+def body_rates(
+    rotations: np.ndarray, seconds: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    The body's turn rate between steps, and its angular acceleration.
+
+    The rate over each step is the turn from one orientation to the next, over
+    the step's time, as a vector in body axes. The acceleration is the change of
+    that vector from one step to the next, over the time between the steps'
+    middles. So a change in the axis of turn counts, as well as one in the rate.
+    Both are averages over a step: a peak shorter than a step reads low.
+
+    Parameters
+    ----------
+    rotations : ndarray
+        Rotation matrices that turn body vectors into an inertial frame, one for
+        each time, shape (n, 3, 3)
+    seconds : ndarray
+        The times, in seconds, rising, shape (n,)
+
+    Returns
+    -------
+    rates : ndarray
+        The turn rate over each step, in rad/s, shape (n - 1,)
+    accelerations : ndarray
+        The angular acceleration between each two steps, in rad/s2, shape (n - 2,)
+    """
+    turns = Rotation.from_matrix(rotations[:-1]).inv() * Rotation.from_matrix(
+        rotations[1:]
+    )
+    steps = np.diff(seconds)
+    omega = turns.as_rotvec() / steps[:, None]
+    middles = (seconds[:-1] + seconds[1:]) / 2
+    accelerations = np.linalg.norm(np.diff(omega, axis=0), axis=1) / np.diff(middles)
+    return np.linalg.norm(omega, axis=1), accelerations
+
+
 def turn_between(
     start: np.ndarray,
     ends: np.ndarray,

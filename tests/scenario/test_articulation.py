@@ -173,7 +173,12 @@ def wing(fields: str) -> str:
         ("part: Spider, axis: +y, sun_axis: -z", "2 nodes named 'Spider'"),
         (
             "part: Wing +y, axis: +y, sun_axis: -z, park: {safe: 0 deg}",
-            "park names the mode 'safe', which no activity has",
+            "park names the mode 'safe', which the run never has",
+        ),
+        # slew is a mode only when the scenario has slews, and this one has none
+        (
+            "part: Wing +y, axis: +y, sun_axis: -z, park: {slew: 0 deg}",
+            "park names the mode 'slew', which the run never has",
         ),
     ],
 )
@@ -214,6 +219,16 @@ def test_a_wing_parks_in_its_parking_mode(articulated_run):
     assert parked.any()
     angles = articulated_run.articulations["wing +y"].to_value(u.deg)
     assert np.all(angles[parked] == 45)
+
+
+def test_a_wing_can_park_while_the_body_slews(text, data_dir):
+    model = MODEL.replace("park: {downlink: 45 deg}", "park: {slew: 10 deg}")
+    run = run_scenario(Scenario.from_yaml_text(model + text + SLEW, data_dir))
+    slewing = modes_of(run) == "slew"
+    assert slewing.any()
+    angles = np.asarray(run.articulations["wing +y"].to_value(u.deg))
+    assert np.all(angles[slewing] == 10)
+    assert np.any(angles[~slewing] != 10)
 
 
 def test_in_sun_pointing_the_wing_angle_is_zero(articulated_run):
