@@ -820,6 +820,7 @@ function buildSpacecraft(detailed) {
   const group = new THREE.Group();
   const shape = new THREE.Group();
   const standIns = [];
+  const markers = [];
   const body = new THREE.BoxGeometry(...BODY);
   standIns.push(new THREE.Mesh(body, new THREE.MeshStandardMaterial({ color: 0xc6ccd6, metalness: 0.35, roughness: 0.55 })));
   const panelMaterial = new THREE.MeshStandardMaterial({ color: 0x1b3d85, emissive: 0x050f24, metalness: 0.4, roughness: 0.35 });
@@ -861,10 +862,16 @@ function buildSpacecraft(detailed) {
     const cells = new THREE.BufferGeometry();
     cells.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
     standIns.push(new THREE.LineSegments(cells, cellMaterial));
-    // The normal stays with a 3D model, which does not mark the panels
-    shape.add(
-      new THREE.ArrowHelper(new THREE.Vector3(...panel.normal), new THREE.Vector3(...face), 0.55, VECTOR_COLOURS.normal, 0.12, 0.06),
-    );
+    // The normal stays with a 3D model, which does not mark the panels. It and
+    // the point where the panel's name sits form a group, so that the panel
+    // can turn with an articulated part, and the Panels button can hide it.
+    const normal = new THREE.Vector3(...panel.normal);
+    const marker = new THREE.Group();
+    const anchor = new THREE.Group();
+    anchor.position.set(...panel.centre_m).addScaledVector(normal, 0.74);
+    marker.add(new THREE.ArrowHelper(normal, new THREE.Vector3(...face), 0.55, VECTOR_COLOURS.normal, 0.12, 0.06), anchor);
+    shape.add(marker);
+    markers.push({ marker, anchor, articulation: panel.articulation });
   }
   shape.add(...standIns);
   fitShape(shape);
@@ -876,7 +883,7 @@ function buildSpacecraft(detailed) {
       group.add(new THREE.ArrowHelper(axis, new THREE.Vector3(), AXIS_LENGTH, colour, 0.1, 0.05));
     });
   }
-  group.userData = { shape, standIns };
+  group.userData = { shape, standIns, markers };
   return group;
 }
 
@@ -893,6 +900,14 @@ function useModel(spacecraft, model) {
     if (object.userData.joint !== undefined) joints.push(object);
   });
   spacecraft.userData.joints = joints;
+  // A panel on an articulated part turns with it. power.js gives the panels
+  // as the model draws itself, and the new copy has not turned yet, so each
+  // marker keeps its place as it moves under the part.
+  spacecraft.updateMatrixWorld(true);
+  for (const { marker, articulation } of spacecraft.userData.markers) {
+    const part = joints.find((object) => ARTICULATIONS[object.userData.joint].name === articulation);
+    if (part) part.attach(marker);
+  }
 }
 
 /**
@@ -1331,20 +1346,16 @@ const bodyView = (() => {
     orbitNormal: labels.add("Orbit normal", VECTOR_COLOURS.orbitNormal),
     sun: labels.add("Sun", VECTOR_COLOURS.sun),
   };
-  // Points fixed in the body: just past each panel normal, in metres and so
-  // scaled with the shape, and just past each body axis
-  const bodyLabels = [
-    ...PANELS.map((panel) => ({
-      label: labels.add(panel.name, VECTOR_COLOURS.normal),
-      local: new THREE.Vector3(...panel.centre_m).addScaledVector(new THREE.Vector3(...panel.normal), 0.74),
-      scaled: true,
-    })),
-    ...["x", "y", "z"].map((name, k) => ({
-      label: labels.add(name, AXIS_COLOURS[k]),
-      local: new THREE.Vector3().setComponent(k, AXIS_LENGTH + 0.17),
-      scaled: false,
-    })),
-  ];
+  // Each panel's name sits just past its normal, at a point that turns with
+  // the panel. Each body axis's name sits just past the axis.
+  const panelLabels = spacecraft.userData.markers.map(({ anchor }, j) => ({
+    label: labels.add(PANELS[j].name, VECTOR_COLOURS.normal),
+    anchor,
+  }));
+  const axisLabels = ["x", "y", "z"].map((name, k) => ({
+    label: labels.add(name, AXIS_COLOURS[k]),
+    local: new THREE.Vector3().setComponent(k, AXIS_LENGTH + 0.17),
+  }));
   let size = { width: 1, height: 1 };
 
   const sunlight = new THREE.DirectionalLight(0xfff4dc, 2.4);
@@ -1389,7 +1400,33 @@ const bodyView = (() => {
       setFrame(button.textContent);
     }),
   );
+  // With power, a button that shows or hides the panels' normals and names.
+  // The browser remembers the choice, where it can.
+  const panelButton = element("button", { class: "toggle", text: "Panels", "data-help": "panelMarks" });
+  const showPanels = (on) => {
+    for (const { marker } of spacecraft.userData.markers) marker.visible = on;
+    for (const { label } of panelLabels) label.visible = on;
+    panelButton.classList.toggle("on", on);
+    dirty.body = true;
+  };
+  let panelsShown = true;
+  try {
+    panelsShown = localStorage.getItem("quicksat-viewer-panels") !== "0";
+  } catch {
+    // No storage, as in some private windows: show them
+  }
+  showPanels(panelsShown);
+  panelButton.addEventListener("click", () => {
+    panelsShown = !panelsShown;
+    showPanels(panelsShown);
+    try {
+      localStorage.setItem("quicksat-viewer-panels", panelsShown ? "1" : "0");
+    } catch {
+      // The choice then lasts until the page is closed
+    }
+  });
   $("#body-toggles").append(
+    ...(PANELS.length ? [panelButton] : []),
     ...frameButtons,
     element("button", { class: "toggle", text: "Reset view", "data-help": "bodyReset", onclick: () => setFrame(frame) }),
   );
@@ -1425,10 +1462,9 @@ const bodyView = (() => {
       // The sun's direction is the last one set
       sunlight.position.copy(direction).multiplyScalar(10);
       sunlight.intensity = 2.4 * state.light;
-      const scale = spacecraft.userData.shape.scale.x;
-      for (const { label, local, scaled } of bodyLabels) {
-        label.position.copy(local).multiplyScalar(scaled ? scale : 1).applyQuaternion(spacecraft.quaternion);
-      }
+      spacecraft.updateMatrixWorld(true);
+      for (const { label, anchor } of panelLabels) anchor.getWorldPosition(label.position);
+      for (const { label, local } of axisLabels) label.position.copy(local).applyQuaternion(spacecraft.quaternion);
     },
     render() {
       if (!renderer) return;
@@ -2535,6 +2571,12 @@ const HELP = {
     text: "Show the body in GCRS axes, which stay fixed in space. The arrows then turn as the spacecraft orbits.",
   },
   bodyReset: { title: "Reset view", text: "Put the camera back where it started, for the axes in use." },
+  panelMarks: {
+    title: "Panels",
+    text:
+      "Show or hide each solar panel's normal and name. A panel on an articulated part, such as a solar " +
+      "wing, turns with it. The browser remembers the choice.",
+  },
   zoomFull: { title: "Full", text: "Show the whole run on the charts." },
   zoomOrbit: { title: "1 orbit", text: "Show one orbit on the charts, centred on the time cursor." },
   zoom30: { title: "30 min", text: "Show 30 minutes on the charts, centred on the time cursor." },
