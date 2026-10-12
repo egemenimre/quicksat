@@ -259,16 +259,16 @@ slew:
   max_acceleration: 0.08 deg/s2
   settling_time: 20 s
 
-# the trigger that ends each activity, its attitude, its mode, and the illumination it expects
+# each activity's title, the trigger that ends it, its attitude, its mode, and the illumination it expects
 activities:
-  - [latitude 45 deg -2 min, sun pointing, idle, sunlit]
-  - [latitude 45 deg +5 min, yaw steering, imaging, sunlit]
-  - [Svalbard set + 2 min, track Svalbard, downlink]
-  - [eclipse entry, nadir, idle, sunlit]
-  - [eclipse exit, nadir, idle, eclipse]
+  - [power generation, latitude 45 deg -2 min, sun pointing, idle, sunlit]
+  - [imaging 45 deg lat, latitude 45 deg +5 min, yaw steering, imaging, sunlit]
+  - [downlink Svalbard, Svalbard set + 2 min, track Svalbard, downlink]
+  - [nadir before eclipse, eclipse entry, nadir, idle, sunlit]
+  - [eclipse in nadir, eclipse exit, nadir, idle, eclipse]
 ```
 
-Each activity starts where the one before it ends, and the list repeats until the run ends. An activity ends after a fixed time, or at an event: a shadow edge, a node, a latitude crossing, or a ground target's rise or set, with an optional offset. The shadow has an umbra and a penumbra, cast on the WGS84 ellipsoid. The attitudes take any name. Each fixes one body axis on a direction, such as the nadir, the sun or a ground target, and turns a second axis toward another, with optional offsets such as a roll. Before each change of attitude, the body slews into the new one, at the given rate and acceleration. The attitude and the mode are both `slew` while it turns.
+Each activity starts where the one before it ends, and the list repeats until the run ends. An activity ends after a fixed time, or at an event: a shadow edge, a node, a latitude crossing, or a ground target's rise or set, with an optional offset. The shadow has an umbra and a penumbra, cast on the WGS84 ellipsoid. The attitudes take any name. Each fixes one body axis on a direction, such as the nadir, the sun or a ground target, and turns a second axis toward another, with optional offsets such as a roll. Before each change of attitude, the body slews into the new one, at the given rate and acceleration. The attitude and the mode are both `slew` while it turns. Where an attitude turns the body faster than the slews allow, such as tracking a station overhead, the run issues a warning.
 
 ```python
 from quicksat.scenario.config import Scenario
@@ -365,7 +365,7 @@ Three Markdown documents sit beside the notebooks. They cover the project as a w
 |---|---|
 | [`docs/explanations/decisions.md`](docs/explanations/decisions.md) | The decisions that shaped quicksat, and the reasons for each. Newest first. Read it to learn why the code is built the way it is. |
 | [`docs/reference/conventions.md`](docs/reference/conventions.md) | The rules the code and the notebooks follow: how to handle units and constants, and how to write tests. Read it before changing the code. |
-| [`docs/guides/`](docs/guides/) | Guides for getting a specific task done. Start with [how to initialise a satellite](docs/guides/sizing/initialise_a_satellite.md). For the timeline, see [how to set up and run a scenario](docs/guides/scenario/set_up_a_scenario.md). |
+| [`docs/guides/`](docs/guides/) | Guides for getting a specific task done. Start with [how to initialise a satellite](docs/guides/sizing/initialise_a_satellite.md). For the timeline, see [how to set up and run a scenario](docs/guides/scenario/set_up_a_scenario.md). For power, see [how to set up and run a power budget](docs/guides/power/set_up_a_power_budget.md). |
 
 The sizing samples work through each budget for one sample satellite, in the order you would do it. The satellite is a small Earth observation platform in a 500 km sun-synchronous orbit. The scenario sample flies a 510 km sun-synchronous orbit for three orbits, with five activities. The power sample works out what its solar panels generate and its equipment draws over the same three orbits, and checks its battery. The reference notebooks explain why each part behaves as it does. They cover the data model, unit handling, and the input files field by field. They also show how the derived quantities and the margin layers are worked out, and where each budget stops.
 

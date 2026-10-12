@@ -303,6 +303,7 @@ def scenario_data(run: ScenarioRun) -> dict:
             {
                 "repeat": occurrence.repeat,
                 "number": occurrence.number,
+                "title": activity.title,
                 "start_s": seconds(occurrence.start),
                 "end_s": seconds(occurrence.end),
                 "trigger": activity.trigger.text,
@@ -344,6 +345,7 @@ def scenario_data(run: ScenarioRun) -> dict:
         },
         "tracks": tracks,
         "occurrences": occurrences,
+        "warnings": run.warnings,
     }
     header = {"format": FORMAT, "version": VERSION}
     text = json.dumps(header | content, allow_nan=False, separators=(",", ":"))

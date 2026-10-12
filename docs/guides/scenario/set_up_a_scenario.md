@@ -122,16 +122,17 @@ Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), sections "Th
 
 ## 7. Write the activities
 
-Each activity is a list: the trigger that ends it, the attitude, the mode, and an optional constraint.
+Each activity is a list: its title, the trigger that ends it, the attitude, the mode, and an optional constraint.
 
 ```yaml
 activities:
-  - [eclipse entry, sun pointing, idle, sunlit]
-  - [eclipse exit, nadir, idle, eclipse]
-  - [10 min, nadir, downlink]
+  - [power generation, eclipse entry, sun pointing, idle, sunlit]
+  - [eclipse in nadir, eclipse exit, nadir, idle, eclipse]
+  - [downlink, 10 min, nadir, downlink]
 ```
 
 - **The list is one repeat.** The first activity starts at the start of the run. Each later one starts where the one before it ends. The run repeats the list until the duration ends.
+- **The title** is any text that names what the activity is for, such as `imaging 45 deg lat`. The activity table, the Gantt chart, the warnings and the viewer name the activity by it.
 - **The trigger** is a time, such as `20 min`, or the next event after the activity starts. The events are the shadow edges, the nodes, latitude crossings, and a ground target's rise and set, such as `Svalbard rise`. An event can take an offset, such as `eclipse entry - 1 min`.
 - **The mode** is any name except `slew`. During each slew, the run sets the mode to `slew`, because the payload is not at its task while the body turns. Power's consumption gives each mode its power, `slew` included.
 - **The constraint** is the illumination the activity expects: `sunlit`, `penumbra`, `umbra`, or `eclipse` for either of the last two.
@@ -180,6 +181,8 @@ Start with the summary line, then the `status` column of the activity table. Eac
 The Gantt chart marks two of the problems in red. A box goes around an activity outside its constraint. A dashed line marks an activity with a negative duration. Edit `scenario.yaml` and run it again, until every status is `ok`, or `cut at end` for the last activity.
 
 Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), section "The statuses".
+
+Then read `run.warnings`. With a `slew` block, the run measures how fast each attitude turns the body, outside the slews. Where the rate or the acceleration goes past the block's limits, the satellite cannot follow that attitude, and a warning names the attitude, when it starts, and its peak rate and acceleration. Tracking a ground station is the usual cause: over a station near the zenith of a pass, the line of sight turns at about 0.85°/s from 510 km. Raise the slew limits if the satellite can turn that fast, or end the tracking before the zenith. The viewer shows the same warnings under its activity table.
 
 ## 10. Open and share the viewer
 

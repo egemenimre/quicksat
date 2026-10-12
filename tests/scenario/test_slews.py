@@ -98,9 +98,9 @@ def test_a_slew_longer_than_the_activity_before_starts_early(data_dir):
     text = (data_dir / "scenario.yaml").read_text().split("activities:")[0]
     text += (
         "activities:\n"
-        "  - [eclipse entry - 1 min, sun pointing, idle]\n"
-        "  - [eclipse entry, nadir, idle]\n"
-        "  - [eclipse exit, sun pointing, idle]\n"
+        "  - [sun before the eclipse, eclipse entry - 1 min, sun pointing, idle]\n"
+        "  - [last minute, eclipse entry, nadir, idle]\n"
+        "  - [eclipse, eclipse exit, sun pointing, idle]\n"
     ) + SLEW_BLOCK
     run = run_scenario(Scenario.from_yaml_text(text, base_dir=data_dir))
     flagged = [o for o in run.occurrences if SLEW_STARTS_EARLY in o.statuses]

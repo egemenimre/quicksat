@@ -250,6 +250,10 @@ pre.file .comment { color: var(--dim); }
 #inputs { grid-template-columns: repeat(auto-fit, minmax(600px, 1fr)); }
 .stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .summary-line { margin: 0 0 10px; }
+/* Warnings under the activity table, such as an attitude past the slew capacity */
+.warnings { margin: 12px 0 0; }
+.warnings .section-title { color: var(--amber); }
+.warnings p { color: var(--amber); font-size: 12px; margin: 4px 0 0; }
 table.list { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 table.list th {
   color: var(--dim); font-weight: 400; text-align: left; font-size: 10.5px; padding: 4px 8px;
@@ -405,13 +409,14 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
         <p class="summary-line" id="activity-summary"></p>
         <table class="list">
           <thead><tr>
-            <th class="num">Repeat</th><th class="num">#</th><th>Start, UTC</th><th>End, UTC</th>
+            <th class="num">Repeat</th><th class="num">#</th><th>Title</th><th>Start, UTC</th><th>End, UTC</th>
             <th class="num">Length</th><th>Trigger</th><th>Attitude</th><th class="num">Slew</th><th>Mode</th><th>Constraint</th>
             <th class="num">Outside</th><th>Status</th>
           </tr></thead>
           <tbody id="activity-rows"></tbody>
         </table>
         <p class="note">Every occurrence of every activity, in time order. Slew is the time of the turn into the activity's attitude, settling included. Click a row to see it on the Scenario page.</p>
+        <div class="warnings" id="activity-warnings" hidden></div>
       </div>
     </div>
   </section>
@@ -6519,7 +6524,8 @@ const charts = (() => {
       const occurrence = occurrenceAt(time);
       chart.over.title =
         `${pieceText(piece)}: ${clockText(piece.start_s)} to ${clockText(piece.end_s)}\n` +
-        `Activity ${occurrence.number} of repeat ${occurrence.repeat}: until ${occurrence.trigger} · ${occurrence.statuses.join(", ")}`;
+        `Activity ${occurrence.number} of repeat ${occurrence.repeat}${occurrence.title ? `, ${occurrence.title}` : ""}: ` +
+        `until ${occurrence.trigger} · ${occurrence.statuses.join(", ")}`;
     });
     return chart;
   }
@@ -6698,6 +6704,10 @@ const readouts = (() => {
   const inverse = new THREE.Quaternion();
   const rows = $("#activity-rows").children; // live, so it sees the rows added later
   let current = null;
+  // The title of the activity under way, above the timeline rows' values; an
+  // older scenario.js has none
+  const titleValue = element("span");
+  $("#now").append(element("dt", { text: "Activity", "data-help": "title" }), element("dd", { "data-help": "title" }, [titleValue]));
   // The current data: the value of each timeline row at the time cursor, with
   // its colour from the timeline
   const now = [
@@ -6779,6 +6789,7 @@ const readouts = (() => {
       setText(jointValues[j], joint.park_modes.includes(mode) ? `${text}, parked` : text);
     });
     const occurrence = occurrenceAt(state.t);
+    setText(titleValue, occurrence.title || "");
     setText($("#now-activity"), `Activity ${occurrence.number} of repeat ${occurrence.repeat}`);
     if (Number(slider.value) !== k) slider.value = String(k);
 
@@ -6814,6 +6825,14 @@ function activitySummary() {
 function showActivities() {
   $("#activities-file").textContent = SCENARIO_FILE;
   $("#activity-summary").textContent = activitySummary();
+  // warnings came with the rate check; an older scenario.js has none
+  const warnings = scenario.warnings || [];
+  const warningBlock = $("#activity-warnings");
+  warningBlock.hidden = !warnings.length;
+  warningBlock.replaceChildren(
+    element("div", { class: "section-title", text: "Warnings" }),
+    ...warnings.map((text) => element("p", { text })),
+  );
   const swatch = (value) => [element("span", { class: "dot", style: `background:${colourOf(value)}` }), value];
   $("#activity-rows").replaceChildren(
     ...OCCURRENCES.map((o) =>
@@ -6829,6 +6848,8 @@ function showActivities() {
         [
           element("td", { class: "num", text: String(o.repeat) }),
           element("td", { class: "num", text: String(o.number) }),
+          // the title came with activity titles; an older scenario.js has none
+          element("td", { text: o.title || "" }),
           element("td", { text: utcText(o.start_s) }),
           element("td", { text: utcText(o.end_s) }),
           element("td", { class: "num", text: `${((o.end_s - o.start_s) / 60).toFixed(2)} min` }),
@@ -6963,7 +6984,7 @@ function showResults() {
   const neverCame = count("event never came");
   const negative = count("negative duration");
   const constrained = OCCURRENCES.filter((o) => o.constraint !== null);
-  const name = (o) => `Activity ${o.number} of repeat ${o.repeat}`;
+  const name = (o) => `Activity ${o.number} of repeat ${o.repeat}${o.title ? `, ${o.title}` : ""}`;
 
   const eclipses = ECLIPSES;
   // Both times are rounded to 1 ms, so a run of 3 orbits can come out a hair short
@@ -7171,6 +7192,12 @@ const HELP = {
     text:
       "Whether the spacecraft is sunlit, in the penumbra, where the Earth hides part of the sun, or in " +
       "the umbra, where it hides all of it. The shadow is cast by the sun's disk on the WGS84 ellipsoid.",
+  },
+  title: {
+    title: "Activity",
+    text:
+      "The title of the activity under way, as the scenario file gives it first in each activity, such as " +
+      "imaging 45 deg lat. It names what the activity is for.",
   },
   activity: {
     title: "Activity",

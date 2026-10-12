@@ -55,6 +55,7 @@ from quicksat.scenario.config import (
     Scenario,
     Trigger,
 )
+from quicksat.scenario.rates import RateExcess, rate_excesses
 from quicksat.utils.intervals import (
     TimeArray,
     duration,
@@ -530,8 +531,8 @@ def activity_table(occurrences: list[Occurrence]) -> pd.DataFrame:
     Returns
     -------
     table : pd.DataFrame
-        The columns are the repeat and activity numbers, the start and end as UTC
-        text, the duration in minutes, the trigger as written, the attitude, the
+        The columns are the repeat and activity numbers, the title, the start and
+        end as UTC text, the duration in minutes, the trigger as written, the attitude, the
         time of the slew into it in seconds, the mode, the constraint, the time
         outside the constraint in seconds, and the status. The duration is
         negative for an activity that ends before it starts. The status is `ok`,
@@ -547,6 +548,7 @@ def activity_table(occurrences: list[Occurrence]) -> pd.DataFrame:
             {
                 "repeat": occurrence.repeat,
                 "activity": occurrence.number,
+                "title": activity.title,
                 "start [UTC]": occurrence.start.utc.isot,
                 "end [UTC]": occurrence.end.utc.isot,
                 "duration [min]": round(
@@ -729,6 +731,34 @@ class ScenarioRun:
             Empty without articulations.
         """
         return articulation_angles(self)
+
+    @cached_property
+    def rate_excesses(self) -> list[RateExcess]:
+        """
+        The occurrences whose attitude turns faster than the slews may.
+
+        Worked out on first use, from `rate_excesses`. Empty without a `slew`
+        block.
+
+        Returns
+        -------
+        excesses : list of RateExcess
+            In time order
+        """
+        return rate_excesses(self)
+
+    @property
+    def warnings(self) -> list[str]:
+        """
+        Warnings for the reader, as text: each occurrence past the slew capacity.
+
+        Returns
+        -------
+        warnings : list of str
+            One sentence or two for each, in time order. Empty when there are
+            none.
+        """
+        return [excess.text for excess in self.rate_excesses]
 
     @cached_property
     def sun_body(self) -> np.ndarray:

@@ -15,6 +15,6 @@ attitudes:
   nadir: {point: [+z, nadir], constrain: [-y, orbit normal]}
   sun pointing: {point: [-z, sun], constrain: [-y, orbit normal]}
 activities:
-  - [20 min, sun pointing, idle]
-  - [10 min, nadir, imaging]
-  - [eclipse exit, nadir, idle]
+  - [power generation, 20 min, sun pointing, idle]
+  - [imaging, 10 min, nadir, imaging]
+  - [nadir to the eclipse exit, eclipse exit, nadir, idle]

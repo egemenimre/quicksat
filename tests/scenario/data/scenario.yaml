@@ -10,11 +10,11 @@ attitudes:
   nadir: {point: [+z, nadir], constrain: [-y, orbit normal]}
   sun pointing: {point: [-z, sun], constrain: [-y, orbit normal]}
 activities:
-  - [ascending node, nadir, idle]
-  - [latitude 45 deg ascending, nadir, idle]
-  - [eclipse entry - 1 min, sun pointing, idle, sunlit]
-  - [eclipse entry, nadir, idle, sunlit]
-  - [eclipse exit, nadir, idle, eclipse]
-  - [latitude 45 deg + 4 min, sun pointing, imaging, sunlit]
-  - [descending node - 30 s, sun pointing, idle]
-  - [10 min, nadir, downlink]
+  - [to the node, ascending node, nadir, idle]
+  - [to 45 deg, latitude 45 deg ascending, nadir, idle]
+  - [before the eclipse, eclipse entry - 1 min, sun pointing, idle, sunlit]
+  - [last minute, eclipse entry, nadir, idle, sunlit]
+  - [eclipse, eclipse exit, nadir, idle, eclipse]
+  - [imaging, latitude 45 deg + 4 min, sun pointing, imaging, sunlit]
+  - [to the descending node, descending node - 30 s, sun pointing, idle]
+  - [downlink, 10 min, nadir, downlink]

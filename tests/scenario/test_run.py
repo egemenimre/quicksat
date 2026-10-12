@@ -67,8 +67,14 @@ and going south at 40 min. No other latitude is ever reached."""
 
 
 def resolve(*fields):
-    """Resolve a list of activities, each given as its fields, on the made-up run."""
-    activities = [Activity.from_fields(list(activity)) for activity in fields]
+    """
+    Resolve a list of activities on the made-up run, each given as its fields
+    after the title. Each takes its number as its title.
+    """
+    activities = [
+        Activity.from_fields([f"activity {number}", *activity])
+        for number, activity in enumerate(fields, start=1)
+    ]
 
     def time_above(latitude):
         return ABOVE.get(float(latitude.to_value(u.deg)), P.empty())
@@ -233,7 +239,7 @@ def test_the_time_above_a_latitude_is_found_once_for_all_directions():
         return ABOVE[30.0]
 
     activities = [
-        Activity.from_fields([trigger, "nadir", "a"])
+        Activity.from_fields(["a", trigger, "nadir", "a"])
         for trigger in (
             "latitude 30 deg ascending",
             "latitude 30 deg",
@@ -297,7 +303,8 @@ def test_the_light_follows_the_illumination(run):
 def test_the_umbra_triggers_on_the_orbit(data_dir):
     text = (data_dir / "scenario.yaml").read_text().split("activities:")[0]
     text += (
-        "activities:\n  - [umbra entry, nadir, idle]\n  - [umbra exit, nadir, idle]\n"
+        "activities:\n  - [to the umbra, umbra entry, nadir, idle]\n"
+        "  - [umbra, umbra exit, nadir, idle]\n"
     )
     run = run_scenario(Scenario.from_yaml_text(text, base_dir=data_dir))
     edges = [o.end for o in run.occurrences if not o.cut_at_end]
@@ -377,6 +384,7 @@ def test_the_activity_table_has_a_row_per_occurrence(run):
     assert list(table.columns) == [
         "repeat",
         "activity",
+        "title",
         "start [UTC]",
         "end [UTC]",
         "duration [min]",
@@ -389,6 +397,7 @@ def test_the_activity_table_has_a_row_per_occurrence(run):
         "status",
     ]
     assert table.loc[0, "start [UTC]"] == "2026-10-01T00:00:00.000"
+    assert table.loc[0, "title"] == "to the node"
 
 
 def test_an_sso_orbit_is_built_at_the_start(data_dir):
@@ -431,8 +440,8 @@ attitudes:
   nadir: {point: [+z, nadir], constrain: [-y, orbit normal]}
   track Svalbard: {point: [+z, Svalbard], constrain: [-y, orbit normal]}
 activities:
-  - [Svalbard rise, nadir, idle]
-  - [Svalbard set, track Svalbard, downlink]
+  - [wait for Svalbard, Svalbard rise, nadir, idle]
+  - [downlink Svalbard, Svalbard set, track Svalbard, downlink]
 """
 """Three orbits that wait for each Svalbard pass, and track it."""
 
@@ -463,9 +472,7 @@ def test_a_pass_runs_from_the_rise_to_the_set_at_the_minimum_elevation(pass_run)
 
 
 def test_a_target_that_never_rises_never_ends_the_activity(data_dir):
-    text = PASSES.replace(
-        "[Svalbard rise, nadir, idle]", "[Overhead rise, nadir, idle]"
-    )
+    text = PASSES.replace("Svalbard rise, nadir, idle]", "Overhead rise, nadir, idle]")
     run = run_scenario(Scenario.from_yaml_text(text, data_dir))
     assert len(run.occurrences) == 1
     assert run.occurrences[0].statuses == [EVENT_NEVER_CAME]

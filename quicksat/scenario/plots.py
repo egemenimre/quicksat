@@ -41,6 +41,12 @@ from quicksat.utils.plot_helpers import (
 BAR_HEIGHT = 0.62
 """Height of a Gantt bar, as a fraction of the distance between rows."""
 
+MIN_LETTERS = 6
+"""The fewest letters an activity's title is shortened to, ellipsis included."""
+
+TITLE_FILLS = ("#e9e8e2", "#d6d5cd")
+"""The two greys that the activity row's bars take in turn."""
+
 LETTER_WIDTH = 0.009
 """Width of one letter of a bar label, as a fraction of the run's span. A label
 goes in only where its bar is wide enough to hold it."""
@@ -77,14 +83,82 @@ def scenario_colours(scenario: Scenario) -> dict[str, str]:
     return ordered | {value: colours[value] for value in modes}
 
 
+def _label(value: str, width: float, span: float, size: float) -> str | None:
+    """
+    A bar's label, shortened with an ellipsis if need be, or None if it won't fit.
+
+    Parameters
+    ----------
+    value : str
+        The full label
+    width : float
+        The bar's width, in the units of `span`
+    span : float
+        The width of the whole chart
+    size : float
+        The font size, in points. `LETTER_WIDTH` is for 8 pt.
+
+    Returns
+    -------
+    label : str or None
+        The label, whole or shortened to at least `MIN_LETTERS` letters, or None
+    """
+    letters = int((width / span - 0.01) / (LETTER_WIDTH * size / 8))
+    if letters >= len(value):
+        return value
+    if letters >= MIN_LETTERS:
+        return value[: letters - 1].rstrip() + "…"
+    return None
+
+
+def _draw_row(
+    ax: Axes,
+    y: float,
+    pieces: list[tuple[float, float, str]],
+    fills: list[str],
+    span: float,
+    shorten: bool = False,
+) -> None:
+    """
+    One row of the Gantt chart: its bars, and their labels where they fit.
+
+    With `shorten`, a label too long for its bar is cut short with an ellipsis,
+    in a smaller font, as long as `MIN_LETTERS` letters fit. Otherwise a label
+    that does not fit is left out.
+    """
+    ax.broken_barh(
+        [(left, right - left) for left, right, _ in pieces],
+        (y - BAR_HEIGHT / 2, BAR_HEIGHT),
+        facecolors=fills,
+        edgecolor="white",
+    )
+    size = 7 if shorten else 8
+    for (left, right, value), fill in zip(pieces, fills, strict=True):
+        label = _label(value, right - left, span, size)
+        if label is None or (label != value and not shorten):
+            continue
+        ax.text(
+            (left + right) / 2,
+            y,
+            label,
+            ha="center",
+            va="center",
+            fontsize=size,
+            color=text_colour(fill),
+        )
+
+
 def gantt_chart(  # noqa: V103
     run: ScenarioRun, colours: dict[str, str] | None = None, ax: Axes | None = None
 ) -> Axes:
     """
-    The illumination, the attitude and the mode against time, as a Gantt chart.
+    The illumination, the attitude, the activity and the mode against time, as a
+    Gantt chart.
 
     Each row is drawn in one call to `broken_barh`. A bar carries its value as a
-    label when it is wide enough. A red box marks every occurrence that spends
+    label when it is wide enough. The activity row names each occurrence by its
+    title, in two greys in turn, and has no legend. A title too long for its bar
+    is shortened with an ellipsis. A red box marks every occurrence that spends
     time outside its constraint. A dashed red line marks every occurrence with a
     negative duration, at its start, since it takes no time.
 
@@ -104,42 +178,41 @@ def gantt_chart(  # noqa: V103
     """
     colours = colours or scenario_colours(run.scenario)
     if ax is None:
-        _, ax = plt.subplots(figsize=(10, 3.4))
+        _, ax = plt.subplots(figsize=(10, 4.2))
     start: TimeArray = run.times[0]
 
     def minutes(time: TimeArray) -> float:
         return float((time - start).to_value(u.min))
 
-    span = minutes(run.times[-1])
-    # from the bottom up, so that the illumination is the top row
-    rows = {
-        "mode": run.mode,
-        "attitude": run.attitude,
-        "illumination": run.illumination,
-    }
-    for y, row in enumerate(rows.values()):
-        pieces = [
+    def pieces_of(row: P.IntervalDict) -> list[tuple[float, float, str]]:
+        return [
             (minutes(piece.lower), minutes(piece.upper), value)
             for interval, value in row.items()
             for piece in interval
         ]
-        ax.broken_barh(
-            [(left, right - left) for left, right, _ in pieces],
-            (y - BAR_HEIGHT / 2, BAR_HEIGHT),
-            facecolors=[colours[value] for _, _, value in pieces],
-            edgecolor="white",
+
+    span = minutes(run.times[-1])
+    # each occurrence is a bar of its own, so that two in a row with the same
+    # title stay apart; they take two greys in turn, since titles have no colour
+    titles = [
+        (minutes(occurrence.start), minutes(occurrence.end), occurrence.activity.title)
+        for occurrence in run.occurrences
+        if occurrence.end > occurrence.start
+    ]
+    # from the bottom up, so that the illumination is the top row
+    rows = {
+        "mode": pieces_of(run.mode),
+        "activity": titles,
+        "attitude": pieces_of(run.attitude),
+        "illumination": pieces_of(run.illumination),
+    }
+    for y, (name, pieces) in enumerate(rows.items()):
+        fills = (
+            [TITLE_FILLS[k % 2] for k in range(len(pieces))]
+            if name == "activity"
+            else [colours[value] for _, _, value in pieces]
         )
-        for left, right, value in pieces:
-            if right - left > (LETTER_WIDTH * len(value) + 0.01) * span:
-                ax.text(
-                    (left + right) / 2,
-                    y,
-                    value,
-                    ha="center",
-                    va="center",
-                    fontsize=8,
-                    color=text_colour(colours[value]),
-                )
+        _draw_row(ax, y, pieces, fills, span, shorten=name == "activity")
 
     failed = [occurrence for occurrence in run.occurrences if occurrence.failed]
     if failed:
@@ -184,9 +257,14 @@ def gantt_chart(  # noqa: V103
         xlim=(0, span),
         ylim=(-0.6, len(rows) - 0.4),
         xlabel="Minutes from the start of the run",
-        title="Illumination, attitude and mode",
+        title="Illumination, attitude, activity and mode",
     )
-    shown = {value for row in rows.values() for value in row.values()}
+    shown = {
+        value
+        for name, pieces in rows.items()
+        if name != "activity"
+        for _, _, value in pieces
+    }
     problems = []
     if failed:
         problems.append(

@@ -14,8 +14,8 @@ attitudes:
   nadir: {point: [+z, nadir], constrain: [-y, orbit normal]}
   sun pointing: {point: [-z, sun], constrain: [-y, orbit normal]}
 activities:
-  - [eclipse entry - 1 min, sun pointing, idle, sunlit]
-  - [eclipse exit, nadir, idle, eclipse]
-  - [eclipse entry - 100 min, nadir, idle]
-  - [30 min, sun pointing, idle, sunlit]
-  - [latitude 85 deg, nadir, idle]
+  - [too early, eclipse entry - 1 min, sun pointing, idle, sunlit]
+  - [outside, eclipse exit, nadir, idle, eclipse]
+  - [negative, eclipse entry - 100 min, nadir, idle]
+  - [fixed time, 30 min, sun pointing, idle, sunlit]
+  - [never comes, latitude 85 deg, nadir, idle]

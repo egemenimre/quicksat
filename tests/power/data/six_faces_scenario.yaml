@@ -9,4 +9,4 @@ step: 10 s
 attitudes:
   nadir: {point: [+z, nadir], constrain: [-y, orbit normal]}
 activities:
-  - [24 h, nadir, idle]
+  - [one day in nadir, 24 h, nadir, idle]

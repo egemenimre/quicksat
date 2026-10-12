@@ -88,6 +88,8 @@ slew:
 # One repeat of the list. The run repeats it until the duration ends, and cuts
 # the last activity there. Each activity is a chain link: it starts where the one
 # before it ends. The fields are
+#   the title: any text that names what the activity is for, such as imaging
+#     45 deg lat. The tables, the Gantt chart, the warnings and the viewer use it
 #   the trigger that ends it: a duration such as 20 min, or the next event after
 #     the activity starts. The events are the shadow edges, eclipse entry, umbra
 #     entry, umbra exit and eclipse exit; ascending node and descending node; and
@@ -110,9 +112,9 @@ slew:
 # stays on the station until it sets. The pass ends a few minutes before the
 # eclipse. Neither gap leaves time to turn to sun pointing and back.
 activities:
-  - [latitude 45 deg -2 min, sun pointing, idle, sunlit]
-  - [latitude 45 deg +5 min, yaw steering, imaging, sunlit]
-  - [Svalbard set + 2 min, track Svalbard, downlink]
-  - [eclipse entry, nadir, idle, sunlit]
-  - [eclipse exit, nadir, idle, eclipse]
+  - [power generation, latitude 45 deg -2 min, sun pointing, idle, sunlit]
+  - [imaging 45 deg lat, latitude 45 deg +5 min, yaw steering, imaging, sunlit]
+  - [downlink Svalbard, Svalbard set + 2 min, track Svalbard, downlink]
+  - [nadir before eclipse, eclipse entry, nadir, idle, sunlit]
+  - [eclipse in nadir, eclipse exit, nadir, idle, eclipse]
 
