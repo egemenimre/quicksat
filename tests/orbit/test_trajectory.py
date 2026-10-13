@@ -108,15 +108,17 @@ def circular(inclination_deg: float, orbits: float, step_s: float = 60.0):
 @pytest.mark.parametrize(
     ("orbit", "span_s", "check_step_s", "inside_mm", "ends_mm", "velocity_mm_s"),
     [
-        ("tle", 3 * 5700.0, 1.0, 1.0, 20.0, 0.005),
-        ("geo", 3 * 86400.0, 10.0, 0.02, 0.02, 0.02),
-        ("heo", 3 * 86400.0, 10.0, 0.2, 0.2, 0.03),
+        ("tle", 3 * 5700.0, 7.0, 1.0, 20.0, 0.005),
+        ("geo", 3 * 86400.0, 70.0, 0.02, 0.02, 0.02),
+        ("heo", 3 * 86400.0, 70.0, 0.2, 0.2, 0.03),
     ],
 )
 def test_the_interpolation_matches_sgp4(
     request, orbit, span_s, check_step_s, inside_mm, ends_mm, velocity_mm_s
 ):
-    # at 60 s between samples, as satmad's tests have it
+    # at 60 s between samples, as satmad's tests have it. A check step of 7 s or
+    # 70 s reaches every second or every 10 s between two samples, in turn; a
+    # step of 60 s would fall on the samples, where the spline is exact.
     tle = request.getfixturevalue(orbit)
     trajectory = sampled(tle, span_s)
     offsets = np.arange(0, span_s, check_step_s)

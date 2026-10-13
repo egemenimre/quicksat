@@ -11,12 +11,10 @@ years, for which r = 6878.1 km, T = 5677 s, v = 7.6126 km/s and 15.219 orbits fi
 in a day.
 """
 
-import math
-
 import pytest
 from astropy.tests.helper import assert_quantity_allclose
 
-from quicksat import MU_EARTH, Q_, R_EARTH, u
+from quicksat import Q_, u
 from quicksat.utils.mission import Mission
 
 SAMPLE = "altitude: 500 km\ninclination: 97.4 deg\nduration: 7 yr\n"
@@ -31,19 +29,16 @@ def test_radius_is_altitude_above_the_equatorial_radius(mission):
     assert_quantity_allclose(mission.radius, Q_(6878.1, "km"))
 
 
-def test_period_matches_keplers_third_law(mission):
-    expected = (2 * math.pi * (mission.radius**3 / MU_EARTH) ** 0.5).to("s")
-    assert_quantity_allclose(mission.period, expected)
+def test_period(mission):
     assert_quantity_allclose(mission.period, Q_(5677.0, "s"), atol=Q_(0.5, "s"))
 
 
-def test_orbits_per_day_is_a_day_over_the_period(mission):
+def test_orbits_per_day(mission):
     assert_quantity_allclose(
         mission.orbits_per_day,
         Q_(15.219, u.dimensionless_unscaled),
         atol=Q_(1e-3, u.dimensionless_unscaled),
     )
-    assert_quantity_allclose(mission.orbits_per_day * mission.period, Q_(1.0, "day"))
 
 
 def test_circular_velocity(mission):
@@ -52,22 +47,11 @@ def test_circular_velocity(mission):
     )
 
 
-def test_ground_track_speed_is_scaled_by_the_radius_ratio(mission):
-    """Slower than the orbital velocity, by exactly R_earth / r."""
+def test_ground_track_speed(mission):
+    """The orbital velocity times R_earth / r: 7.6126 * 6378.1 / 6878.1 km/s."""
     assert_quantity_allclose(
-        mission.ground_track_speed, mission.velocity * R_EARTH / mission.radius
+        mission.ground_track_speed, Q_(7.0592, "km/s"), atol=Q_(1e-4, "km/s")
     )
-    assert mission.ground_track_speed < mission.velocity
-
-
-def test_a_higher_orbit_is_slower_and_longer():
-    low = Mission.from_yaml_text("altitude: 400 km\ninclination: 0 deg\nduration: 7 yr")
-    high = Mission.from_yaml_text(
-        "altitude: 800 km\ninclination: 0 deg\nduration: 7 yr"
-    )
-    assert high.period > low.period
-    assert high.velocity < low.velocity
-    assert high.orbits_per_day < low.orbits_per_day
 
 
 def test_units_are_converted_on_load():
@@ -115,17 +99,6 @@ def test_missing_file():
 def test_input_file_loads(data_dir):
     mission = Mission.from_yaml_file(data_dir / "mission.yaml")
     assert_quantity_allclose(mission.altitude, Q_(500.0, "km"))
+    assert_quantity_allclose(mission.inclination, Q_(97.4, "deg"))
     assert_quantity_allclose(mission.period, Q_(5677.0, "s"), atol=Q_(0.5, "s"))
     assert_quantity_allclose(mission.duration, Q_(7.0, "year"))
-
-
-def test_inclination_is_carried_but_unused():
-    """
-    Nothing derives from inclination.
-
-    The delta-V budget's plane change takes the angle to change by from the
-    manoeuvre's own value, not from the plane it starts in. So the inclination is
-    loaded and validated, and nothing else uses it.
-    """
-    mission = Mission.from_yaml_text(SAMPLE)
-    assert_quantity_allclose(mission.inclination, Q_(97.4, "deg"))

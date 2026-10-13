@@ -16,6 +16,7 @@ import base64
 import json
 import re
 import shutil
+from importlib.resources import files
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,7 @@ from quicksat.editor.__main__ import main
 from quicksat.editor.editor import (
     FORMAT,
     PAGE_FILE,
+    SCRIPTS,
     comment_blocks,
     editor_data,
     editor_page,
@@ -31,6 +33,8 @@ from quicksat.editor.editor import (
 )
 
 TESTS = Path(__file__).parent.parent
+
+PACKAGE = files("quicksat")
 
 
 @pytest.fixture(scope="module")
@@ -124,10 +128,9 @@ def test_a_scenario_folder_has_no_power_files(scenario_dir):
     assert [check["file"] for check in data["checks"]] == ["scenario.yaml"]
 
 
-def test_the_label_is_the_folder_as_given_or_only_its_name(power_dir):
-    relative = Path("tests") / "power" / "data"
-    if (Path.cwd() / relative).is_dir():
-        assert editor_data(relative)["label"] == "tests/power/data"
+def test_the_label_is_the_folder_as_given_or_only_its_name(power_dir, monkeypatch):
+    monkeypatch.chdir(TESTS)
+    assert editor_data(Path("power") / "data")["label"] == "power/data"
     assert editor_data(power_dir.resolve())["label"] == "data"
 
 
@@ -163,12 +166,16 @@ def test_the_page_holds_its_scripts_and_the_folder(power_dir, tmp_path):
     assert page == tmp_path / "out" / PAGE_FILE
     text = page.read_text(encoding="utf-8")
     assert not re.search(r"@(project|places|three|editor)@", text)
-    assert "function readProject" in text and "function scenarioYaml" in text
+    scripts = PACKAGE / "editor" / "templates" / "js"
+    for name in SCRIPTS:
+        assert (scripts / name).read_text(encoding="utf-8") in text, name
     assert page_data(text)["files"]["scenario"]["name"] == "scenario.yaml"
     places = re.search(
         r'<script id="places" type="application/json">(.*?)</script>', text, re.S
     )
-    assert places is not None and len(json.loads(places.group(1))) > 7000
+    assert places is not None
+    expected = (PACKAGE / "data" / "places.json").read_text(encoding="utf-8")
+    assert json.loads(places.group(1)) == json.loads(expected)
 
 
 def test_text_that_would_end_a_script_tag_is_escaped(power_dir):

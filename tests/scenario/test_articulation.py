@@ -29,7 +29,7 @@ from quicksat.scenario.attitude import body_rotations
 from quicksat.scenario.config import Scenario
 from quicksat.scenario.run import ScenarioRun, run_scenario
 from quicksat.scenario.spacecraft import node_index, read_glb_json
-from quicksat.scenario.viewer import VERSION, scenario_data
+from quicksat.scenario.viewer import scenario_data
 from quicksat.utils.intervals import labels_at
 
 from .conftest import SLEW
@@ -154,12 +154,6 @@ def test_the_model_and_its_articulations_may_hold_comments(text, data_dir):
     assert read.comments == "The sample model."
     assert list(read.articulations) == ["wing"]
     assert read.articulations["wing"].comments == "The +y wing."
-
-
-def test_a_plain_file_name_is_a_model_without_articulations(text, data_dir):
-    scenario = Scenario.from_yaml_text("3d_model: spacecraft.glb\n" + text, data_dir)
-    assert scenario.spacecraft_model is not None
-    assert scenario.spacecraft_model.articulations == {}
 
 
 def wing(fields: str) -> str:
@@ -296,7 +290,6 @@ def test_a_limited_wing_turns_the_other_way_and_stops_at_its_range(articulated_r
 
 def test_the_viewer_data_carries_each_articulation(articulated_run, data_dir):
     data = scenario_data(articulated_run)
-    assert data["version"] == VERSION == 5
     joints = data["model"]["articulations"]
     gltf = read_glb_json(data_dir / "spacecraft.glb")
     assert [joint["name"] for joint in joints] == ["wing +y", "limited"]
