@@ -47,7 +47,6 @@ import numpy as np
 import yaml
 from astropy.units import Quantity
 from pydantic import (
-    BaseModel,
     BeforeValidator,
     ConfigDict,
     Field,
@@ -60,7 +59,13 @@ from pydantic import (
 
 from quicksat import Q_, u
 from quicksat.orbit.attitude import axis_vector
-from quicksat.utils.parser_helpers import AreaQty, EnergyQty, FractionQty
+from quicksat.utils.parser_helpers import (
+    AreaQty,
+    Commented,
+    EnergyQty,
+    FractionQty,
+    without_comments,
+)
 
 DEFAULT_POINTS = 512
 """Sample points on each panel for the self-shadowing, if the file gives none.
@@ -144,7 +149,7 @@ def _check_unit_fraction(value: Quantity, name: str) -> Quantity:
     return value
 
 
-class Panel(BaseModel):
+class Panel(Commented):
     """
     A solar panel: a part of the 3D model, or a normal and an area.
 
@@ -165,6 +170,8 @@ class Panel(BaseModel):
         The panel's area, positive
     fill_ratio : Quantity
         The share of the area that the cells cover, above 0 and at most 1
+    comments : str, optional
+        Your own notes on this block. quicksat keeps them and does not read them.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -216,7 +223,7 @@ class Panel(BaseModel):
         return self.part is not None
 
 
-class SelfShadowing(BaseModel):
+class SelfShadowing(Commented):
     """
     The switch for the self-shadowing, and how finely it samples each panel.
 
@@ -227,6 +234,8 @@ class SelfShadowing(BaseModel):
     points : int, optional
         Sample points on each panel, 512 by default. More points give a finer
         lit fraction, and take longer.
+    comments : str, optional
+        Your own notes on this block. quicksat keeps them and does not read them.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -235,7 +244,7 @@ class SelfShadowing(BaseModel):
     points: int = Field(DEFAULT_POINTS, gt=0)
 
 
-class Battery(BaseModel):
+class Battery(Commented):
     """
     The battery: its size, how much of it is left, and how deep it may go.
 
@@ -254,6 +263,8 @@ class Battery(BaseModel):
     initial_charge : Quantity, optional
         The charge at the start of the run, as a share of what it holds. Full,
         `100 %`, by default.
+    comments : str, optional
+        Your own notes on this block. quicksat keeps them and does not read them.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -290,7 +301,7 @@ class Battery(BaseModel):
         return (self.capacity * self.capacity_factor).to(u.W * u.h)
 
 
-class Conditioning(BaseModel):
+class Conditioning(Commented):
     """
     The efficiencies of the power conditioning, one for each path energy takes.
 
@@ -308,6 +319,8 @@ class Conditioning(BaseModel):
         From the battery to the bus: the discharge regulator and the cells
     distribution : Quantity
         From the bus to the loads: the switches, the fuses and the harness
+    comments : str, optional
+        Your own notes on this block. quicksat keeps them and does not read them.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -326,7 +339,7 @@ class Conditioning(BaseModel):
         return _check_unit_fraction(value, str(info.field_name))
 
 
-class PowerSystem(BaseModel):
+class PowerSystem(Commented):
     """
     The power system file: the panels, the battery and the conditioning.
 
@@ -361,13 +374,17 @@ class PowerSystem(BaseModel):
     system_margin : Quantity, optional
         The margin on all the loads together, on top of each equipment's own,
         such as `5 %`. For the power budget.
+    comments : str, optional
+        Your own notes on the whole file. quicksat keeps them and does not read
+        them. The section `panels` may hold its own `comments` too, so no panel
+        may take that name.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     cell_efficiency: FractionQty
     loss_factor: FractionQty
-    panels: dict[str, Panel]
+    panels: Annotated[dict[str, Panel], BeforeValidator(without_comments)]
     self_shadowing: SelfShadowing | None = None
     battery: Battery | None = None
     conditioning: Conditioning | None = None

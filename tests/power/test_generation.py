@@ -109,8 +109,8 @@ def test_a_panel_turns_with_one_articulation_only(power_system, data_dir):
     scenario = scenario_with(
         data_dir,
         "  articulations:\n"
-        "    wing: {part: Wing +y, axis: +y, sun_axis: -z}\n"
-        "    panel: {part: Wing +y inner cells, axis: +y, sun_axis: -z}\n",
+        "    wing: {part: Wing +y, axis: +y, point: [-z, sun]}\n"
+        "    panel: {part: Wing +y inner cells, axis: +y, point: [-z, sun]}\n",
     )
     with pytest.raises(ValueError, match="sits under 2 articulations"):
         panel_geometry(power_system, scenario)

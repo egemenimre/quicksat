@@ -16,8 +16,8 @@ step: 10 s
 3d_model:
   file: spacecraft.glb
   articulations:
-    wing +y: {part: Wing +y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
-    wing -y: {part: Wing -y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
+    wing +y: {part: Wing +y, axis: +y, point: [-z, sun], park: {imaging: 0 deg}}
+    wing -y: {part: Wing -y, axis: +y, point: [-z, sun], park: {imaging: 0 deg}}
 
 attitudes:
   nadir: {point: [+z, nadir], constrain: [-y, orbit normal]}

@@ -6,6 +6,48 @@ Newest first. When a decision replaces an earlier one, the earlier one is kept i
 
 ---
 
+## 15. An articulation points an axis at any direction
+
+**2026-10-13. Settled.**
+
+An articulation was first a part that turns to face the sun, with `sun_axis` naming the axis that faces it. It is now written `point: [-z, sun]`: the axis, and the direction to turn it toward. The direction is any that an attitude can use: the sun, nadir, the orbit normal, the velocity, the ground velocity, or a ground target. So an antenna on a one-axis drive can follow a ground station, with the same rule as a wing that follows the sun.
+
+The form matches the attitudes', so the file has one way to name an axis and its direction. A file that still says `sun_axis` is refused, with the line to write in its place. A second spacecraft as a direction would need a second orbit, which quicksat does not have.
+
+---
+
+## 14. The editor is a page that holds the folder's files
+
+**2026-10-13. Settled.**
+
+The input files can be edited in a web page, written by `quicksat.editor` for one folder of files. The page opens from disk, with no Python and no server, as the scenario viewer does. Python reads the folder when it writes the page, and puts the files inside it: the YAML as YAML reads it, the CSV as text, the 3D model in base64. The page turns them into its fields, and saving downloads the files again.
+
+The page was chosen over three other ways to give it the files:
+
+- **Reading the files in the browser,** picked or dragged in, would need a YAML reader in JavaScript, and a second reading of every file. It may come later.
+- **A local server** would need Python running beside the page.
+- **Python in the browser,** with Pyodide, runs quicksat unchanged, but makes the page some 55 MB to fetch. It is the likely way to add a Run button later.
+
+So the page checks only names, units and ranges. When Python writes the page, it also reads the files with quicksat's own loaders, and the page shows what they said. A run is still needed for the full checks.
+
+**One folder, one page.** A scenario folder and a power folder each get their own page, as each domain keeps its own files (entry 9). A power folder's page edits the scenario, the power system and the consumption together. The sizing files will get a page of their own, because their reference orbit is not the scenario's orbit, and one page would invite the user to think they are linked.
+
+---
+
+## 13. The user's notes live in `comments` fields
+
+**2026-10-13. Settled.**
+
+Every block of an input file may hold a `comments` field: the orbit, each attitude, each target, each articulation, each panel, the battery, and so on. So may the file as a whole, and each section of named items, such as `attitudes`. An activity takes the map form to hold one: `{title, end, attitude, mode, constraint, comments}`. The CSV files already had a `comments` column. quicksat keeps the notes and does not read them.
+
+The reason is the editor (entry 14). It rewrites the files when it saves them, and a `#` comment is not data: no YAML reader keeps it. A `comments` field is data, so every tool keeps it. The `#` lines are left to the editor's own help, which it rewrites on each save. When the page opens, it lists the `#` comments that it did not write, and moves the ones the user chooses into the `comments` field of their block.
+
+An earlier proposal kept the user's `#` comments, and marked the editor's help with `#|`. It needed a YAML reader in JavaScript that keeps comments, and it would still lose them to any other tool that rewrote the file. It was dropped.
+
+Since a section's notes sit under the key `comments`, no item may take that name.
+
+---
+
 ## 12. The power losses sit in three places, and a slew is a mode
 
 **2026-10-11. Settled.**

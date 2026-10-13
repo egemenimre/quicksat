@@ -176,3 +176,39 @@ def test_the_battery_and_the_conditioning_are_optional():
 def test_a_battery_or_conditioning_that_does_not_suit_is_refused(block, message):
     with pytest.raises(ValidationError, match=message):
         read(HEAD + ONE_PANEL + block)
+
+
+def test_every_block_and_the_file_may_hold_comments():
+    system = read(
+        "comments: The whole file.\n" + HEAD + "panels:\n"
+        "  comments: All the panels.\n"
+        "  side: {normal: +x, area: 0.2 m2, fill_ratio: 80 %, comments: A spare face.}\n"
+        "self_shadowing: {enabled: false, comments: No model yet.}\n"
+        "battery:\n"
+        "  capacity: 1024 W h\n"
+        "  capacity_factor: 0.80\n"
+        "  max_depth_of_discharge: 30 %\n"
+        "  comments: Saft VES16, 8s8p.\n"
+        "conditioning:\n"
+        "  array_regulator: 0.96\n"
+        "  battery_charge: 0.95\n"
+        "  battery_discharge: 0.95\n"
+        "  distribution: 0.97\n"
+        "  comments: From the PCDU datasheet.\n"
+    )
+    assert system.comments == "The whole file."
+    assert list(system.panels) == ["side"]
+    assert system.panels["side"].comments == "A spare face."
+    assert system.self_shadowing is not None
+    assert system.self_shadowing.comments == "No model yet."
+    assert system.battery is not None
+    assert system.battery.comments == "Saft VES16, 8s8p."
+    assert system.conditioning is not None
+    assert system.conditioning.comments == "From the PCDU datasheet."
+
+
+def test_no_panel_may_take_the_name_of_the_comments():
+    with pytest.raises(ValueError, match="no item may take that name"):
+        read(
+            HEAD + "panels:\n  comments: {normal: +x, area: 0.2 m2, fill_ratio: 80 %}\n"
+        )

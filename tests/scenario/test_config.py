@@ -496,3 +496,111 @@ def test_a_slew_block_reads_its_limits():
 def test_a_wrong_slew_block_is_refused(block, message):
     with pytest.raises(ValueError, match=message):
         Slew.model_validate(block)
+
+
+# ---------------------------------------------------------------- Comments
+
+
+COMMENTED = """comments: The whole file.
+orbit:
+  comments: The orbit.
+  sso: {altitude: 510 km, ltan: "13:30", comments: The SSO.}
+start: 2026-10-01T00:00:00
+duration: 1 orbit
+targets:
+  comments: All the targets.
+  Svalbard: {latitude: 78.2 deg, longitude: 15.4 deg, comments: SvalSat.}
+attitudes:
+  comments: All the attitudes.
+  nadir: {point: [+z, nadir], constrain: [-y, orbit normal], comments: Nadir.}
+slew: {max_rate: 0.7 deg/s, comments: The slews.}
+activities:
+  - [idle, 20 min, nadir, idle]
+  - title: downlink
+    end: Svalbard set
+    attitude: nadir
+    mode: downlink
+    comments: |-
+      Two lines
+      of comments.
+"""
+"""A scenario with comments in every block that can hold them, the model aside."""
+
+
+def test_every_block_and_the_file_may_hold_comments():
+    read = Scenario.from_yaml_text(COMMENTED)
+    assert read.comments == "The whole file."
+    assert read.orbit.comments == "The orbit."
+    assert read.orbit.sso is not None
+    assert read.orbit.sso.comments == "The SSO."
+    assert read.slew is not None
+    assert read.slew.comments == "The slews."
+    # a section's own comments are not an item of it
+    assert list(read.targets) == ["Svalbard"]
+    assert read.targets["Svalbard"].comments == "SvalSat."
+    assert list(read.attitudes) == ["nadir"]
+    assert read.attitudes["nadir"].comments == "Nadir."
+    assert read.activities[0].comments is None
+    assert read.activities[1].comments == "Two lines\nof comments."
+
+
+def test_an_activity_in_the_map_form_reads_as_in_the_list_form():
+    listed = scenario(activities=[["pass", "10 min", "nadir", "downlink", "sunlit"]])
+    mapped = scenario(
+        activities=[
+            {
+                "title": "pass",
+                "end": "10 min",
+                "attitude": "nadir",
+                "mode": "downlink",
+                "constraint": "sunlit",
+                "comments": "On the station.",
+            }
+        ]
+    )
+    first, second = listed.activities[0], mapped.activities[0]
+    assert (second.title, second.trigger.text) == (first.title, first.trigger.text)
+    assert (second.attitude, second.mode) == (first.attitude, first.mode)
+    assert second.constraint == first.constraint == "sunlit"
+    assert second.comments == "On the station."
+
+
+@pytest.mark.parametrize(
+    ("activity", "message"),
+    [
+        ({"title": "pass", "end": "10 min", "attitude": "nadir"}, r"needs \['mode'\]"),
+        (
+            {"title": "x", "end": "10 min", "attitude": "nadir", "mode": "a", "n": 1},
+            "takes the keys",
+        ),
+        (
+            {
+                "title": "x",
+                "end": "10 min",
+                "attitude": "nadir",
+                "mode": "a",
+                "comments": [1],
+            },
+            "comments must be text",
+        ),
+        ({"title": "x", "end": "soon", "attitude": "nadir", "mode": "a"}, "activity 1"),
+    ],
+)
+def test_a_wrong_activity_in_the_map_form_is_refused(activity, message):
+    with pytest.raises(ValueError, match=message):
+        scenario(activities=[activity])
+
+
+def test_no_named_item_may_take_the_name_of_the_comments():
+    attitudes = BASE["attitudes"] | {
+        "comments": {"point": ["+z", "sun"], "constrain": ["-y", "orbit normal"]}
+    }
+    with pytest.raises(ValueError, match="no item may take that name"):
+        scenario(attitudes=attitudes)
+
+
+def test_the_orbit_comments_are_not_a_source():
+    read = scenario(orbit={"tle_file": "a.tle", "comments": "From CelesTrak."})
+    assert read.orbit.comments == "From CelesTrak."
+    with pytest.raises(ValueError, match="exactly one key"):
+        scenario(orbit={"comments": "No source yet."})
