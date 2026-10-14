@@ -10,7 +10,13 @@ Pydantic and unit parsing helpers.
 
 from typing import Annotated
 
-from pydantic import AfterValidator, BeforeValidator, PlainSerializer, StringConstraints
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    PlainSerializer,
+    StringConstraints,
+)
 
 from quicksat import Q_, u
 
@@ -211,3 +217,56 @@ Torque and energy share a dimension, so this rejects `4 N*m*s` but cannot tell
 
 InertiaQty = non_negative_quantity(u.kg * u.m**2, "moment of inertia")
 """Annotated Quantity type for a moment of inertia (`264.7 kg*m**2`)."""
+
+
+COMMENTS = "comments"
+"""The key of the user's own notes, which every block of an input file may have.
+quicksat keeps them and does not read them. No named item may take this name."""
+
+
+class Commented(BaseModel):
+    """
+    A block of an input file that may hold the user's own notes.
+
+    The notes go in `comments`, so that every YAML reader keeps them, the editor
+    included. A `#` comment is lost when the editor saves the file.
+
+    Parameters
+    ----------
+    comments : str, optional
+        The user's notes on the block. quicksat does not read them.
+    """
+
+    comments: str | None = None
+
+
+def without_comments(value):
+    """
+    Pydantic BeforeValidator for a mapping of named items, such as the attitudes.
+
+    The mapping may hold the user's notes on the whole section under `comments`.
+    They are taken out before the items are read, so no item may take that name.
+
+    Parameters
+    ----------
+    value
+        The mapping as the file gives it, or anything else, which is passed on
+
+    Returns
+    -------
+    value
+        The mapping without its `comments` key
+
+    Raises
+    ------
+    ValueError
+        If `comments` holds anything but text, such as an item that took the name
+    """
+    if not isinstance(value, dict) or COMMENTS not in value:
+        return value
+    if not (value[COMMENTS] is None or isinstance(value[COMMENTS], str)):
+        raise ValueError(
+            f"'{COMMENTS}' holds the notes on the whole section, so no item may "
+            "take that name"
+        )
+    return {name: item for name, item in value.items() if name != COMMENTS}

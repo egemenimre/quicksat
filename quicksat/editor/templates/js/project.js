@@ -1,0 +1,468 @@
+// quicksat editor: the project, read from the folder's files that the page holds.
+//
+// Python passes the files as YAML reads them, so this part only turns them into
+// the page's fields. What it cannot keep, it notes, so that the page can say so
+// before the user saves.
+
+const DATA = JSON.parse($("#project").textContent);
+
+/** What the reader noticed: fields it does not handle, and values it changed. */
+const notices = { unknown: [], changed: [] };
+
+// ---------------------------------------------------------------- reading values
+
+const NUMBER_UNIT = /^([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*(.*)$/;
+
+/** A number and its unit, from a number or text such as `510 km`; null if neither. */
+function numberUnit(value) {
+  if (typeof value === "number") return { v: value, u: "" };
+  const match = String(value ?? "").trim().match(NUMBER_UNIT);
+  return match ? { v: Number(match[1]), u: match[2].trim() } : null;
+}
+
+const tidy = (x) => Number(Number(x).toPrecision(12));
+
+/** A quantity, with `unit` where the file gives none. */
+function readQ(value, unit, where) {
+  if (value == null || value === "") return q("", unit);
+  const parsed = numberUnit(value);
+  if (!parsed) { notices.changed.push(`${where}: "${value}" is not a number, and was left empty`); return q("", unit); }
+  const u = /^orbits?$/i.test(parsed.u) ? "orbits" : parsed.u || unit;
+  return q(parsed.v, u);
+}
+
+/** A fraction, shown in percent: `30 %` or `0.30` both give 30 %. */
+function readPercent(value, where) {
+  if (value == null || value === "") return q("", "%");
+  const parsed = numberUnit(value);
+  if (!parsed) { notices.changed.push(`${where}: "${value}" is not a number, and was left empty`); return q("", "%"); }
+  if (parsed.u === "") return q(tidy(parsed.v * 100), "%");
+  return q(parsed.v, parsed.u);
+}
+
+/** A fraction, shown as a plain number: `80 %` or `0.80` both give 0.8. */
+function readFraction(value, where) {
+  if (value == null || value === "") return "";
+  const parsed = numberUnit(value);
+  if (!parsed) { notices.changed.push(`${where}: "${value}" is not a number, and was left empty`); return ""; }
+  return parsed.u === "%" ? tidy(parsed.v / 100) : parsed.v;
+}
+
+/** Note the keys of a block that the editor does not handle. */
+function knownKeys(obj, keys, where) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return;
+  for (const key of Object.keys(obj)) if (!keys.includes(key)) notices.unknown.push(`${where} › ${key}`);
+}
+
+/** The named items of a section, without its own `comments`. */
+function namedItems(section) {
+  if (!section || typeof section !== "object" || Array.isArray(section)) return [];
+  return Object.entries(section).filter(([name, value]) => !(name === RESERVED && typeof value === "string"));
+}
+
+const sectionComments = (section) => (section && typeof section[RESERVED] === "string" ? section[RESERVED] : "");
+
+// ---------------------------------------------------------------- triggers
+
+/** One activity's trigger, as the builder holds it. */
+const trigger = (kind, extra = {}) => ({
+  kind, value: q(20, "min"), latitude: q(45, "deg"), direction: "either", target: "",
+  offset: { sign: "+", v: "", u: "min" }, text: "", ...extra,
+});
+
+const OFFSET = String.raw`(?: ?([+-]) ?((?:\d+\.?\d*|\.\d+)) ?([a-z]+))?`;
+const EVENT_RE = new RegExp(String.raw`^(eclipse entry|eclipse exit|umbra entry|umbra exit|ascending node|descending node|latitude ([+-]?(?:\d+\.?\d*|\.\d+)) ?([a-z]+)(?: (ascending|descending))?)${OFFSET}$`, "i");
+const RISE_SET_RE = new RegExp(String.raw`^(.+?) (rise|set)${OFFSET}$`, "i");
+const DURATION_RE = /^((?:\d+\.?\d*|\.\d+)) ?([a-z]+)$/i;
+
+/**
+ * A trigger from its text, by the same grammar as quicksat's. Text that does not
+ * read is kept as it is, under "as written". A trigger that reads keeps its text
+ * too, which the file gets back for as long as the trigger is not changed.
+ */
+function parseTrigger(text) {
+  const end = readTrigger(text);
+  if (end.kind !== "text") { end.written = String(text ?? "").trim(); end.writtenAs = triggerText(end); }
+  return end;
+}
+
+function readTrigger(text) {
+  const tidied = String(text ?? "").trim().replace(/\s+/g, " ");
+  const offset = (sign, v, u) => ({ sign: sign || "+", v: v === undefined ? "" : Number(v), u: u || "min" });
+  let match = tidied.match(EVENT_RE);
+  if (match) {
+    const [, event, latitude, unit, direction, sign, v, u] = match;
+    if (latitude !== undefined) {
+      return trigger("latitude", { latitude: q(Number(latitude), unit), direction: direction ? direction.toLowerCase() : "either", offset: offset(sign, v, u) });
+    }
+    return trigger(event.toLowerCase(), { offset: offset(sign, v, u) });
+  }
+  match = tidied.match(DURATION_RE);
+  if (match) return trigger("duration", { value: q(Number(match[1]), match[2]) });
+  match = tidied.match(RISE_SET_RE);
+  if (match) {
+    const [, target, edge, sign, v, u] = match;
+    return trigger(edge.toLowerCase(), { target, offset: offset(sign, v, u) });
+  }
+  return trigger("text", { text: tidied });
+}
+
+/** The text of a trigger, as `scenario.yaml` writes it: as the file had it, if unchanged. */
+function triggerText(end) {
+  const text = builtTriggerText(end);
+  return end.written && text === end.writtenAs ? end.written : text;
+}
+
+function builtTriggerText(end) {
+  let text;
+  switch (end.kind) {
+    case "duration": return qText(end.value);
+    case "text": return end.text;
+    case "latitude": text = `latitude ${qText(end.latitude)}${end.direction === "either" ? "" : " " + end.direction}`; break;
+    case "rise": case "set": text = `${end.target || "?"} ${end.kind}`; break;
+    default: text = end.kind;
+  }
+  const offset = end.offset;
+  if (offset && offset.v !== "" && Number(offset.v) !== 0) text += ` ${offset.sign} ${offset.v} ${offset.u}`;
+  return text;
+}
+
+// ---------------------------------------------------------------- the scenario file
+
+/** The LTAN as `HH:MM`, from `"13:30"`, `10.5 h`, or the minutes YAML makes of an unquoted 13:30. */
+function readLtan(value) {
+  if (typeof value === "number") {
+    notices.changed.push(`orbit › sso › ltan: an unquoted ${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")} reads as ${value} in YAML; the editor writes it in quotes`);
+    return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
+  }
+  const text = String(value ?? "").trim();
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(text)) return text.padStart(text.length + (text.indexOf(":") === 1 ? 1 : 0), "0");
+  const parsed = numberUnit(text);
+  if (parsed && parsed.u === "h") {
+    const minutes = Math.round(parsed.v * 60);
+    return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  }
+  return text;
+}
+
+/** The start as the date-and-time field shows it: `2026-10-01T09:00:00`. */
+function readStart(value) {
+  let text = String(value ?? "").trim().replace(" ", "T");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) text += "T00:00:00";
+  const zone = text.match(/(Z|[+-]00:00)$/);
+  if (zone) text = text.slice(0, -zone[0].length);
+  else if (/[+-]\d{2}:\d{2}$/.test(text)) notices.changed.push(`start: "${value}" has a time zone, which the date field cannot show; set the time in UTC`);
+  return text;
+}
+
+function readArticulation(name, raw) {
+  const where = `3d_model › articulations › ${name}`;
+  knownKeys(raw, ["part", "axis", "point", "sun_axis", "range", "park", "comments"], where);
+  let point = Array.isArray(raw.point) ? raw.point.map(str) : ["-z", "sun"];
+  if (!Array.isArray(raw.point) && typeof raw.sun_axis === "string") {
+    point = [raw.sun_axis, "sun"];
+    notices.changed.push(`${where}: sun_axis: ${raw.sun_axis} is now written point: [${raw.sun_axis}, sun]`);
+  }
+  const park = raw.park && typeof raw.park === "object" ? Object.entries(raw.park).map(([mode, angle]) => ({ mode, angle: readQ(angle, "deg", where) })) : [];
+  const range = Array.isArray(raw.range) && raw.range.length === 2 ? { min: readQ(raw.range[0], "deg", where), max: readQ(raw.range[1], "deg", where) } : null;
+  return { name, part: str(raw.part), axis: str(raw.axis) || "+y", point, park, range, comments: str(raw.comments) };
+}
+
+function readActivity(raw, index) {
+  const where = `activities › ${index + 1}`;
+  let fields = {};
+  if (Array.isArray(raw)) {
+    // a list from before titles starts with its trigger
+    const untitled = (raw.length === 3 || raw.length === 4) && parseTrigger(raw[0]).kind !== "text" && parseTrigger(raw[1]).kind === "text";
+    if (untitled) notices.changed.push(`${where}: it had no title, so its title is empty`);
+    const [title, end, attitude, mode, constraint] = untitled ? ["", ...raw] : raw;
+    fields = { title, end, attitude, mode, constraint };
+  } else if (raw && typeof raw === "object") {
+    knownKeys(raw, ["title", "end", "attitude", "mode", "constraint", "comments"], where);
+    fields = raw;
+  }
+  return {
+    title: str(fields.title), end: parseTrigger(fields.end), attitude: str(fields.attitude), mode: str(fields.mode),
+    constraint: str(fields.constraint), comments: str(fields.comments),
+  };
+}
+
+function readScenario(raw) {
+  raw = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  knownKeys(raw, ["comments", "orbit", "start", "duration", "step", "3d_model", "targets", "attitudes", "slew", "activities"], "scenario");
+  const orbitRaw = raw.orbit && typeof raw.orbit === "object" ? raw.orbit : {};
+  knownKeys(orbitRaw, ["comments", "sso", "tle_file", "omm_file", "trajectory_file"], "orbit");
+  const ssoRaw = orbitRaw.sso && typeof orbitRaw.sso === "object" ? orbitRaw.sso : null;
+  knownKeys(ssoRaw, ["altitude", "ltan", "comments"], "orbit › sso");
+  const source = ssoRaw ? "sso" : orbitRaw.tle_file ? "tle" : orbitRaw.omm_file ? "omm" : orbitRaw.trajectory_file ? "trajectory" : "sso";
+
+  const modelRaw = raw["3d_model"];
+  const modelMap = modelRaw && typeof modelRaw === "object" ? modelRaw : { file: modelRaw };
+  knownKeys(modelRaw && typeof modelRaw === "object" ? modelRaw : null, ["file", "articulations", "comments"], "3d_model");
+
+  const slewRaw = raw.slew && typeof raw.slew === "object" ? raw.slew : null;
+  knownKeys(slewRaw, ["max_rate", "max_acceleration", "settling_time", "comments"], "slew");
+
+  return {
+    comments: str(raw.comments),
+    orbit: {
+      source,
+      sso: {
+        altitude: ssoRaw ? readQ(ssoRaw.altitude, "km", "orbit › sso › altitude") : q(500, "km"),
+        ltan: ssoRaw ? readLtan(ssoRaw.ltan) : "10:30",
+        comments: ssoRaw ? str(ssoRaw.comments) : "",
+      },
+      tle_file: str(orbitRaw.tle_file),
+      omm_file: str(orbitRaw.omm_file),
+      trajectory_file: str(orbitRaw.trajectory_file),
+      comments: str(orbitRaw.comments),
+    },
+    start: readStart(raw.start),
+    duration: readQ(raw.duration, "h", "duration"),
+    step: readQ(raw.step, "s", "step"),
+    model: {
+      file: str(modelMap.file),
+      comments: str(modelMap.comments),
+      articulations: {
+        comments: sectionComments(modelMap.articulations),
+        items: namedItems(modelMap.articulations).map(([name, value]) => readArticulation(name, value || {})),
+      },
+    },
+    targets: {
+      comments: sectionComments(raw.targets),
+      items: namedItems(raw.targets).map(([name, t]) => {
+        t = t || {};
+        knownKeys(t, ["latitude", "longitude", "altitude", "min_elevation", "comments"], `targets › ${name}`);
+        return {
+          name, latitude: readQ(t.latitude, "deg", name), longitude: readQ(t.longitude, "deg", name),
+          altitude: readQ(t.altitude, "m", name), min_elevation: readQ(t.min_elevation, "deg", name), comments: str(t.comments),
+        };
+      }),
+    },
+    attitudes: {
+      comments: sectionComments(raw.attitudes),
+      items: namedItems(raw.attitudes).map(([name, a]) => {
+        a = a || {};
+        knownKeys(a, ["point", "constrain", "fallback", "offset", "comments"], `attitudes › ${name}`);
+        const pair = (p, fallback) => (Array.isArray(p) && p.length === 2 ? p.map(str) : fallback);
+        return {
+          name, point: pair(a.point, ["+z", "nadir"]), constrain: pair(a.constrain, ["-y", "orbit normal"]),
+          fallback: str(a.fallback), offset: Array.isArray(a.offset) ? a.offset.map(str).join(", ") : "", comments: str(a.comments),
+        };
+      }),
+    },
+    slew: {
+      enabled: Boolean(slewRaw),
+      max_rate: readQ(slewRaw && slewRaw.max_rate, "deg/s", "slew"),
+      max_acceleration: readQ(slewRaw && slewRaw.max_acceleration, "deg/s2", "slew"),
+      settling_time: readQ(slewRaw && slewRaw.settling_time, "s", "slew"),
+      comments: slewRaw ? str(slewRaw.comments) : "",
+    },
+    activities: Array.isArray(raw.activities) ? raw.activities.map(readActivity) : [],
+  };
+}
+
+// ---------------------------------------------------------------- the power files
+
+/** A typed-in normal as the field shows it: an axis, or three numbers. */
+const readNormal = (value) => (Array.isArray(value) ? value.join(", ") : str(value) || "+x");
+
+function readPower(raw) {
+  raw = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  knownKeys(raw, ["comments", "cell_efficiency", "loss_factor", "panels", "self_shadowing", "battery", "conditioning", "system_margin"], "power system");
+  const shadowRaw = raw.self_shadowing && typeof raw.self_shadowing === "object" ? raw.self_shadowing : null;
+  knownKeys(shadowRaw, ["enabled", "points", "comments"], "self_shadowing");
+  const batteryRaw = raw.battery && typeof raw.battery === "object" ? raw.battery : null;
+  knownKeys(batteryRaw, ["capacity", "capacity_factor", "max_depth_of_discharge", "initial_charge", "comments"], "battery");
+  const conditioningRaw = raw.conditioning && typeof raw.conditioning === "object" ? raw.conditioning : null;
+  const CONDITIONING = ["array_regulator", "battery_charge", "battery_discharge", "distribution"];
+  knownKeys(conditioningRaw, [...CONDITIONING, "comments"], "conditioning");
+  const b = batteryRaw || {};
+  const c = conditioningRaw || {};
+  return {
+    comments: str(raw.comments),
+    cell_efficiency: readPercent(raw.cell_efficiency, "cell_efficiency"),
+    loss_factor: readFraction(raw.loss_factor, "loss_factor"),
+    panels: {
+      comments: sectionComments(raw.panels),
+      items: namedItems(raw.panels).map(([name, p]) => {
+        p = p || {};
+        knownKeys(p, ["part", "normal", "area", "fill_ratio", "comments"], `panels › ${name}`);
+        return {
+          name, source: p.part != null ? "part" : "typed", part: str(p.part), normal: readNormal(p.normal),
+          area: readQ(p.area, "m2", name), fill_ratio: readPercent(p.fill_ratio, `panels › ${name}`), comments: str(p.comments),
+        };
+      }),
+    },
+    self_shadowing: {
+      present: Boolean(shadowRaw), enabled: Boolean(shadowRaw && shadowRaw.enabled),
+      points: shadowRaw && shadowRaw.points != null ? shadowRaw.points : "", comments: shadowRaw ? str(shadowRaw.comments) : "",
+    },
+    battery: {
+      present: Boolean(batteryRaw),
+      capacity: readQ(b.capacity, "W h", "battery"), capacity_factor: readFraction(b.capacity_factor, "battery"),
+      max_depth_of_discharge: readPercent(b.max_depth_of_discharge, "battery"), initial_charge: readPercent(b.initial_charge, "battery"),
+      comments: str(b.comments),
+    },
+    conditioning: {
+      present: Boolean(conditioningRaw),
+      ...Object.fromEntries(CONDITIONING.map((key) => [key, readFraction(c[key], "conditioning")])),
+      comments: str(c.comments),
+    },
+    system_margin: readPercent(raw.system_margin, "system_margin"),
+  };
+}
+
+/** A power with no file yet: starting values only. */
+const newPower = () => readPower({ cell_efficiency: "30 %", loss_factor: 0.8, panels: {} });
+
+const FIXED_COLUMNS = ["equipment_id", "equipment_name", "subsystem", "units_on", "eqpt_margin", "comments"];
+
+/** A power in watts, from text such as `10 W` or `0.5 kW`. */
+function readWatts(value, where) {
+  const quantity = readQ(value, "W", where);
+  if (blank(quantity)) return "";
+  const scale = { W: 1, kW: 1000, mW: 0.001 }[quantity.u];
+  if (scale === undefined) { notices.changed.push(`${where}: "${value}" is not in W, and was left empty`); return ""; }
+  return tidy(quantity.v * scale);
+}
+
+function readConsumption(file) {
+  const header = (file.header || []).map((cell) => cell.trim());
+  const modes = header.filter((cell) => cell && !FIXED_COLUMNS.includes(cell) && cell !== SLEW);
+  const at = (row, name) => { const i = header.indexOf(name); return i < 0 ? "" : (row[i] ?? "").trim(); };
+  const number = (text) => (text === "" || isNaN(Number(text)) ? text : Number(text));
+  return {
+    modes,
+    slewColumn: header.includes(SLEW),
+    rows: (file.rows || []).map((row, i) => {
+      const where = `${file.name}, row ${i + 2}`;
+      return {
+        id: at(row, "equipment_id"), name: at(row, "equipment_name"), subsystem: at(row, "subsystem"),
+        units: number(at(row, "units_on")), margin: number(at(row, "eqpt_margin")),
+        power: Object.fromEntries(modes.map((mode) => [mode, readWatts(at(row, mode), where)])),
+        slew: header.includes(SLEW) ? readWatts(at(row, SLEW), where) : "",
+        comments: at(row, "comments"),
+      };
+    }),
+  };
+}
+
+// ---------------------------------------------------------------- the project
+
+function readProject(data) {
+  const files = data.files;
+  const scenario = readScenario(files.scenario.data);
+  const consumption = files.consumption ? readConsumption(files.consumption) : { modes: [], slewColumn: false, rows: [] };
+  // the modes: the activities' first, then the park angles' and the consumption table's
+  const modes = [];
+  const addMode = (mode) => mode && mode !== SLEW && !modes.includes(mode) && modes.push(mode);
+  scenario.activities.forEach((a) => addMode(a.mode));
+  scenario.model.articulations.items.forEach((a) => a.park.forEach((p) => addMode(p.mode)));
+  consumption.modes.forEach(addMode);
+  scenario.modes = modes;
+  return {
+    name: data.folder || "quicksat_project",
+    names: {
+      scenario: files.scenario.name,
+      power: files.power ? files.power.name : "power_system.yaml",
+      consumption: files.consumption ? files.consumption.name : "power_consumption.csv",
+    },
+    scenario,
+    hasPower: Boolean(files.power),
+    power: files.power ? readPower(files.power.data) : newPower(),
+    hasConsumption: Boolean(files.consumption),
+    slewColumn: consumption.slewColumn,
+    consumption: consumption.rows,
+  };
+}
+
+const project = readProject(DATA);
+
+// The 3D model's bytes and part names, set when a GLB is decoded, and the orbit
+// file's text, which the save writes back beside the scenario
+const model = { fileName: "", bytes: null, parts: [], nodes: [] };
+let orbitFile = DATA.orbit_file ? { name: DATA.orbit_file.name, text: DATA.orbit_file.text } : null;
+
+// What the page shows: the tab, the Setup step, the selected item, and more
+const state = {
+  tab: "setup",
+  step: 0,
+  visited: new Set([0]),
+  selection: null,
+  openInfo: new Set(),
+  writeHelp: true,
+  file: project.names.scenario,
+  pendingDelete: null,
+  problems: [],
+  explain: true,
+  show3d: {},
+};
+
+const S = project.scenario;
+const P = project.power;
+
+// ---------------------------------------------------------------- names and their uses
+
+const attitudeNames = () => S.attitudes.items.map((a) => a.name);
+const targetNames = () => S.targets.items.map((t) => t.name);
+const directions = () => [...BUILT_IN_DIRECTIONS, ...targetNames()];
+/** The modes a park angle can name: slew is one while the body turns, when there are slews. */
+const parkModes = () => (S.slew.enabled ? [...S.modes, SLEW] : S.modes);
+
+/** Where a name is used: a list of short descriptions. */
+function usesOf(kind, name) {
+  const uses = [];
+  if (kind === "attitude") {
+    S.activities.forEach((a, i) => a.attitude === name && uses.push(`activity ${i + 1}`));
+  } else if (kind === "target") {
+    S.attitudes.items.forEach((a) => [a.point[1], a.constrain[1], a.fallback].includes(name) && uses.push(`attitude ${a.name}`));
+    S.model.articulations.items.forEach((a) => a.point[1] === name && uses.push(`articulation ${a.name}`));
+    S.activities.forEach((a, i) => (["rise", "set"].includes(a.end.kind) && a.end.target === name) && uses.push(`activity ${i + 1}`));
+  } else if (kind === "mode") {
+    S.activities.forEach((a, i) => a.mode === name && uses.push(`activity ${i + 1}`));
+    S.model.articulations.items.forEach((r) => r.park.some((p) => p.mode === name) && uses.push(`articulation ${r.name}`));
+    if (project.hasConsumption) uses.push("a column of the consumption table");
+  }
+  return uses;
+}
+
+/** Rename an item, and every field that names it. */
+function rename(kind, from, to) {
+  if (kind === "attitude") {
+    S.activities.forEach((a) => a.attitude === from && (a.attitude = to));
+  } else if (kind === "target") {
+    S.attitudes.items.forEach((a) => {
+      if (a.point[1] === from) a.point[1] = to;
+      if (a.constrain[1] === from) a.constrain[1] = to;
+      if (a.fallback === from) a.fallback = to;
+    });
+    S.model.articulations.items.forEach((a) => a.point[1] === from && (a.point[1] = to));
+    S.activities.forEach((a) => a.end.target === from && (a.end.target = to));
+  } else if (kind === "mode") {
+    S.activities.forEach((a) => a.mode === from && (a.mode = to));
+    S.model.articulations.items.forEach((r) => r.park.forEach((p) => p.mode === from && (p.mode = to)));
+    project.consumption.forEach((row) => {
+      row.power[to] = row.power[from];
+      delete row.power[from];
+    });
+  }
+}
+
+// ---------------------------------------------------------------- changes
+
+let refreshTimer = 0;
+
+/**
+ * Note a change to the project. A change of structure, such as an item added,
+ * deleted or renamed, redraws the current view. Every change re-runs the checks.
+ */
+function changed(structure = false) {
+  if (structure) drawView();
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    runChecks();
+    if (state.tab === "files") drawPreview();
+    view3d.update();
+  }, 120);
+}

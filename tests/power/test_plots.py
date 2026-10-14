@@ -26,6 +26,7 @@ from quicksat.power.plots import (
     panel_power_plot,
     total_power_plot,
 )
+from quicksat.scenario.spacecraft import read_model
 from quicksat.utils.plot_helpers import PALETTE
 
 
@@ -88,7 +89,10 @@ def test_the_drawing_shows_each_panel_and_the_body_axes(generation_run):
     assert labels == [*generation_run.power, MODEL]
     # one surface for each part of the model, and an arrow for each panel's
     # normal and each body axis
-    assert len(ax.collections) == 16 + len(generation_run.panels) + 3
+    model = generation_run.run.scenario.spacecraft_model
+    assert model is not None
+    parts = len(read_model(model.file).parts)
+    assert len(ax.collections) == parts + len(generation_run.panels) + 3
     assert [text.get_text() for text in ax.texts] == ["x", "y", "z"]
 
 

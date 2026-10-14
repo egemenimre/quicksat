@@ -6,6 +6,8 @@ The sample flies the scenario sample's three orbits, with cells on four turning 
 
 You need quicksat installed first, and a scenario that runs. The README has the installation steps. [How to set up and run a scenario](../scenario/set_up_a_scenario.md) covers the scenario.
 
+You can also fill in the power files in the editor, a web page that takes you through them step by step. [How to edit, run and view a scenario](../scenario/edit_and_view_a_scenario.md) shows how, for a power folder too. This guide says what each field means, either way.
+
 ## 1. Copy the sample data, one folder for each case
 
 A case is one set of conditions to check the sizing against, such as winter and summer, or the start and the end of life. Give each case a folder of its own, outside quicksat, with a copy of the sample data:

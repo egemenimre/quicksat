@@ -11,6 +11,8 @@ at about the orbit's 0.063 deg/s. With the limits set below that, nadir passes
 them, which tests the check without a ground target.
 """
 
+import dataclasses
+
 import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
@@ -92,8 +94,15 @@ def test_the_viewer_carries_the_warnings(slow_run, run):
 
 
 def test_a_limit_left_out_is_never_passed(data_dir):
-    rate_only = "slew: {max_rate: 0.05 deg/s, settling_time: 20 s}\n"
-    text = (data_dir / "scenario.yaml").read_text() + rate_only
-    run = run_scenario(Scenario.from_yaml_text(text, data_dir))
-    assert run.warnings
-    assert run.warnings[0].endswith("against the slew block's 0.05 deg/s.")
+    # nadir turns at the orbit's 0.063 deg/s, so a rate limit left out but read
+    # as zero would give a warning in every nadir activity
+    text = (data_dir / "scenario.yaml").read_text().replace("3 orbits", "1 orbit")
+    no_rate = "slew: {max_acceleration: 0.08 deg/s2, settling_time: 20 s}\n"
+    run = run_scenario(Scenario.from_yaml_text(text + no_rate, data_dir))
+    assert "nadir" in run.attitude.values()
+    assert run.rate_excesses == []
+
+
+def test_a_limit_left_out_is_not_named(slow_run):
+    excess = dataclasses.replace(slow_run.rate_excesses[0], max_acceleration=None)
+    assert excess.text.endswith("against the slew block's 0.05 deg/s.")

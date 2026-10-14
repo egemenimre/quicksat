@@ -4,7 +4,9 @@ This guide takes you from the sample files to a scenario of your own. You write 
 
 The sample flies a 510 km sun-synchronous orbit for three orbits. It is a working example, so it gives you correct keys, triggers and units to start from.
 
-You need quicksat installed first. The README has the steps, under "Installation".
+You need quicksat installed first. The README has the steps, under "Install".
+
+You can also fill in the file in the editor, a web page that takes you through it step by step. [How to edit, run and view a scenario](edit_and_view_a_scenario.md) shows how. This guide says what each field means, either way.
 
 ## 1. Copy the sample data
 
@@ -101,22 +103,22 @@ The viewer draws the spacecraft from a GLB file, the binary form of glTF. Put th
 
 Without it, the viewer draws a 1 m cube. Build the model in body axes and in metres, with its origin at the point the body turns about. Then the model's x, y and z are the body's. In Blender, untick "+Y Up" when you export it, or the axes turn. Export it without Draco or meshopt compression, because the viewer cannot decode them.
 
-Parts of the model can turn to face the sun, such as solar wings. Make each such part one node, with its origin on its drive axis and its pieces as children. Then list it under `articulations`, with `file` for the model:
+Parts of the model can turn about one axis, such as solar wings that follow the sun, or an antenna that follows a ground station. Make each such part one node, with its origin on its drive axis and its pieces as children. Then list it under `articulations`, with `file` for the model:
 
 ```yaml
 3d_model:
   file: spacecraft.glb
   articulations:
-    wing +y: {part: Wing +y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
+    wing +y: {part: Wing +y, axis: +y, point: [-z, sun], park: {imaging: 0 deg}}
 ```
 
 - **`part`** is the node's name in the model.
 - **`axis`** is the body axis it turns about.
-- **`sun_axis`** is the part's axis to turn to the sun, as the model draws it. It must use a different body axis from `axis`.
+- **`point`** is the part's axis, as the model draws it, and the direction to turn it toward. The direction is one an attitude can use: the sun, nadir, the orbit normal, the velocity, the ground velocity, or a target. The axis must use a different body axis from `axis`.
 - **`range`**, optional, limits the turn, as in `range: [-90 deg, 90 deg]`.
 - **`park`**, optional, holds a fixed angle in the modes it names. Each mode must be one that an activity has, or `slew` when the scenario has slews.
 
-The part tracks the sun at each step, and the viewer turns it.
+The part follows its direction at each step, and the viewer turns it.
 
 Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), sections "The spacecraft's 3D model" and "Articulations".
 

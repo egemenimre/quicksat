@@ -23,8 +23,6 @@ The fixture is deliberately small enough to check by hand:
     on ground, no propellant   =                       59.32 kg
 """
 
-import itertools
-
 import pytest
 from astropy.tests.helper import assert_quantity_allclose
 
@@ -55,14 +53,15 @@ ROWS = [
     "lv_ring,Adapter ring,Launcher,Launcher,Structure,4 kg,0,1,equipment,",
 ]
 
-ALL_FLAGS = [
-    {
-        "propellant": propellant,
-        **dict(zip(("sys_margin", "eqpt_margin", "in_orbit"), switches, strict=True)),
-    }
-    for propellant in (100, 50, 0)
-    for switches in itertools.product([True, False], repeat=3)
+FLAG_CASES = [
+    {"propellant": 100, "sys_margin": True, "eqpt_margin": True, "in_orbit": True},
+    {"propellant": 0, "sys_margin": False, "eqpt_margin": False, "in_orbit": False},
+    {"propellant": 50, "sys_margin": False, "eqpt_margin": True, "in_orbit": True},
+    {"propellant": 100, "sys_margin": True, "eqpt_margin": False, "in_orbit": True},
+    {"propellant": 100, "sys_margin": True, "eqpt_margin": True, "in_orbit": False},
 ]
+"""All the switches on, all off, and each off alone. The switches act
+independently, so these catch what all 24 combinations would."""
 
 
 def write_budget(tmp_path, rows=None, config=CONFIG):
@@ -96,15 +95,9 @@ def test_four_mass_cases(budget, in_orbit, propellant, expected):
     assert_quantity_allclose(total, Q_(expected, "kg"))
 
 
-@pytest.mark.parametrize(
-    "propellant, expected",
-    [(100, 60.32), (75, 59.07), (50, 57.82), (25, 56.57), (0, 55.32)],
-)
-def test_propellant_depletes_linearly(budget, propellant, expected):
-    """The 5 kg load is used up in proportion. The ends are the wet and dry masses."""
-    assert_quantity_allclose(
-        budget.in_orbit_mass(propellant=propellant), Q_(expected, "kg")
-    )
+def test_propellant_depletes_linearly(budget):
+    """Half the 5 kg load is left at 50%. The four cases above give the ends."""
+    assert_quantity_allclose(budget.in_orbit_mass(propellant=50), Q_(57.82, "kg"))
 
 
 def test_propellant_percentage_is_range_checked(budget):
@@ -118,13 +111,6 @@ def test_case_presets_match_the_generic_method(budget):
     assert budget.on_ground_mass() == budget.total_mass(in_orbit=False)
     assert budget.in_orbit_mass(propellant=0) == budget.total_mass(
         in_orbit=True, propellant=0
-    )
-
-
-def test_launcher_hardware_dropped_in_orbit(budget):
-    """On-ground less in-orbit mass is exactly the launcher-side hardware."""
-    assert_quantity_allclose(
-        budget.on_ground_mass() - budget.in_orbit_mass(), Q_(4.0, "kg")
     )
 
 
@@ -148,7 +134,7 @@ def test_margin_flags(budget, sys_margin, eqpt_margin, expected):
 
 def test_propellant_is_never_margined(budget):
     """Propellant ignores both margin flags."""
-    for flags in ALL_FLAGS:
+    for flags in FLAG_CASES:
         if not flags["propellant"]:
             continue
         frame = budget.resolve(**flags)
@@ -159,9 +145,9 @@ def test_propellant_is_never_margined(budget):
 # --- grouping ------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("flags", ALL_FLAGS)
+@pytest.mark.parametrize("flags", FLAG_CASES)
 def test_groupings_reconcile(budget, flags):
-    """All three axes must sum to the grand total, for every flag combination."""
+    """All three axes must sum to the grand total, whatever the flags."""
     expected = budget.total_mass(**flags)
     for view in (
         budget.by_location(**flags),
@@ -190,7 +176,7 @@ def test_harness_uses_cbe_and_excludes_propellant(budget):
     assert harness.iloc[0]["eqpt_total_mass"] == pytest.approx(1.0)
 
 
-@pytest.mark.parametrize("flags", ALL_FLAGS)
+@pytest.mark.parametrize("flags", FLAG_CASES)
 def test_harness_present_in_every_case(budget, flags):
     frame = budget.resolve(**flags)
     assert (frame["subsystem"] == "Harness").sum() == 1

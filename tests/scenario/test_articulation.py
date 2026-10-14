@@ -4,7 +4,8 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Tests for the articulations: the parts of the 3D model that turn to face the sun.
+Tests for the articulations: the parts of the 3D model that turn to point an
+axis toward a direction, such as the sun.
 
 `articulated_run` is `scenario.yaml` with slews, and with the model and two
 articulations. One wing tracks the sun and parks in `downlink`. The other turns
@@ -28,7 +29,7 @@ from quicksat.scenario.attitude import body_rotations
 from quicksat.scenario.config import Scenario
 from quicksat.scenario.run import ScenarioRun, run_scenario
 from quicksat.scenario.spacecraft import node_index, read_glb_json
-from quicksat.scenario.viewer import VERSION, scenario_data
+from quicksat.scenario.viewer import scenario_data
 from quicksat.utils.intervals import labels_at
 
 from .conftest import SLEW
@@ -36,8 +37,8 @@ from .conftest import SLEW
 MODEL = """3d_model:
   file: spacecraft.glb
   articulations:
-    wing +y: {part: Wing +y, axis: +y, sun_axis: -z, park: {downlink: 45 deg}}
-    limited: {part: Wing -y, axis: -y, sun_axis: -z, range: [-30 deg, 60 deg]}
+    wing +y: {part: Wing +y, axis: +y, point: [-z, sun], park: {downlink: 45 deg}}
+    limited: {part: Wing -y, axis: -y, point: [-z, sun], range: [-30 deg, 60 deg]}
 """
 """The model block of `articulated_run`."""
 
@@ -135,17 +136,24 @@ def test_the_model_and_its_articulations_read(articulated_run, data_dir):
     assert model is not None
     assert model.file == data_dir / "spacecraft.glb"
     wing = model.articulations["wing +y"]
-    assert (wing.part, wing.axis, wing.sun_axis) == ("Wing +y", "+y", "-z")
+    assert (wing.part, wing.axis, wing.point) == ("Wing +y", "+y", ("-z", "sun"))
     assert [end.to_value(u.deg) for end in wing.range] == [-180, 180]
     assert wing.park["downlink"].to_value(u.deg) == 45
     limited = model.articulations["limited"]
     assert [end.to_value(u.deg) for end in limited.range] == [-30, 60]
 
 
-def test_a_plain_file_name_is_a_model_without_articulations(text, data_dir):
-    scenario = Scenario.from_yaml_text("3d_model: spacecraft.glb\n" + text, data_dir)
-    assert scenario.spacecraft_model is not None
-    assert scenario.spacecraft_model.articulations == {}
+def test_the_model_and_its_articulations_may_hold_comments(text, data_dir):
+    model = (
+        "3d_model:\n  file: spacecraft.glb\n  comments: The sample model.\n"
+        "  articulations:\n    comments: Both wings.\n"
+        "    wing: {part: Wing +y, axis: +y, point: [-z, sun], comments: The +y wing.}\n"
+    )
+    read = Scenario.from_yaml_text(model + text, data_dir).spacecraft_model
+    assert read is not None
+    assert read.comments == "The sample model."
+    assert list(read.articulations) == ["wing"]
+    assert read.articulations["wing"].comments == "The +y wing."
 
 
 def wing(fields: str) -> str:
@@ -158,26 +166,28 @@ def wing(fields: str) -> str:
 @pytest.mark.parametrize(
     ("fields", "message"),
     [
-        ("part: Wing +y, axis: +y, sun_axis: -y", "must use different body axes"),
-        ("part: Wing +y, axis: +y, sun_axis: -z, range: [60 deg, -30 deg]", "rise"),
-        ("part: Wing +y, axis: +y, sun_axis: -z, range: [0 deg, 270 deg]", "rise"),
-        ("part: Wing +y, axis: +y, sun_axis: -z, range: [0 deg, 9 m]", "angle"),
+        ("part: Wing +y, axis: +y, point: [-y, sun]", "must use different body axes"),
+        ("part: Wing +y, axis: +y, point: [-z, sun], range: [60 deg, -30 deg]", "rise"),
+        ("part: Wing +y, axis: +y, point: [-z, sun], range: [0 deg, 270 deg]", "rise"),
+        ("part: Wing +y, axis: +y, point: [-z, sun], range: [0 deg, 9 m]", "angle"),
         (
-            "part: Wing +y, axis: +y, sun_axis: -z, range: [0 deg, 90 deg], "
+            "part: Wing +y, axis: +y, point: [-z, sun], range: [0 deg, 90 deg], "
             "park: {idle: 120 deg}",
             "park angle for 'idle'",
         ),
-        ("part: Wing +y, axis: +y", "sun_axis"),
-        ("part: Wing +y, axis: +y, sun_axis: -z, speed: 1 deg/s", "speed"),
-        ("part: Wing +q, axis: +y, sun_axis: -z", "no node named 'Wing \\+q'"),
-        ("part: Spider, axis: +y, sun_axis: -z", "2 nodes named 'Spider'"),
+        ("part: Wing +y, axis: +y", "point"),
+        ("part: Wing +y, axis: +y, sun_axis: -z", r"write point: \[-z, sun\]"),
+        ("part: Wing +y, axis: +y, point: [-z, moon]", "'moon' is not a direction"),
+        ("part: Wing +y, axis: +y, point: [-z, sun], speed: 1 deg/s", "speed"),
+        ("part: Wing +q, axis: +y, point: [-z, sun]", "no node named 'Wing \\+q'"),
+        ("part: Spider, axis: +y, point: [-z, sun]", "2 nodes named 'Spider'"),
         (
-            "part: Wing +y, axis: +y, sun_axis: -z, park: {safe: 0 deg}",
+            "part: Wing +y, axis: +y, point: [-z, sun], park: {safe: 0 deg}",
             "park names the mode 'safe', which the run never has",
         ),
         # slew is a mode only when the scenario has slews, and this one has none
         (
-            "part: Wing +y, axis: +y, sun_axis: -z, park: {slew: 0 deg}",
+            "part: Wing +y, axis: +y, point: [-z, sun], park: {slew: 0 deg}",
             "park names the mode 'slew', which the run never has",
         ),
     ],
@@ -211,6 +221,23 @@ def test_a_tracking_wing_faces_the_sun_as_closely_as_its_axis_allows(articulated
     face = turned(y, minus_z, angles)
     cosines = np.einsum("ij,ij->i", face, suns[tracking])
     best = np.sqrt(1 - (suns[tracking] @ y) ** 2)
+    assert cosines == pytest.approx(best, abs=1e-9)
+
+
+def test_a_part_can_turn_toward_any_direction_an_attitude_can_use(text, data_dir):
+    model = MODEL.replace(
+        "point: [-z, sun], park: {downlink: 45 deg}", "point: [-z, nadir]"
+    )
+    run = run_scenario(Scenario.from_yaml_text(model + text + SLEW, data_dir))
+    cartesian = run.state.cartesian
+    assert isinstance(cartesian, CartesianRepresentation)
+    nadir = -cartesian.xyz.to_value(u.km).T
+    nadir /= np.linalg.norm(nadir, axis=1, keepdims=True)
+    nadirs = np.einsum("nji,nj->ni", body_rotations(run), nadir)
+    y, minus_z = axis_vector("+y"), axis_vector("-z")
+    face = turned(y, minus_z, np.asarray(run.articulations["wing +y"].to_value(u.rad)))
+    cosines = np.einsum("ij,ij->i", face, nadirs)
+    best = np.sqrt(1 - (nadirs @ y) ** 2)
     assert cosines == pytest.approx(best, abs=1e-9)
 
 
@@ -263,7 +290,6 @@ def test_a_limited_wing_turns_the_other_way_and_stops_at_its_range(articulated_r
 
 def test_the_viewer_data_carries_each_articulation(articulated_run, data_dir):
     data = scenario_data(articulated_run)
-    assert data["version"] == VERSION == 5
     joints = data["model"]["articulations"]
     gltf = read_glb_json(data_dir / "spacecraft.glb")
     assert [joint["name"] for joint in joints] == ["wing +y", "limited"]

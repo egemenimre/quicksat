@@ -213,10 +213,11 @@ def test_vertices_in_another_file_are_refused(tmp_path):
 # ---------------------------------------------------------------- The scenario file
 
 
-def test_the_model_is_taken_from_the_folder_of_the_file(text, data_dir):
+def test_a_plain_file_name_is_a_model_from_the_folder_of_the_file(text, data_dir):
     scenario = Scenario.from_yaml_text("3d_model: spacecraft.glb\n" + text, data_dir)
     assert scenario.spacecraft_model is not None
     assert scenario.spacecraft_model.file == data_dir / "spacecraft.glb"
+    assert scenario.spacecraft_model.articulations == {}
 
 
 def test_without_a_model_there_is_none(run):

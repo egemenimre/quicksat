@@ -18,6 +18,19 @@ the activity, the attitude, the mode, and an optional constraint on the
 illumination. The activities form a chain. Each one
 starts where the one before it ends, and the first starts at the start time.
 
+An activity may also be written as a mapping with the same fields named, which
+leaves room for its comments:
+
+    - title: downlink pass
+      end: 10 min
+      attitude: nadir
+      mode: downlink
+      comments: The X-band antenna is on +z.
+
+Every block of the file may hold the user's own notes in a `comments` field, and
+so may the file as a whole. The sections of named items, such as `attitudes`,
+may hold one too, so no item may be named `comments`.
+
 This module reads and checks the file. It does not run anything.
 
 """
@@ -49,13 +62,16 @@ from quicksat.orbit.attitude import slew_duration, slew_progress
 from quicksat.scenario.spacecraft import node_index, read_glb_json
 from quicksat.utils.intervals import TIME_GRID
 from quicksat.utils.parser_helpers import (
+    COMMENTS,
     AngularAccelerationQty,
     AngularRateQty,
+    Commented,
     LengthQty,
     PlainQty,
     SignedAngleQty,
     SignedLengthQty,
     TimeQty,
+    without_comments,
 )
 
 Axis = Literal["+x", "-x", "+y", "-y", "+z", "-z"]
@@ -228,7 +244,7 @@ def _read_offsets(value) -> list[tuple[str, Quantity]]:
     return turns
 
 
-class Attitude(BaseModel):
+class Attitude(Commented):
     """
     An attitude: one body axis fixed on a direction, and a second body axis
     turned as close as it can get to another direction.
@@ -251,6 +267,8 @@ class Attitude(BaseModel):
         Turns about the body axes, applied in order after the orientation above,
         written `[x 30 deg]`. Each is right-handed, about the body's own axis as
         the turns before it left it.
+    comments : str, optional
+        Your own notes on this block. quicksat keeps them and does not read them.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -311,7 +329,7 @@ class Attitude(BaseModel):
         return [self.point[1], self.constrain[1], self.fallback_direction]
 
 
-class GroundTarget(BaseModel):
+class GroundTarget(Commented):
     """
     A point on the ground, which turns with the Earth. An attitude can point at it.
 
@@ -326,6 +344,8 @@ class GroundTarget(BaseModel):
     min_elevation : Quantity, optional
         The elevation above the point's horizon at which the satellite rises
         and sets, for the `rise` and `set` triggers. 5 deg by default.
+    comments : str, optional
+        Your own notes on this block. quicksat keeps them and does not read them.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -483,7 +503,7 @@ def _parse_ltan(value) -> Quantity:
     return hours
 
 
-class SsoOrbit(BaseModel):
+class SsoOrbit(Commented):
     """
     A circular sun-synchronous orbit. quicksat builds its TLE.
 
@@ -498,6 +518,8 @@ class SsoOrbit(BaseModel):
     ltan : Quantity
         Local mean time of the ascending node, from 0 to 24 h. Written `"10:30"`,
         in quotes, or `10.5 h`.
+    comments : str, optional
+        Your own notes on this block. quicksat keeps them and does not read them.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -514,7 +536,7 @@ class SsoOrbit(BaseModel):
         return value
 
 
-class Orbit(BaseModel):
+class Orbit(Commented):
     """
     Where the orbit comes from: a TLE file, an OMM file, a sun-synchronous
     orbit, or a trajectory file.
@@ -537,6 +559,8 @@ class Orbit(BaseModel):
         A file of positions and velocities, which the run interpolates: ECSV,
         or a CCSDS OEM in KVN. See `quicksat.orbit.trajectory_files`. A
         relative path is taken from the folder of the scenario file.
+    comments : str, optional
+        Your own notes on this block. quicksat keeps them and does not read them.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -549,11 +573,14 @@ class Orbit(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _exactly_one_key(cls, data):
-        """Checks that the orbit has exactly one key, and that it is accepted."""
-        accepted = sorted(cls.model_fields)
+        """
+        Checks that the orbit has exactly one source key, and that it is
+        accepted. The comments are not a source.
+        """
+        accepted = sorted(name for name in cls.model_fields if name != COMMENTS)
         if not isinstance(data, dict):
             raise ValueError(f"orbit must have exactly one key, one of: {accepted}")
-        keys = [str(key) for key in data]
+        keys = [str(key) for key in data if key != COMMENTS]
         if len(keys) != 1 or keys[0] not in accepted:
             raise ValueError(
                 f"orbit must have exactly one key, one of: {accepted}. Got: {keys}"
@@ -914,7 +941,7 @@ def parse_constraint(text: str) -> Illumination:
     raise ValueError(f"constraint '{text}' is not understood. Use one of {words}")
 
 
-class Activity(BaseModel):
+class Activity(Commented):
     """
     One activity: what it is for, what ends it, how the satellite points, and
     what it does.
@@ -935,6 +962,8 @@ class Activity(BaseModel):
     constraint : str, optional
         The illumination the activity expects: `sunlit`, `penumbra`, `umbra`,
         or `eclipse` for either of the last two
+    comments : str, optional
+        Your own notes on this block. quicksat keeps them and does not read them.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
@@ -996,6 +1025,47 @@ class Activity(BaseModel):
             mode=fields[3].strip(),
             constraint=parse_constraint(fields[4]) if len(fields) == 5 else None,
         )
+
+    @classmethod
+    def from_mapping(cls, fields: dict) -> "Activity":
+        """
+        Build an activity from its map form, which names each field.
+
+        Parameters
+        ----------
+        fields : dict
+            `title`, `end` (the trigger), `attitude` and `mode`, and optionally
+            `constraint` and `comments`
+
+        Returns
+        -------
+        activity : Activity
+            The checked activity
+
+        Raises
+        ------
+        ValueError
+            If a field is missing, unknown or not valid
+        """
+        required = ("title", "end", "attitude", "mode")
+        known = (*required, "constraint", COMMENTS)
+        unknown = [str(key) for key in fields if key not in known]
+        if unknown:
+            raise ValueError(
+                f"an activity in the map form takes the keys {list(known)}, got "
+                f"{unknown}"
+            )
+        missing = [key for key in required if key not in fields]
+        if missing:
+            raise ValueError(f"an activity in the map form needs {missing}")
+        listed = [fields[key] for key in required]
+        if fields.get("constraint") is not None:
+            listed.append(fields["constraint"])
+        activity = cls.from_fields(listed)
+        comments = fields.get(COMMENTS)
+        if comments is not None and not isinstance(comments, str):
+            raise ValueError(f"comments must be text, got {comments!r}")
+        return activity.model_copy(update={COMMENTS: comments})
 
 
 def _untitled_hint(fields) -> str:
@@ -1066,7 +1136,7 @@ def _parse_start(value) -> Time:
     raise ValueError(message)
 
 
-class Slew(BaseModel):
+class Slew(Commented):
     """
     How the body turns from one attitude to another.
 
@@ -1086,6 +1156,8 @@ class Slew(BaseModel):
         Without it, the slew starts and stops at the maximum rate at once.
     settling_time : Quantity, optional
         Time to settle after the turn, 0 s by default
+    comments : str, optional
+        Your own notes on this block. quicksat keeps them and does not read them.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -1165,14 +1237,15 @@ FULL_TURN = (Q_(-180, "deg"), Q_(180, "deg"))
 """The range of an articulation that can turn all the way round."""
 
 
-class Articulation(BaseModel):
+class Articulation(Commented):
     """
-    A part of the 3D model that turns about one body axis to face the sun.
+    A part of the 3D model that turns about one body axis, such as a solar wing
+    that follows the sun.
 
-    At each step, the part turns about `axis` until `sun_axis` points as close to
-    the sun as the turn allows. The angle is zero where the model draws the part,
-    and turns right-handed about the axis. In a mode that `park` names, the part
-    holds the angle given there instead.
+    At each step, the part turns about `axis` until the axis that `point` names
+    is as close to its direction as the turn allows. The angle is zero where the
+    model draws the part, and turns right-handed about the axis. In a mode that
+    `park` names, the part holds the angle given there instead.
 
     Parameters
     ----------
@@ -1181,13 +1254,15 @@ class Articulation(BaseModel):
         own origin, and its children turn with it.
     axis : str
         The drive axis, in body axes, such as `+y`
-    sun_axis : str
-        The part's axis to turn to the sun, as the model draws the part. It must
-        use a different body axis from `axis`.
+    point : tuple of str
+        The part's axis, as the model draws the part, and the direction to turn
+        it toward, written `[-z, sun]`. The direction is one an attitude can
+        use: a built-in direction, or a ground point named in `targets`. The
+        axis must use a different body axis from `axis`.
     range : tuple of Quantity, optional
         The lowest and the highest angle, from -180 to 180 degrees. All the way
-        round by default. Where the sun asks for an angle outside it, the part
-        stops at the nearer end.
+        round by default. Where the direction asks for an angle outside it, the
+        part stops at the nearer end.
     park : dict of str to Quantity, optional
         A fixed angle for each mode named, inside the range
     """
@@ -1196,14 +1271,26 @@ class Articulation(BaseModel):
 
     part: str
     axis: Axis
-    sun_axis: Axis
+    point: AxisPair
     range: tuple[SignedAngleQty, SignedAngleQty] = FULL_TURN
     park: dict[str, SignedAngleQty] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sun_axis_hint(cls, data):
+        """Names the change for a file written with `sun_axis`, before `point`."""
+        if isinstance(data, dict) and "sun_axis" in data and "point" not in data:
+            raise ValueError(
+                f"sun_axis is now written as point, with the direction: write "
+                f"point: [{data['sun_axis']}, sun] in place of "
+                f"sun_axis: {data['sun_axis']}"
+            )
+        return data
 
     @model_validator(mode="after")
     def _check(self):
         """Checks the axes, the range, and that each park angle is in the range."""
-        _different_axes(self.axis, self.sun_axis, "axis and sun_axis")
+        _different_axes(self.axis, self.point[0], "axis and point")
         low, high = self.range
         if not FULL_TURN[0] <= low < high <= FULL_TURN[1]:
             raise ValueError(
@@ -1226,7 +1313,7 @@ def _model_mapping(value):
     return value
 
 
-class SpacecraftModel(BaseModel):
+class SpacecraftModel(Commented):
     """
     The spacecraft's 3D model, and the parts of it that turn.
 
@@ -1239,16 +1326,20 @@ class SpacecraftModel(BaseModel):
         The GLB file, in body axes and metres. A relative path is taken from the
         folder of the scenario file.
     articulations : dict of str to Articulation, optional
-        The parts that turn to face the sun, each under a name of your choice
+        The parts that turn, each under a name of your choice
+    comments : str, optional
+        Your own notes on this block. quicksat keeps them and does not read them.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     file: Path
-    articulations: dict[str, Articulation] = Field(default_factory=dict)
+    articulations: Annotated[
+        dict[str, Articulation], BeforeValidator(without_comments)
+    ] = Field(default_factory=dict)
 
 
-class Scenario(BaseModel):
+class Scenario(Commented):
     """
     A scenario: the orbit, the period of the run, and the activities.
 
@@ -1280,6 +1371,9 @@ class Scenario(BaseModel):
         The spacecraft's 3D model, written `3d_model` in the file: a GLB file in
         body axes and metres, and the parts of it that turn. The viewer draws it,
         or a 1 m cube without it.
+    comments : str, optional
+        Your own notes on the whole file. quicksat keeps them and does not read
+        them.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -1288,8 +1382,10 @@ class Scenario(BaseModel):
     start: Annotated[Time, BeforeValidator(_parse_start)]
     duration: Annotated[Quantity | OrbitCount, BeforeValidator(_parse_duration)]
     step: TimeQty = DEFAULT_STEP
-    targets: dict[str, GroundTarget] = Field(default_factory=dict)
-    attitudes: dict[str, Attitude]
+    targets: Annotated[dict[str, GroundTarget], BeforeValidator(without_comments)] = (
+        Field(default_factory=dict)
+    )
+    attitudes: Annotated[dict[str, Attitude], BeforeValidator(without_comments)]
     activities: list[Activity]
     slew: Slew | None = None
     spacecraft_model: Annotated[
@@ -1438,14 +1534,18 @@ class Scenario(BaseModel):
     @classmethod
     def _read_activities(cls, value):
         """
-        Reads every activity, and names it by its number in the list on an error.
+        Reads every activity, in the list form or the map form, and names it by
+        its number in the list on an error.
         """
         if not isinstance(value, list) or not value:
             raise ValueError("activities must be a list of at least one activity")
         activities, problems = [], []
         for number, fields in enumerate(value, start=1):
             try:
-                activities.append(Activity.from_fields(fields))
+                if isinstance(fields, dict):
+                    activities.append(Activity.from_mapping(fields))
+                else:
+                    activities.append(Activity.from_fields(fields))
             except ValueError as exc:
                 problems.append(f"activity {number}: {exc}")
         if problems:
@@ -1455,8 +1555,9 @@ class Scenario(BaseModel):
     def _direction_problems(self) -> list[str]:
         """
         Problems with the names: a target named as a built-in direction, an
-        attitude with a direction that is neither, an activity's attitude that is
-        not defined, and a rise or set of a target that is not defined.
+        attitude or an articulation with a direction that is neither, an
+        activity's attitude that is not defined, and a rise or set of a target
+        that is not defined.
 
         Returns
         -------
@@ -1476,6 +1577,13 @@ class Scenario(BaseModel):
                 f"directions are: {known}"
                 for direction in attitude.directions
                 if direction not in known
+            ]
+        if self.spacecraft_model is not None:
+            problems += [
+                f"articulation '{name}': '{articulation.point[1]}' is not a "
+                f"direction. The directions are: {known}"
+                for name, articulation in self.spacecraft_model.articulations.items()
+                if articulation.point[1] not in known
             ]
         defined = list(self.attitudes)
         problems += [

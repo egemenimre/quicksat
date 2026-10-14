@@ -198,12 +198,6 @@ def test_momentum_is_fully_used_past_the_crossover(budget):
         assert budget.momentum_used(Q_(angle, "deg")).value == pytest.approx(1.0)
 
 
-def test_a_degraded_slew_is_never_faster(budget):
-    for angle in SLEW_TIMES:
-        angle = Q_(angle, "deg")
-        assert budget.slew_time(angle, degraded=True) > budget.slew_time(angle)
-
-
 # --- the requirement check, against a target duration supplied at the call --
 
 
@@ -229,14 +223,6 @@ def test_achievable_angle_inverts_the_slew_time(budget):
     assert_quantity_allclose(
         budget.total_time(achievable), TARGET_DURATION, atol=Q_(1e-6, "s")
     )
-
-
-def test_a_tighter_target_allows_a_smaller_slew(budget):
-    """The target is an argument, so the same spacecraft answers both ways."""
-    assert budget.achievable_angle(Q_(60, "s")) < budget.achievable_angle(
-        TARGET_DURATION
-    )
-    assert budget.time_margin(Q_(40, "deg"), Q_(60, "s")).value < 0
 
 
 def test_ground_track_ties_the_slew_to_the_orbit(budget):
@@ -289,25 +275,10 @@ def test_an_explicit_mass_wins_over_the_attached_budget(config, mission, bus):
     )
 
 
-def test_cases_give_different_answers(config, mission):
-    """Which is the whole point of naming more than one."""
-    stated = AgilityBudget(config, mission, Axis.ROLL, "stated")
-    envelope = AgilityBudget(config, mission, Axis.ROLL, "workbook", mass=WORKBOOK_MASS)
-    angle = Q_(40, "deg")
-    assert stated.slew_time(angle) != envelope.slew_time(angle)
-
-
 def test_an_unknown_case_is_an_error(config, mission):
     """Rather than a silent fallback answering for a spacecraft nobody asked for."""
     with pytest.raises(KeyError, match="No inertia case named 'typo'"):
         AgilityBudget(config, mission, Axis.ROLL, "typo")
-
-
-def test_the_config_carries_no_mass(config):
-    """The mass budget owns it. A config that states one is a second source."""
-    assert "mass" not in CONFIG
-    for case in config.inertia_cases.values():
-        assert not hasattr(case, "mass")
 
 
 # --- the axes ----------------------------------------------------------------

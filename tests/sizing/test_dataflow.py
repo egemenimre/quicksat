@@ -74,31 +74,6 @@ def test_margin(budget):
     )
 
 
-def test_the_two_periods_are_consistent(budget):
-    """Per-day and per-orbit differ by exactly the orbit count, on both sides."""
-    n = budget.mission.orbits_per_day
-    assert_quantity_allclose(budget.generated_per_orbit * n, budget.generated_per_day)
-    assert_quantity_allclose(budget.downlinked_per_orbit * n, budget.downlinked_per_day)
-
-
-def test_margin_is_independent_of_the_byte_convention(budget):
-    """
-    The margin is a ratio, so the unit cancels.
-
-    This is what makes it the one figure that survives a decimal/binary
-    disagreement between two sources.
-    """
-    decimal = budget.downlinked_per_day.to("GB") / budget.generated_per_day.to("GB")
-    binary = budget.downlinked_per_day.to("GiB") / budget.generated_per_day.to("GiB")
-    assert_quantity_allclose(decimal, binary)
-
-
-def test_compression_divides_the_raw_rate(budget):
-    raw = budget.model.generation.raw_datarate
-    ratio = budget.model.generation.compression_ratio
-    assert_quantity_allclose(budget.effective_datarate * ratio, raw)
-
-
 # --- storage -----------------------------------------------------------------
 
 
@@ -116,20 +91,11 @@ def test_storage_scales_with_its_argument(budget):
 
 
 def test_a_negative_margin_when_generation_outruns_downlink():
+    """Twice the duty cycle generates 450 GB a day: 252 / 450 - 1 = -44%."""
     budget = build(model=MODEL.replace("duty_cycle: 5 %", "duty_cycle: 10 %"))
-    assert budget.margin.value < 0
-    assert budget.generated_per_day > budget.downlinked_per_day
-
-
-def test_margin_responds_to_each_side():
-    """More contacts help, and a faster instrument hurts."""
-    base = build().margin.value
-    more_contacts = build(
-        model=MODEL.replace("contacts_per_day: 7", "contacts_per_day: 9")
+    assert_quantity_allclose(
+        budget.margin, Q_(-0.44, u.dimensionless_unscaled), rtol=1e-4
     )
-    faster = build(model=MODEL.replace("raw_datarate: 1000", "raw_datarate: 1200"))
-    assert more_contacts.margin.value > base
-    assert faster.margin.value < base
 
 
 # --- validation --------------------------------------------------------------

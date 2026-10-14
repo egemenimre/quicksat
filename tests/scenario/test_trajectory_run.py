@@ -24,7 +24,7 @@ from quicksat.orbit.tle import read_tle_file
 from quicksat.orbit.trajectory import ASCENDING_NODES, Trajectory
 from quicksat.scenario.config import Scenario
 from quicksat.scenario.run import run_scenario
-from quicksat.scenario.viewer import VERSION, scenario_data
+from quicksat.scenario.viewer import scenario_data
 
 TOLERANCE_S = 5e-3
 """How far apart the two runs' times may be."""
@@ -110,7 +110,6 @@ def test_the_viewer_names_the_file(trajectory_run):
     orbit = data["orbit"]
     form = trajectory_run.orbit.format
     name, frame = FORMATS[form]
-    assert data["version"] == VERSION >= 4  # version 4 added the trajectory
     assert orbit["tle"] is None
     assert orbit["name"] == "SSO 510"
     trajectory = orbit["trajectory"]

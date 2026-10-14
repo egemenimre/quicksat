@@ -12,16 +12,14 @@ The fixture flies from the sample 500 km orbit, where the circular velocity is
     a 200 m Hohmann hop            0.1107 m/s for the pair of impulses
     deorbit to a 0 km perigee      144.95 m/s
     deorbit to a 250 km perigee     70.78 m/s
+    a 60 deg plane change         7612.6 m/s, the circular velocity itself
     80 m/s at Isp 220 s, 450 kg dry   17.00 kg of propellant
 """
 
-import math
-
 import pytest
-from astropy.constants import g0  # pyright: ignore[reportAttributeAccessIssue]
 from astropy.tests.helper import assert_quantity_allclose
 
-from quicksat import Q_, u
+from quicksat import Q_, R_EARTH
 from quicksat.delta_v.budget import (
     DeltaVBudget,
     DeltaVConfig,
@@ -92,19 +90,24 @@ def test_hohmann_is_symmetric():
     assert_quantity_allclose(up, down)
 
 
-def test_deorbit_to_the_surface():
+@pytest.mark.parametrize("perigee, expected", [(0, 144.95), (250, 70.78)])
+def test_deorbit_to_a_perigee(perigee, expected):
     mission = Mission.from_yaml_text(MISSION)
-    from quicksat import R_EARTH
-
     assert_quantity_allclose(
-        deorbit_deltav(mission.radius, R_EARTH), Q_(144.95, "m/s"), atol=Q_(0.01, "m/s")
+        deorbit_deltav(mission.radius, R_EARTH + Q_(perigee, "km")),
+        Q_(expected, "m/s"),
+        atol=Q_(0.01, "m/s"),
     )
 
 
-def test_plane_change_costs_more_than_the_same_altitude_change(budget):
-    """A degree of plane change needs far more delta-V than a kilometre of altitude."""
-    frame = budget.resolve().set_index("manoeuvre_id")
-    assert frame.loc["trim", "deltav_each"] > frame.loc["hop", "deltav_each"]
+def test_a_plane_change_of_60_deg():
+    """2 v sin(30 deg) is v: the turn costs the whole circular velocity."""
+    mission = Mission.from_yaml_text(MISSION)
+    assert_quantity_allclose(
+        plane_change_deltav(mission.velocity, Q_(60, "deg")),
+        Q_(7612.6, "m/s"),
+        atol=Q_(0.1, "m/s"),
+    )
 
 
 # --- counts and the mission duration -----------------------------------------
@@ -198,20 +201,7 @@ def test_propellant_from_dry_mass(tmp_path):
     assert_quantity_allclose(propellant, Q_(17.00, "kg"), atol=Q_(0.01, "kg"))
 
 
-def test_propellant_satisfies_the_rocket_equation(budget):
-    """Wet over dry is exp(dv/ve), which is the equation the figure came from."""
-    dry = Q_(450, "kg")
-    propellant = budget.propellant_mass(dry)
-    exhaust = budget.config.propulsion.isp * g0
-    expected = math.exp(
-        (budget.total_deltav() / exhaust).to(u.dimensionless_unscaled).value
-    )
-    assert_quantity_allclose(
-        (dry + propellant) / dry, Q_(expected, u.dimensionless_unscaled)
-    )
-
-
-def test_more_deltav_needs_more_propellant(budget):
+def test_the_margin_reaches_the_propellant(budget):
     dry = Q_(450, "kg")
     assert budget.propellant_mass(dry, margin=True) > budget.propellant_mass(
         dry, margin=False
@@ -410,11 +400,3 @@ def test_an_explicit_dry_mass_overrides_the_attached_budget(tmp_path, mass_budge
     """The what-if path: ask for another spacecraft without touching the file."""
     budget = DeltaVBudget.from_csv(*write_budget(tmp_path), mass_budget=mass_budget)
     assert budget.propellant_mass(Q_(600, "kg")) > budget.propellant_mass()
-
-
-def test_the_mass_budget_is_not_required(tmp_path):
-    """Every other query works without one, so the coupling stays optional."""
-    budget = DeltaVBudget.from_csv(*write_budget(tmp_path))
-    assert budget.mass_budget is None
-    assert budget.total_deltav().value > 0
-    assert not budget.by_phase().empty

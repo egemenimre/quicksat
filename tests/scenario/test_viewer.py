@@ -81,8 +81,6 @@ def test_the_light_is_a_fraction_and_the_illumination_has_three_states(data):
     assert {0.0, 1.0} <= set(light)
     values = {piece["value"] for piece in data["tracks"]["illumination"]}
     assert values == {"sunlit", "penumbra", "umbra"}
-    # both came with version 2
-    assert data["version"] >= 2
 
 
 def test_the_unit_vectors_and_quaternions_have_unit_length(data):
@@ -127,10 +125,6 @@ def test_each_slew_is_a_piece_that_names_its_target(slew_run):
         if before["value"] == "slew" and after["value"] != "slew":
             assert after["value"] == before["target"]
     assert all("target" not in piece for piece in track if piece["value"] != "slew")
-
-
-def test_the_page_names_a_slew_by_its_target():
-    assert "`${piece.target} (slewing)`" in viewer_page()
 
 
 def test_the_occurrences_carry_their_slews(slew_run):

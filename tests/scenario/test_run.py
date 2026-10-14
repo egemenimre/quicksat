@@ -412,19 +412,17 @@ def test_an_sso_orbit_is_built_at_the_start(data_dir):
     assert tle.name == "SSO 510 km, LTAN 13.5 h"
 
 
-def test_an_omm_file_runs_as_its_tle_does(run, data_dir, tmp_path):
-    # the fixture TLE's elements, written as an OMM, give the same run
-    write_omm_file(tmp_path / "leo.omm", read_tle_file(data_dir / "sso_510km.tle"))
+def test_an_omm_file_gives_the_tle_it_was_written_from(data_dir, tmp_path):
+    # the run takes its orbit from scenario_orbit, so the same TLE gives the same run
+    tle = read_tle_file(data_dir / "sso_510km.tle")
+    write_omm_file(tmp_path / "leo.omm", tle)
     text = (data_dir / "scenario.yaml").read_text()
     text = text.replace("tle_file: sso_510km.tle", "omm_file: leo.omm")
     scenario = Scenario.from_yaml_text(text, base_dir=tmp_path)
     assert scenario.orbit.omm_file == tmp_path / "leo.omm"
-    from_omm = run_scenario(scenario)
-    assert isinstance(from_omm.orbit, Tle) and isinstance(run.orbit, Tle)
-    assert from_omm.orbit.lines == run.orbit.lines
-    assert [(o.start, o.end, o.statuses) for o in from_omm.occurrences] == [
-        (o.start, o.end, o.statuses) for o in run.occurrences
-    ]
+    orbit = scenario_orbit(scenario)
+    assert isinstance(orbit, Tle)
+    assert orbit.lines == tle.lines
 
 
 # ---------------------------------------------------------------- Ground targets

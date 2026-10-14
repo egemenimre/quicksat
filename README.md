@@ -3,379 +3,76 @@
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/egemenimre/quicksat/tree/master.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/egemenimre/quicksat/tree/master)
 [![codecov](https://codecov.io/github/egemenimre/quicksat/graph/badge.svg?token=ANT5QB5UB8)](https://codecov.io/github/egemenimre/quicksat)
 
-Basic satellite sizing tool. It covers the mass, data, delta-V and attitude agility budgets, a mission scenario with a 3D viewer, and a power budget over a scenario: the solar panels, the loads and the battery. Radiator sizing will follow. quicksat is kept simple on purpose. It gives a first-pass sizing, not a full systems engineering environment.
+A first-pass satellite sizing tool, in two parts:
 
-## Status
+- **[Sizing](#sizing)** works out the mass, data, delta-V and attitude agility budgets. Each budget is a table, worked out from a few input files and a reference orbit.
+- **[Scenario and power](#scenario-and-power-with-the-viewer)** flies the satellite through a timeline of activities on a real orbit, and checks the power: what the solar panels generate, what the equipment draws, and the battery between them. A 3D viewer shows the run.
 
-| | |
-|---|---|
-| **Mass budget** | implemented |
-| **Data and downlink budget** | implemented |
-| **Delta-V budget** | implemented |
-| **Attitude agility budget** | implemented |
-| **Mission scenario** | implemented |
-| **Power: generation, consumption and battery** | implemented |
-| **Radiator sizing** | not yet specified |
+The two parts share no input files. The budgets use a reference orbit, while the scenario needs a real orbit, with an epoch and a node. quicksat is kept simple on purpose. It gives a first-pass sizing, not a full systems engineering environment.
 
-## The shared mission
-
-Every budget that needs to know where the spacecraft is, or how long it flies, reads the same file:
-
-```yaml
-altitude: 500 km
-inclination: 97.4 deg      # sun-synchronous at this altitude
-duration: 7 yr             # design life
-```
-
-```python
-from quicksat.utils.mission import Mission
-
-mission = Mission.from_yaml_file("sample/sizing/data/mission.yaml")
-
-mission.period.to("min")  # 94.6 min
-mission.orbits_per_day    # 15.22
-mission.velocity          # 7.61 km/s
-mission.duration          # 7 yr
-```
-
-Each budget takes what it needs from the mission. The data budget takes the period and the orbits in a day. The delta-V budget takes the circular velocity, and the design life that scales its recurring manoeuvres. The agility budget takes the ground track speed.
-
-Each budget reads the file itself, or takes a `Mission` that is already loaded: `DataBudget(model, mission)`, `DeltaVBudget(manoeuvres, config, mission)` and `AgilityBudget(config, mission, axis, case)`. Several budgets in one session can then share one `Mission`. This shows that they use the same orbit, rather than separate copies that happen to agree today.
-
-One rule decides what goes in this file. **A fact that more than one module can use goes here. A fact that only one module uses stays in that module's own config.** So the altitude is here, and the Isp is not. Each fact is stated once, so no two copies can disagree. Copies would disagree as soon as a number in three config files was changed in only one of them. The orbit is circular throughout. Nothing here models eccentricity, perturbations or drag.
-
-## Mass budget
-
-Two files describe a satellite. The first is a flat equipment list, with one row per item. Nothing is nested. `location`, `responsibility` and `subsystem` are independent axes rather than levels of a hierarchy. So the budget can sum over any one of them on its own.
-
-```csv
-equipment_id,equipment_name,location,responsibility,subsystem,unit_mass,eqpt_margin,number_of_units,mass_class,comments
-reaction_wheel,Rockwell RSI 45,Platform,Platform,ADCS,7.0 kg,10,4,equipment,Pyramid configuration
-imu,Northrop LN-200S,Platform,Platform,ADCS,750 g,5,1,equipment,Entered in grams
-star_tracker,Jena Astro HP,Payload,Platform,ADCS,1.2 kg,5,2,equipment,Redundant pair
-hydrazine,Hydrazine load,Platform,Platform,Propulsion,22.0 kg,0,1,propellant,No mass margin; carried as delta-V margin
-```
-
-The second holds the margins and the harness, keyed on location:
-
-```yaml
-locations:
-  Platform:
-    system_margin: 20     # percent, applied to the location subtotal
-    harness_fraction: 4   # percent of this location's equipment mass, before margin
-    harness_margin: 25    # percent, the harness's own contingency
-```
-
-Masses are entered with their units and parsed with [astropy](https://docs.astropy.org/en/stable/units/). So `750 g` is converted on load. `100 W` in a mass column raises an error, rather than being read as a plain number. The harness is not typed in. It is derived, with one row per location. Margins come in two layers: a contingency per item, and a system margin per location. Propellant takes neither.
-
-Then query the budget. Every query takes the same four flags: `propellant`, `sys_margin`, `eqpt_margin` and `in_orbit`. By default, they describe the satellite as it flies at the start of life. So the usual query needs no arguments, and each change from it is one explicit flag.
-
-```python
-from quicksat.mass.budget import MassBudget
-
-budget = MassBudget.from_csv("sample/sizing/data/equipment.csv", "sample/sizing/data/mass_budget_config.yaml")
-
-budget.in_orbit_mass()               # 470.62 kg  - separated wet mass
-budget.on_ground_mass(propellant=0)  # 465.34 kg  - dry mass at launch
-budget.in_orbit_mass(propellant=50)  # 459.62 kg  - half-way through the mission
-budget.subsystem_mass("ADCS")        #  39.50 kg
-```
-
-`by_location()`, `by_responsibility()` and `by_subsystem()` sum the same rows over each of the three axes. They give the same total, because they group one table rather than make three separate calculations. `tabulated_mass()` lays out the whole budget as a document. It lists every item, grouped by subsystem within each location. The subtotals, the margins, and the dry, propellant and wet masses follow in reading order.
-
-## Data and downlink budget
-
-There is nothing to sum here. The budget is one chain of calculations, from a few assumptions to a single comparison. So the input is a config file rather than a CSV. There are no rows, so there are no grouping views. Generation is counted per orbit, because the payload collects data for a fraction of each orbit. Downlink is counted per day, because the contacts follow the ground station's day. The two are compared per day, and the margin is taken there.
-
-```yaml
-generation:
-  raw_datarate: 1000 Mbit/s   # before compression
-  compression_ratio: 2.4
-  duty_cycle: 5 %             # of each orbit: daytime, full VNIR
-
-downlink:
-  rate: 800 Mbit/s              # X-band transmitter throughput
-  contacts_per_day: 7           # usable ground contacts, from Mission Analysis
-  avg_contact_duration: 6 min
-
-storage:
-  orbits_without_contact: 3   # sizing case for the mass memory
-```
-
-```python
-from quicksat.dataflow.budget import DataBudget
-
-budget = DataBudget.from_yaml_file("sample/sizing/data/pl_dataflow_model.yaml", "sample/sizing/data/mission.yaml")
-
-budget.generated_per_day    # 225.00 GB
-budget.downlinked_per_day   # 252.00 GB
-budget.margin               # 0.12: the link sends 12% more than the payload makes
-budget.storage_required()   # 44.35 GB to cover three orbits without a pass
-```
-
-A positive margin means that each day's data is sent down the same day. A negative margin means data builds up until some is deleted or a pass is added. `storage_required()` sizes the memory for the gap between passes. It does not cover a backlog that grows from day to day. The two are the same only while the budget closes. `tabulated_data()` gives the whole chain as a document. It has one row per quantity, with the assumption behind it. Each row is tagged `input`, `derived`, `margin` or `storage`, so the report can be filtered.
-
-## Delta-V budget
-
-The input is a flat list again, with one row per manoeuvre. `phase` and `manoeuvre_type` are the two axes to group over. Each row names a type, and the type says how its `value` becomes a delta-V:
-
-- `altitude_change`: a Hohmann transfer between circular altitudes.
-- `collision_avoidance`: the same transfer, doubled when the config says the spacecraft returns to its altitude.
-- `inclination_change`: a plane change at circular velocity.
-- `deorbit`: a single deorbit burn.
-- `given`: a delta-V worked out by real analysis elsewhere.
-
-A `recurring` row is counted per year, and scaled by the mission duration.
-
-```csv
-manoeuvre_id,manoeuvre_name,phase,manoeuvre_type,value,count,recurring,loss_factor,comments
-injection_correction,Launcher dispersion correction,Commissioning,altitude_change,12 km,1,false,1.0,Semi-major axis dispersion at separation
-drag_makeup,Drag make-up,Operations,altitude_change,1.2 km,1,true,1.0,Per year at 500 km solar mean
-collision_avoidance,Collision avoidance,Operations,collision_avoidance,200 m,4,true,1.0,Per year; one-way hop as the drag make-up absorbs the return
-deorbit,End-of-life deorbit,Disposal,deorbit,250 km,1,false,1.0,Single burn to a 500 x 250 km disposal orbit; natural decay rather than controlled re-entry
-```
-
-The `value` column holds whatever its type needs, and is checked against the type on load. So a length where a velocity belongs raises an error at that row. There is one layer of margin rather than two: a single margin on the total. A margin per manoeuvre would mean little, because the counts are the uncertain part.
-
-The closed forms assume impulsive burns. `loss_factor` corrects a row whose burn is not impulsive. It multiplies that row's delta-V, to cover finite-burn and gravity losses. It is 1.0 by default, and cannot be less. Its size depends on the thrust level, and on how the manoeuvre is split into several burns. That is an operational matter, so the factor is an input rather than a calculation. It is not the margin, which covers the uncertainty in the counts.
-
-```python
-from quicksat.delta_v.budget import DeltaVBudget
-from quicksat.mass.budget import MassBudget
-
-spacecraft = MassBudget.from_csv("sample/sizing/data/equipment.csv", "sample/sizing/data/mass_budget_config.yaml")
-budget = DeltaVBudget.from_csv(
-    "sample/sizing/data/manoeuvres.csv",
-    "sample/sizing/data/delta_v_config.yaml",
-    "sample/sizing/data/mission.yaml",
-    mass_budget=spacecraft,
-)
-
-budget.total_deltav()               # 116.5 m/s, margin included
-budget.total_deltav(margin=False)   # 111.0 m/s
-budget.by_phase()                   # Commissioning 22.3, Operations 19.9, Disposal 74.3
-budget.propellant_mass()            # 24.89 kg, from the attached mass budget
-```
-
-`tabulated_deltav()` lays out the budget as a document. It lists every manoeuvre, with a subtotal per phase. Then come the total before margin, the margin line, and the total with margin. `comments=True` and `loss_factor=True` each add a column that is hidden by default.
-
-`propellant_mass` takes the dry mass from a `MassBudget`. The mass budget is attached when the delta-V budget is built, or given as an argument that overrides it. The attachment is optional and goes one way only. `quicksat.delta_v` never imports `quicksat.mass` at runtime, so every other query works with no spacecraft attached. Nothing is written back. The equipment CSV stays the only record of the propellant actually loaded.
-
-In the sample data, the two do not quite agree. The budget asks for 24.9 kg, and the equipment list carries 22 kg. The disposal choice decides this. A single burn to a 500 × 250 km decay orbit takes 74 m/s of the 117 m/s total. A direct re-entry from the same orbit would take 152 m/s, and would raise the propellant to 42 kg.
-
-## Attitude agility budget
-
-The agility budget gives the rest-to-rest slew performance about one axis. The wheel geometry reduces to two numbers: the momentum and the torque that the wheels can apply about that axis. The slew calculation uses only these two. There is no distribution matrix and no load per wheel. A sizing model needs to know whether a 40° slew fits in the time, not how the wheels share the command.
-
-Mass properties come as **named cases**, as many as the mission needs. A case is either an envelope estimate or a stated inertia. An envelope estimate is a box with an appendage factor per axis. Its inertia follows the mass that the mass budget reports. A stated inertia is given as a mass properties report gives it. A case is never both, so each number has only one possible source. You choose the names, and nothing in the code depends on them.
-
-```yaml
-inertia_cases:
-  first_guess:               # inertia estimated from a uniform box
-    body:
-      x: 1.5 m
-      y: 1.5 m
-      z: 2.0 m
-    appendage_factor:        # per axis: the appendages are not symmetric
-      roll: 1.07
-      pitch: 1.02
-    propellant: 100 %        # mission point at which the mass budget is read
-
-  measured_bol:              # stated outright, and needs no mass at all
-    inertia:
-      roll: 264.7 kg*m**2
-      pitch: 280.0 kg*m**2
-
-wheels:
-  count: 4                   # pyramid, symmetry axis along yaw
-  elevation: 26.5 deg        # of each wheel above the pyramid base plane
-  momentum: 4.0 N*m*s        # nameplate, per wheel
-  torque: 0.2 N*m
-  momentum_use_factor: 33.3 %   # policy: the rest is disturbance storage
-  torque_derating: 75 %         # policy: the rest is control authority
-
-settling_time: 20 s          # an ADCS property, applied once at the end of a slew
-```
-
-The config holds **no mass**. The mass budget holds it, and a second copy here could come to disagree with it. The config also holds **no target duration**. How long a slew may take is a requirement placed on the spacecraft, not a property of it.
-
-```python
-from quicksat import u
-from quicksat.agility.budget import AgilityBudget, Axis
-from quicksat.mass.budget import MassBudget
-
-spacecraft = MassBudget.from_csv("sample/sizing/data/equipment.csv", "sample/sizing/data/mass_budget_config.yaml")
-roll = AgilityBudget.from_yaml_file(
-    "sample/sizing/data/agility_config.yaml",
-    "sample/sizing/data/mission.yaml",
-    Axis.ROLL,
-    "first_guess",
-    mass_budget=spacecraft,
-)
-
-roll.slew_time(40 * u.deg)                 # 63.2 s, momentum limited
-roll.total_time(40 * u.deg)                # 83.2 s once settling is added
-roll.time_margin(40 * u.deg, 113 * u.s)    # +35.8% against that target
-roll.achievable_angle(113 * u.s)           # 62.0 deg, the inverse solve
-roll.slew_time(40 * u.deg, degraded=True)  # 117.5 s with one wheel failed
-```
-
-Momentum sets the highest rate at which the spacecraft can turn. Torque sets how quickly it reaches that rate. The crossover angle between the two is 6.5° here. Below it, the rate profile is a triangle: the body accelerates, then decelerates. Above it, the profile is a trapezoid that coasts at the maximum rate. Which of the two limits a slew is a useful output. Below the crossover, more torque would shorten the slew. Above it, only more momentum would.
-
-Every capability query takes a `degraded` flag, so there is no second object for a failed wheel. With one of the four wheels failed, three remain. Only two of them can run at full torque if the net momentum in the base plane is to stay zero. So both the momentum and the torque about the axis halve. This models the same pyramid with one wheel failed, not a mounting designed for three wheels.
-
-Roll and pitch use the same calculation. The pyramid's symmetry axis is along yaw, so roll and pitch both lie in its base plane. Only the inertia differs. So one implementation serves both, and takes the axis as an argument. Yaw is reported, but never slewed. It is the weak axis with this mounting, and its limits are what a yaw manoeuvre would have to stay within.
-
-`tabulated_agility()` gives the slew table as a document. Given a `target_duration`, it also checks each angle against it, and marks the slews that do not fit. Without one, those columns are left out rather than hidden, because there is nothing to check against. The shared mission's ground track speed turns a slew time into a distance on the ground. During the 113 s allowance here, the ground track moves 798 km, and the payload images none of it. This distance is how a payload operator measures a slew.
-
-## Mission scenario
-
-The scenario flies the satellite through a list of activities on a real orbit. It checks the timeline: whether each activity falls in sunlight or in eclipse as planned, and how long the body takes to turn between attitudes. Power builds on it.
-
-The orbit comes from a TLE or OMM file, from a sun-synchronous orbit that quicksat builds as a TLE, or from a trajectory file, in ECSV or CCSDS OEM. SGP4 flies a TLE, a trajectory is interpolated between its samples, and astropy gives the sun and the frames. The scenario does not read `mission.yaml`, because it needs a real orbit, with an epoch and a node. One file holds the whole scenario:
-
-```yaml
-orbit:
-  sso: {altitude: 510 km, ltan: "13:30"}
-start: 2026-10-01T09:00:00
-duration: 3 orbits
-3d_model:                      # optional: the viewer draws a 1 m cube without it
-  file: spacecraft.glb
-  articulations:               # the parts that turn to face the sun
-    wing +y: {part: Wing +y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
-    wing -y: {part: Wing -y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
-
-targets:                       # ground points that an attitude can track
-  Svalbard: {latitude: 78.229 deg, longitude: 15.408 deg, altitude: 500 m}
-
-attitudes:                     # each fixes one body axis and constrains another
-  nadir: {point: [+z, nadir], constrain: [-y, orbit normal]}
-  sun pointing: {point: [-z, sun], constrain: [-y, orbit normal]}
-  yaw steering: {point: [+z, nadir], constrain: [+x, ground velocity]}
-  track Svalbard: {point: [+z, Svalbard], constrain: [-y, orbit normal]}
-
-slew:
-  max_rate: 0.7 deg/s
-  max_acceleration: 0.08 deg/s2
-  settling_time: 20 s
-
-# each activity's title, the trigger that ends it, its attitude, its mode, and the illumination it expects
-activities:
-  - [power generation, latitude 45 deg -2 min, sun pointing, idle, sunlit]
-  - [imaging 45 deg lat, latitude 45 deg +5 min, yaw steering, imaging, sunlit]
-  - [downlink Svalbard, Svalbard set + 2 min, track Svalbard, downlink]
-  - [nadir before eclipse, eclipse entry, nadir, idle, sunlit]
-  - [eclipse in nadir, eclipse exit, nadir, idle, eclipse]
-```
-
-Each activity starts where the one before it ends, and the list repeats until the run ends. An activity ends after a fixed time, or at an event: a shadow edge, a node, a latitude crossing, or a ground target's rise or set, with an optional offset. The shadow has an umbra and a penumbra, cast on the WGS84 ellipsoid. The attitudes take any name. Each fixes one body axis on a direction, such as the nadir, the sun or a ground target, and turns a second axis toward another, with optional offsets such as a roll. Before each change of attitude, the body slews into the new one, at the given rate and acceleration. The attitude and the mode are both `slew` while it turns. Where an attitude turns the body faster than the slews allow, such as tracking a station overhead, the run issues a warning.
-
-```python
-from quicksat.scenario.config import Scenario
-from quicksat.scenario.run import run_scenario
-from quicksat.scenario.viewer import write_scenario_viewer
-
-scenario = Scenario.from_yaml_file("sample/scenario/data/scenario.yaml")
-run = run_scenario(scenario)
-
-run.activity_summary  # 16 occurrences in 4 repeats, all ok but the last, cut at the end
-run.activity_table    # one row per occurrence, with its slew time and status
-len(run.slews)        # 12 slews, from 93 s to 214 s
-write_scenario_viewer(run, "sample/scenario/output")
-```
-
-The activity table and a Gantt chart show which activities miss their constraint, and by how much. The viewer is a web page, `scenario_viewer.html`, with the run's data in `scenario.js` beside it. It shows the run in 3D, with the ground track and the timeline. The spacecraft is drawn from the GLB file that `3d_model` names in the scenario file, or as a 1 m cube without one. The parts that `3d_model` lists as articulations, such as the solar wings, turn to face the sun. In a mode that parks them, they hold a fixed angle instead. The page needs no Python and no server. So the folder can be sent to anyone, who opens the page with a double-click.
-
-## Power
-
-Power checks a power sizing against a scenario run: what the solar panels generate, what the equipment draws in each mode, and the battery between them. It keeps its own copy of the scenario file, and reads two files beside it. The power system file holds the panels, the battery and the power conditioning:
-
-```yaml
-cell_efficiency: 30 %
-loss_factor: 0.80              # every loss up to the array's output, for the year being sized
-panels:                        # each names its cells in the 3D model
-  wing +y inner: {part: Wing +y inner cells, fill_ratio: 85 %}
-  wing +y outer: {part: Wing +y outer cells, fill_ratio: 85 %}
-  wing -y inner: {part: Wing -y inner cells, fill_ratio: 85 %}
-  wing -y outer: {part: Wing -y outer cells, fill_ratio: 85 %}
-  deck: {part: Deck cells, fill_ratio: 80 %}
-self_shadowing: {enabled: true, points: 512}
-battery: {capacity: 1024 W h, capacity_factor: 0.80, max_depth_of_discharge: 30 %}
-conditioning:                  # the efficiency of each path the energy takes
-  array_regulator: 0.96
-  battery_charge: 0.95
-  battery_discharge: 0.95
-  distribution: 0.97
-system_margin: 5 %
-```
-
-The consumption file is a CSV with one row for each piece of equipment that draws power: how many units are on, its margin, and the power of one unit in each mode, `slew` included.
-
-**Generation.** A panel takes its area and its normal from its part in the scenario's 3D model, and turns with the wing it sits on. At each step, its power is the solar flux × its area × the fill ratio × the cell efficiency × the loss factor × the cosine of the sun's angle to it. That is scaled by the light that the Earth does not hide. With self-shadowing on, rays from points on each panel find where the rest of the model shades it. A panel can also be typed in, with a normal and an area, for a scenario with no model or a quick try. It is never shaded, and the output notes it. The generation is checked against Orekit on a six-face case: the cosines agree to 1.0 × 10⁻⁴, and the whole-orbit means to 0.024%.
-
-**Consumption.** Each row draws its units' power in the mode of each time, with its margin. The scenario names the modes, and the run makes every slew a mode of its own, `slew`.
-
-**The budget.** It follows the energy step by step, through the battery. The losses sit in three places, so none is counted twice: `loss_factor` up to the array's output, an efficiency for each path in the power conditioning, and fixed overheads, such as heaters, as loads. Energy that passes through the battery pays both its paths. Three checks follow: the charge stays above the limit, each orbit has energy to spare, and the battery never runs flat.
-
-```python
-from quicksat.power.budget import run_budget
-from quicksat.power.config import PowerSystem
-from quicksat.power.consumption import PowerConsumption, run_consumption
-from quicksat.power.generation import run_generation
-from quicksat.power.viewer import write_power_viewer
-from quicksat.scenario.config import Scenario
-from quicksat.scenario.run import run_scenario
-
-run = run_scenario(Scenario.from_yaml_file("sample/power/data/scenario.yaml"))
-power_system = PowerSystem.from_yaml_file("sample/power/data/power_system.yaml")
-generation = run_generation(power_system, run)
-loads = run_consumption(PowerConsumption.from_csv("sample/power/data/power_consumption.csv"), run)
-budget = run_budget(power_system, generation, loads)
-
-generation.orbit_table  # each whole orbit: 275.5 W mean and 435.5 Wh in the first
-loads.orbit_table       # 225.0 W mean in the first, with the equipment margins
-budget.orbit_table      # where the energy goes, and 17.6 Wh to spare in the first
-budget.checks           # lowest charge 83.6%, above the 70% limit: all three pass
-write_power_viewer(budget, "sample/power/output")
-```
-
-The orbits are counted from the start of the run, one period each, and a cut orbit at the end is left out. Plots show each panel's power, the loads by subsystem, the power generated against the power consumed, and the battery's charge. The viewer folder holds the scenario viewer's page with a Power tab, `scenario.js` and `power.js`.
-
-## Documentation
-
-The documentation follows the [Diátaxis](https://diataxis.fr/) split. The samples are tutorials to follow, and the docs explain how things work. Files under `docs/` take a `_ref` suffix, so a sample and its reference cannot be confused. Each reads its own input files, such as `sample/sizing/data/` or `docs/sizing/data/`. So a change to a sample's inputs cannot change a figure quoted in a reference.
-
-The notebooks and their data are grouped by domain. `sizing` covers the mission, mass, data, delta-V and agility budgets below. `scenario` covers the orbit and the timeline of activities. `power` holds the power generation, the consumption and the budget, built on the scenario. The tests follow the same split, under `tests/sizing/`, `tests/scenario/` and `tests/power/`. The orbit and shadow code that the scenario and power share is tested in `tests/orbit/`.
-
-| | tutorial and how-to | explanation and reference |
-|---|---|---|
-| Mission | — | [`docs/sizing/mission_ref.ipynb`](docs/sizing/mission_ref.ipynb) |
-| Mass | [`sample/sizing/mass_budget.ipynb`](sample/sizing/mass_budget.ipynb) | [`docs/sizing/mass_budget_ref.ipynb`](docs/sizing/mass_budget_ref.ipynb) |
-| Data | [`sample/sizing/data_budget.ipynb`](sample/sizing/data_budget.ipynb) | [`docs/sizing/data_budget_ref.ipynb`](docs/sizing/data_budget_ref.ipynb) |
-| Delta-V | [`sample/sizing/delta_v_budget.ipynb`](sample/sizing/delta_v_budget.ipynb) | [`docs/sizing/delta_v_ref.ipynb`](docs/sizing/delta_v_ref.ipynb) |
-| Agility | [`sample/sizing/agility_roll.ipynb`](sample/sizing/agility_roll.ipynb), [`sample/sizing/agility_pitch.ipynb`](sample/sizing/agility_pitch.ipynb) | [`docs/sizing/agility_ref.ipynb`](docs/sizing/agility_ref.ipynb) |
-| Scenario | [`sample/scenario/scenario.ipynb`](sample/scenario/scenario.ipynb) | [`docs/scenario/scenario_ref.ipynb`](docs/scenario/scenario_ref.ipynb) |
-| Power generation | [`sample/power/power_generation.ipynb`](sample/power/power_generation.ipynb) | [`docs/power/power_generation_ref.ipynb`](docs/power/power_generation_ref.ipynb) |
-| Power consumption | [`sample/power/power_consumption.ipynb`](sample/power/power_consumption.ipynb) | [`docs/power/power_consumption_ref.ipynb`](docs/power/power_consumption_ref.ipynb) |
-| Power budget | [`sample/power/power_budget.ipynb`](sample/power/power_budget.ipynb) | [`docs/power/power_budget_ref.ipynb`](docs/power/power_budget_ref.ipynb) |
-
-Three Markdown documents sit beside the notebooks. They cover the project as a whole rather than one budget.
-
-| Document | What it holds |
-|---|---|
-| [`docs/explanations/decisions.md`](docs/explanations/decisions.md) | The decisions that shaped quicksat, and the reasons for each. Newest first. Read it to learn why the code is built the way it is. |
-| [`docs/reference/conventions.md`](docs/reference/conventions.md) | The rules the code and the notebooks follow: how to handle units and constants, and how to write tests. Read it before changing the code. |
-| [`docs/guides/`](docs/guides/) | Guides for getting a specific task done. Start with [how to initialise a satellite](docs/guides/sizing/initialise_a_satellite.md). For the timeline, see [how to set up and run a scenario](docs/guides/scenario/set_up_a_scenario.md). For power, see [how to set up and run a power budget](docs/guides/power/set_up_a_power_budget.md). |
-
-The sizing samples work through each budget for one sample satellite, in the order you would do it. The satellite is a small Earth observation platform in a 500 km sun-synchronous orbit. The scenario sample flies a 510 km sun-synchronous orbit for three orbits, with five activities. The power sample works out what its solar panels generate and its equipment draws over the same three orbits, and checks its battery. The reference notebooks explain why each part behaves as it does. They cover the data model, unit handling, and the input files field by field. They also show how the derived quantities and the margin layers are worked out, and where each budget stops.
-
-## Installation
+## Install
 
 ```bash
 conda env create -f environment.yml
 conda activate quicksat
 pip install -e .
 ```
+
+## Sizing
+
+The sizing sample is a small Earth observation satellite on a 500 km sun-synchronous orbit. Its files are in `sample/sizing/data/`. The workflow:
+
+1. **Edit the files** in `sample/sizing/data/` by hand. They are YAML and CSV, with units written out, such as `750 g` or `800 Mbit/s`. The sizing files have no editor yet.
+2. **Run the notebooks** in `sample/sizing/`, in the order below. Each reads the files and builds its budget. Delta-V and agility also read the mass budget.
+3. **Read the tables.** Each notebook ends with its budget laid out as a document, and the figures that answer the usual questions.
+
+| Budget | What it gives | Sample | Reference |
+|---|---|---|---|
+| Mission | The reference orbit and the design life, which every budget shares | | [mission](docs/sizing/mission_ref.ipynb) |
+| Mass | Dry and wet mass, by location, subsystem and owner, with two layers of margin | [mass](sample/sizing/mass_budget.ipynb) | [mass](docs/sizing/mass_budget_ref.ipynb) |
+| Data | Data made against data sent down each day, and the memory needed between passes | [data](sample/sizing/data_budget.ipynb) | [data](docs/sizing/data_budget_ref.ipynb) |
+| Delta-V | Delta-V by phase and type, and the propellant it needs | [delta-V](sample/sizing/delta_v_budget.ipynb) | [delta-V](docs/sizing/delta_v_ref.ipynb) |
+| Agility | Slew times about roll and pitch, from the wheels and the inertia, with a wheel failed or not | [roll](sample/sizing/agility_roll.ipynb), [pitch](sample/sizing/agility_pitch.ipynb) | [agility](docs/sizing/agility_ref.ipynb) |
+| Radiator | Not yet specified | | |
+
+The sample works one satellite through each budget. The reference explains each input field, how each figure is worked out, and where the budget stops. For your own satellite, see [how to initialise a satellite](docs/guides/sizing/initialise_a_satellite.md).
+
+## Scenario and power, with the viewer
+
+The power sample flies a 510 km sun-synchronous orbit for three orbits, with imaging, a downlink to Svalbard, and wings that turn to the sun. Its files are in `sample/power/data/`: the scenario, the 3D model, the power system and the consumption table. The workflow:
+
+1. **Edit the files.** Double-click [`sample/power/editor/editor.html`](sample/power/editor/editor.html) to open the editor in your browser. Its Setup tab takes you through every file, step by step, with an explanation of each choice. The other tabs edit the same data by theme, and a side panel shows the 3D model. Change something, such as the battery's capacity or an activity's trigger. Then save the files, as a zip or one by one, and put them back in `sample/power/data/`.
+2. **Run the notebooks.** Run [`sample/power/power_budget.ipynb`](sample/power/power_budget.ipynb) in Jupyter. It flies the scenario, works out the generation, the loads and the battery, and checks the budget.
+3. **Read the results.** The notebook shows each orbit's energy, the battery's charge, and three checks. In the sample, the lowest charge is 83.6%, above its 70% limit, and every orbit has at least 16.5 W h to spare.
+4. **See the run in the viewer.** The notebook writes [`sample/power/output/power_viewer.html`](sample/power/output/power_viewer.html). Double-click it to see the run in 3D, with the ground track, the timeline and the power.
+
+The scenario sample works the same way, for the timeline alone: [`sample/scenario/editor/editor.html`](sample/scenario/editor/editor.html), then [`sample/scenario/scenario.ipynb`](sample/scenario/scenario.ipynb), then `sample/scenario/output/scenario_viewer.html`.
+
+| Part | What it gives | Sample | Reference |
+|---|---|---|---|
+| Scenario | The timeline on a real orbit: eclipses, attitudes, slews and ground passes, checked against each activity's needs | [scenario](sample/scenario/scenario.ipynb) | [scenario](docs/scenario/scenario_ref.ipynb) |
+| Power generation | Each solar panel's power, with the wings that turn and the model's own shadows | [generation](sample/power/power_generation.ipynb) | [generation](docs/power/power_generation_ref.ipynb) |
+| Power consumption | What the equipment draws in each mode | [consumption](sample/power/power_consumption.ipynb) | [consumption](docs/power/power_consumption_ref.ipynb) |
+| Power budget | The battery's charge through the run, and whether each orbit has energy to spare | [budget](sample/power/power_budget.ipynb) | [budget](docs/power/power_budget_ref.ipynb) |
+
+[How to edit, run and view a scenario](docs/guides/scenario/edit_and_view_a_scenario.md) goes round this loop in full, for the samples or a folder of your own. For what each field means, see [how to set up and run a scenario](docs/guides/scenario/set_up_a_scenario.md) and [how to set up and run a power budget](docs/guides/power/set_up_a_power_budget.md).
+
+**The editor** holds a folder's files as they were when its page was written. After the files change on disk, or for a folder of your own, write the page again:
+
+```bash
+python -m quicksat.editor sample/power/data sample/power/editor
+```
+
+**Keep your notes in `comments` fields.** Every block of a file can hold one, and so can the file as a whole. The editor writes its own help as `#` lines, and replaces any other `#` comments when it saves. When it opens a file with such comments, it lists them, and moves each one you choose into a `comments` field.
+
+## Documentation
+
+The documentation follows the [Diátaxis](https://diataxis.fr/) split. The samples are tutorials, the guides show how to do one task, and the references explain how each part works. The notebooks, their data and the tests are grouped in three domains: `sizing`, `scenario` and `power`. Each set of notebooks reads its own copy of the inputs, so a change to a sample cannot change a figure in a reference.
+
+Two documents cover the project as a whole:
+
+- [`decisions.md`](docs/explanations/decisions.md) records the decisions that shaped quicksat, and why each was made.
+- [`conventions.md`](docs/reference/conventions.md) holds the rules for the code and the notebooks: units, constants and tests. Read it before changing the code.
 
 ## License
 

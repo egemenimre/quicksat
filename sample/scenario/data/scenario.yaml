@@ -37,9 +37,11 @@ step: 10 s
   # its cells, which face -z as the model draws them, point as close to the sun as
   # they can. In imaging, the wings park at 0 deg instead, as the model draws them.
   # An optional range, such as range: [-90 deg, 90 deg], limits the turn.
+  # point gives that axis and its direction: the sun here, or any direction an
+  # attitude can use, such as a ground target for an antenna.
   articulations:
-    wing +y: {part: Wing +y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
-    wing -y: {part: Wing -y, axis: +y, sun_axis: -z, park: {imaging: 0 deg}}
+    wing +y: {part: Wing +y, axis: +y, point: [-z, sun], park: {imaging: 0 deg}}
+    wing -y: {part: Wing -y, axis: +y, point: [-z, sun], park: {imaging: 0 deg}}
 
 # Ground points that an attitude can point at, by any name. Optional. Here, the
 # SvalSat ground station on Svalbard, which the downlink tracks. The altitude is

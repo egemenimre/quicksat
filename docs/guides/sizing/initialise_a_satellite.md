@@ -4,7 +4,7 @@ This guide takes you from the sample files to a satellite you can analyse. You f
 
 The sample files describe a small Earth observation satellite. They are a working example, so they give you correct file names, column headings and units to start from.
 
-You need quicksat installed first. The README has the steps, under "Installation".
+You need quicksat installed first. The README has the steps, under "Install".
 
 ## 1. Copy the sample data
 
