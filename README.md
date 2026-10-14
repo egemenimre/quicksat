@@ -10,6 +10,10 @@ A first-pass satellite sizing tool, in two parts:
 
 The two parts share no input files. The budgets use a reference orbit, while the scenario needs a real orbit, with an epoch and a node. quicksat is kept simple on purpose. It gives a first-pass sizing, not a full systems engineering environment.
 
+![The viewer with the power sample: the orbit, the body, the current data, the ground track, the timeline, the net power and the battery](docs/images/power_viewer.webp)
+
+*The power sample in the viewer, during the downlink to Svalbard. The wings have turned to face the sun.*
+
 ## Install
 
 ```bash
@@ -45,6 +49,14 @@ The power sample flies a 510 km sun-synchronous orbit for three orbits, with ima
 2. **Run the notebooks.** Run [`sample/power/power_budget.ipynb`](sample/power/power_budget.ipynb) in Jupyter. It flies the scenario, works out the generation, the loads and the battery, and checks the budget.
 3. **Read the results.** The notebook shows each orbit's energy, the battery's charge, and three checks. In the sample, the lowest charge is 83.6%, above its 70% limit, and every orbit has at least 16.5 W h to spare.
 4. **See the run in the viewer.** The notebook writes [`sample/power/output/power_viewer.html`](sample/power/output/power_viewer.html). Double-click it to see the run in 3D, with the ground track, the timeline and the power.
+
+![The editor's Articulations step, with the wing +y selected and turned in the 3D panel](docs/images/file_editor.webp)
+
+*The editor's Articulations step. The selected wing shows in the 3D panel, turned with the slider.*
+
+![The viewer's Power tab: the timeline, the power generated and consumed, the battery's charge, the current power and the power setup](docs/images/power_viewer_power_tab.webp)
+
+*The viewer's Power tab. The power and the battery's charge follow the timeline, with the power setup beside them.*
 
 The scenario sample works the same way, for the timeline alone: [`sample/scenario/editor/editor.html`](sample/scenario/editor/editor.html), then [`sample/scenario/scenario.ipynb`](sample/scenario/scenario.ipynb), then `sample/scenario/output/scenario_viewer.html`.
 
