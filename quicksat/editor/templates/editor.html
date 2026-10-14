@@ -130,12 +130,9 @@ main.with-3d { grid-template-columns: minmax(0, 1fr) minmax(320px, 38%); }
   display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start;
 }
 
-/* The explanation under each Setup step, behind a toggle */
-.explain { max-width: 900px; }
-.explain summary { cursor: pointer; color: var(--accent); font-size: 11px; list-style: none; margin-bottom: 6px; }
-.explain summary::-webkit-details-marker { display: none; }
-.explain summary::before { content: "\25B8  "; }
-.explain[open] summary::before { content: "\25BE  "; }
+/* A Setup step's information box, which the sign by its title opens */
+.step-body > .info { max-width: 900px; }
+.step-head h2 .ibtn { margin-left: 8px; vertical-align: 2px; }
 
 /* The search for places to add as targets */
 .search { margin-bottom: 10px; }

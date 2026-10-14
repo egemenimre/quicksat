@@ -395,7 +395,6 @@ const state = {
   file: project.names.scenario,
   pendingDelete: null,
   problems: [],
-  explain: true,
   show3d: {},
 };
 
