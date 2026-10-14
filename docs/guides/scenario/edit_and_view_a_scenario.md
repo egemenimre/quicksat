@@ -32,7 +32,7 @@ The page needs no Python and no server. Double-click it to open it in a browser.
 
 The page has two ways in, and both edit the same data:
 
-- **Setup** takes you through every file, step by step, from the orbit to the consumption. Under each step's fields, **Explanation** says why the fields matter, the options and what follows from them. Back and Next are at the top.
+- **Setup** takes you through every file, step by step, from the orbit to the consumption. The small **i** by a step's title opens its explanation: why the fields matter, the options and what follows from them. Each card on the other tabs has the same sign, and a section's explanation stays open or closed in both places. Back and Next are at the top.
 - **The other tabs** hold the same fields by theme: orbit and time, spacecraft, operations, activities, power and consumption. Use them to change one thing without going through every step.
 
 Names are chosen from lists. An activity picks its attitude and its mode, and an articulation picks its part of the model. Renaming an attitude, a target or a mode changes every use of it. Deleting one that is in use asks again, and says what uses it.

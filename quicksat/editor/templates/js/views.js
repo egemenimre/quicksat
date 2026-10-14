@@ -77,21 +77,31 @@ function drawSheet(tab) {
   if (tab.top) sheet.append(tab.top() || "");
   for (const id of tab.sections) {
     const section = SECTIONS[id];
-    const info = el("div", { class: "info", html: INFO[id], hidden: !state.openInfo.has(id) });
-    const ibtn = el("button", {
-      class: "ibtn" + (state.openInfo.has(id) ? " on" : ""), text: "i", title: "What this is, the options and what follows",
-      onclick: () => {
-        if (state.openInfo.has(id)) state.openInfo.delete(id); else state.openInfo.add(id);
-        info.hidden = !state.openInfo.has(id);
-        ibtn.classList.toggle("on", state.openInfo.has(id));
-      },
-    });
+    const [ibtn, info] = infoSign(id);
     const body = el("div", { class: "card-body" }, info, el("div", { class: "problems", "data-section": id }));
     section.render(body, { setup: false });
     sheet.append(el("div", { class: "card", "data-section": id },
       el("div", { class: "card-head" }, el("span", { class: "title" }, el("b", { text: section.title })), ibtn, el("span", { class: "spacer" }), el("span", { class: "file", text: fileOf(section) })),
       body));
   }
+}
+
+/**
+ * A section's information sign, the small "i" by its title, and the box it
+ * opens. The box is open or closed for the section, wherever it is drawn: on its
+ * card in a tab, and on its Setup step.
+ */
+function infoSign(id) {
+  const info = el("div", { class: "info", html: INFO[id], hidden: !state.openInfo.has(id) });
+  const ibtn = el("button", {
+    class: "ibtn" + (state.openInfo.has(id) ? " on" : ""), text: "i", title: "What this is, the options and what follows",
+    onclick: () => {
+      if (state.openInfo.has(id)) state.openInfo.delete(id); else state.openInfo.add(id);
+      info.hidden = !state.openInfo.has(id);
+      ibtn.classList.toggle("on", state.openInfo.has(id));
+    },
+  });
+  return [ibtn, info];
 }
 
 /** The file a section belongs to, by its name in this folder. */
@@ -115,24 +125,16 @@ function drawSetup() {
   const form = el("div", {}, el("div", { class: "problems", "data-section": step.section }));
   section.render(form, { setup: true });
   const group = [...STEPS.slice(0, state.step + 1)].reverse().find((s) => s.group).group;
+  const [ibtn, info] = infoSign(step.section);
   $("#step").replaceChildren(
     el("div", { class: "step-head" },
-      el("div", {}, el("div", { class: "where", text: `Step ${state.step + 1} of ${STEPS.length} · ${group} · ${fileOf(section)}` }), el("h2", { text: step.title })),
+      el("div", {}, el("div", { class: "where", text: `Step ${state.step + 1} of ${STEPS.length} · ${group} · ${fileOf(section)}` }), el("h2", {}, step.title, ibtn)),
       el("div", { class: "step-nav" },
         el("button", { class: "btn", text: "← Back", disabled: state.step === 0, onclick: () => showStep(state.step - 1) }),
         state.step < STEPS.length - 1
           ? el("button", { class: "btn primary", text: "Next →", onclick: () => showStep(state.step + 1) })
           : el("button", { class: "btn primary", text: "Download the zip", onclick: downloadZip }))),
-    el("div", { class: "step-body" }, form, explanation(step.section)));
-}
-
-/** The step's explanation, below its fields, behind a toggle that every step shares. */
-function explanation(section) {
-  const details = el("details", { class: "explain", open: state.explain },
-    el("summary", { text: "Explanation" }),
-    el("div", { class: "info", html: INFO[section] }));
-  details.addEventListener("toggle", () => { state.explain = details.open; });
-  return details;
+    el("div", { class: "step-body" }, info, form));
 }
 
 function showStep(i) {
