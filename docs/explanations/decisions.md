@@ -6,6 +6,21 @@ Newest first. When a decision replaces an earlier one, the earlier one is kept i
 
 ---
 
+## 16. The editor also opens files in the browser
+
+**2026-10-14. Settled.**
+
+Each editor page has an **Open a folder** button on its first Setup step, and an **Open** button on each tab for that tab's file. The page reads the files itself. So one page can edit any folder, and it need not be written again after the files change. Entry 14 left this for later.
+
+- **The YAML is read with js-yaml,** a 39 kB library that the page holds. It takes YAML's core types and merge keys, the nearest it comes to PyYAML. The two differ on a few forms, such as `yes`, which PyYAML reads as true. One of them matters to quicksat: PyYAML reads an unquoted `13:30` as the number 810, and the page reads it as the text. The page writes it in quotes, as quicksat needs it.
+- **The `#` comments are found by the page,** with the same rules as Python's. A test runs both on every YAML file of quicksat, and on some awkward layouts, and checks that they agree. It needs Node.js, and is skipped without it.
+- **quicksat's loaders do not run** on a file opened in the browser. The page says so, in place of what they said when the page was written.
+- **Saving is still a download.** Writing back into the folder works in Chrome and Edge only, so it is left for later.
+
+Python still writes the page for a folder, with its loaders' checks: the samples' pages are made that way.
+
+---
+
 ## 15. An articulation points an axis at any direction
 
 **2026-10-13. Settled.**

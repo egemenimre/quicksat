@@ -1,13 +1,33 @@
-// quicksat editor: the project, read from the folder's files that the page holds.
+// quicksat scenario editor: the project, read from the folder's files.
 //
-// Python passes the files as YAML reads them, so this part only turns them into
-// the page's fields. What it cannot keep, it notes, so that the page can say so
-// before the user saves.
+// Python passes the files as YAML reads them when it writes the page, and
+// open.js reads them the same way when the user opens a folder or a file. So
+// this part only turns them into the page's fields. What it cannot keep, it
+// notes, so that the page can say so before the user saves.
 
-const DATA = JSON.parse($("#project").textContent);
+// ---------------------------------------------------------------- constants
 
-/** What the reader noticed: fields it does not handle, and values it changed. */
-const notices = { unknown: [], changed: [] };
+const AXES = ["+x", "-x", "+y", "-y", "+z", "-z"];
+const BUILT_IN_DIRECTIONS = ["nadir", "sun", "orbit normal", "velocity", "ground velocity"];
+const CONSTRAINTS = ["", "sunlit", "penumbra", "umbra", "eclipse"];
+const TIME_UNITS = ["s", "min", "h"];
+const TRIGGERS = [
+  ["duration", "after a duration"],
+  ["eclipse entry", "eclipse entry"],
+  ["umbra entry", "umbra entry"],
+  ["umbra exit", "umbra exit"],
+  ["eclipse exit", "eclipse exit"],
+  ["ascending node", "ascending node"],
+  ["descending node", "descending node"],
+  ["latitude", "latitude crossing"],
+  ["rise", "a target rises"],
+  ["set", "a target sets"],
+  ["text", "as written"],
+];
+const SLEW = "slew";
+
+/** The folder's files: as Python wrote them into the page, or as the user opened them. */
+let DATA = JSON.parse($("#project").textContent);
 
 // ---------------------------------------------------------------- reading values
 
@@ -26,7 +46,7 @@ const tidy = (x) => Number(Number(x).toPrecision(12));
 function readQ(value, unit, where) {
   if (value == null || value === "") return q("", unit);
   const parsed = numberUnit(value);
-  if (!parsed) { notices.changed.push(`${where}: "${value}" is not a number, and was left empty`); return q("", unit); }
+  if (!parsed) { notice("changed", `${where}: "${value}" is not a number, and was left empty`); return q("", unit); }
   const u = /^orbits?$/i.test(parsed.u) ? "orbits" : parsed.u || unit;
   return q(parsed.v, u);
 }
@@ -35,7 +55,7 @@ function readQ(value, unit, where) {
 function readPercent(value, where) {
   if (value == null || value === "") return q("", "%");
   const parsed = numberUnit(value);
-  if (!parsed) { notices.changed.push(`${where}: "${value}" is not a number, and was left empty`); return q("", "%"); }
+  if (!parsed) { notice("changed", `${where}: "${value}" is not a number, and was left empty`); return q("", "%"); }
   if (parsed.u === "") return q(tidy(parsed.v * 100), "%");
   return q(parsed.v, parsed.u);
 }
@@ -44,14 +64,14 @@ function readPercent(value, where) {
 function readFraction(value, where) {
   if (value == null || value === "") return "";
   const parsed = numberUnit(value);
-  if (!parsed) { notices.changed.push(`${where}: "${value}" is not a number, and was left empty`); return ""; }
+  if (!parsed) { notice("changed", `${where}: "${value}" is not a number, and was left empty`); return ""; }
   return parsed.u === "%" ? tidy(parsed.v / 100) : parsed.v;
 }
 
 /** Note the keys of a block that the editor does not handle. */
 function knownKeys(obj, keys, where) {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return;
-  for (const key of Object.keys(obj)) if (!keys.includes(key)) notices.unknown.push(`${where} › ${key}`);
+  for (const key of Object.keys(obj)) if (!keys.includes(key)) notice("unknown", `${where} › ${key}`);
 }
 
 /** The named items of a section, without its own `comments`. */
@@ -132,7 +152,7 @@ function builtTriggerText(end) {
 /** The LTAN as `HH:MM`, from `"13:30"`, `10.5 h`, or the minutes YAML makes of an unquoted 13:30. */
 function readLtan(value) {
   if (typeof value === "number") {
-    notices.changed.push(`orbit › sso › ltan: an unquoted ${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")} reads as ${value} in YAML; the editor writes it in quotes`);
+    notice("changed", `orbit › sso › ltan: an unquoted ${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")} reads as ${value} in YAML; the editor writes it in quotes`);
     return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
   }
   const text = String(value ?? "").trim();
@@ -151,7 +171,7 @@ function readStart(value) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) text += "T00:00:00";
   const zone = text.match(/(Z|[+-]00:00)$/);
   if (zone) text = text.slice(0, -zone[0].length);
-  else if (/[+-]\d{2}:\d{2}$/.test(text)) notices.changed.push(`start: "${value}" has a time zone, which the date field cannot show; set the time in UTC`);
+  else if (/[+-]\d{2}:\d{2}$/.test(text)) notice("changed", `start: "${value}" has a time zone, which the date field cannot show; set the time in UTC`);
   return text;
 }
 
@@ -161,7 +181,7 @@ function readArticulation(name, raw) {
   let point = Array.isArray(raw.point) ? raw.point.map(str) : ["-z", "sun"];
   if (!Array.isArray(raw.point) && typeof raw.sun_axis === "string") {
     point = [raw.sun_axis, "sun"];
-    notices.changed.push(`${where}: sun_axis: ${raw.sun_axis} is now written point: [${raw.sun_axis}, sun]`);
+    notice("changed", `${where}: sun_axis: ${raw.sun_axis} is now written point: [${raw.sun_axis}, sun]`);
   }
   const park = raw.park && typeof raw.park === "object" ? Object.entries(raw.park).map(([mode, angle]) => ({ mode, angle: readQ(angle, "deg", where) })) : [];
   const range = Array.isArray(raw.range) && raw.range.length === 2 ? { min: readQ(raw.range[0], "deg", where), max: readQ(raw.range[1], "deg", where) } : null;
@@ -174,7 +194,7 @@ function readActivity(raw, index) {
   if (Array.isArray(raw)) {
     // a list from before titles starts with its trigger
     const untitled = (raw.length === 3 || raw.length === 4) && parseTrigger(raw[0]).kind !== "text" && parseTrigger(raw[1]).kind === "text";
-    if (untitled) notices.changed.push(`${where}: it had no title, so its title is empty`);
+    if (untitled) notice("changed", `${where}: it had no title, so its title is empty`);
     const [title, end, attitude, mode, constraint] = untitled ? ["", ...raw] : raw;
     fields = { title, end, attitude, mode, constraint };
   } else if (raw && typeof raw === "object") {
@@ -323,7 +343,7 @@ function readWatts(value, where) {
   const quantity = readQ(value, "W", where);
   if (blank(quantity)) return "";
   const scale = { W: 1, kW: 1000, mW: 0.001 }[quantity.u];
-  if (scale === undefined) { notices.changed.push(`${where}: "${value}" is not in W, and was left empty`); return ""; }
+  if (scale === undefined) { notice("changed", `${where}: "${value}" is not in W, and was left empty`); return ""; }
   return tidy(quantity.v * scale);
 }
 
@@ -350,17 +370,21 @@ function readConsumption(file) {
 
 // ---------------------------------------------------------------- the project
 
-function readProject(data) {
-  const files = data.files;
-  const scenario = readScenario(files.scenario.data);
-  const consumption = files.consumption ? readConsumption(files.consumption) : { modes: [], slewColumn: false, rows: [] };
-  // the modes: the activities' first, then the park angles' and the consumption table's
+/** The modes: the activities' first, then the park angles', then `columns`, the consumption table's. */
+function collectModes(scenario, columns) {
   const modes = [];
   const addMode = (mode) => mode && mode !== SLEW && !modes.includes(mode) && modes.push(mode);
   scenario.activities.forEach((a) => addMode(a.mode));
   scenario.model.articulations.items.forEach((a) => a.park.forEach((p) => addMode(p.mode)));
-  consumption.modes.forEach(addMode);
-  scenario.modes = modes;
+  columns.forEach(addMode);
+  return modes;
+}
+
+function readProject(data) {
+  const files = data.files;
+  const scenario = readingFile("scenario", () => readScenario(files.scenario.data));
+  const consumption = files.consumption ? readingFile("consumption", () => readConsumption(files.consumption)) : { modes: [], slewColumn: false, rows: [] };
+  scenario.modes = collectModes(scenario, consumption.modes);
   return {
     name: data.folder || "quicksat_project",
     names: {
@@ -370,36 +394,26 @@ function readProject(data) {
     },
     scenario,
     hasPower: Boolean(files.power),
-    power: files.power ? readPower(files.power.data) : newPower(),
+    power: files.power ? readingFile("power", () => readPower(files.power.data)) : newPower(),
     hasConsumption: Boolean(files.consumption),
     slewColumn: consumption.slewColumn,
     consumption: consumption.rows,
   };
 }
 
-const project = readProject(DATA);
+let project = readProject(DATA);
 
 // The 3D model's bytes and part names, set when a GLB is decoded, and the orbit
 // file's text, which the save writes back beside the scenario
 const model = { fileName: "", bytes: null, parts: [], nodes: [] };
 let orbitFile = DATA.orbit_file ? { name: DATA.orbit_file.name, text: DATA.orbit_file.text } : null;
 
-// What the page shows: the tab, the Setup step, the selected item, and more
-const state = {
-  tab: "setup",
-  step: 0,
-  visited: new Set([0]),
-  selection: null,
-  openInfo: new Set(),
-  writeHelp: true,
-  file: project.names.scenario,
-  pendingDelete: null,
-  problems: [],
-  show3d: {},
-};
+// What the page shows, beyond the frame's: the item selected in the 3D panel,
+// and whether the panel is shown on each step and tab
+Object.assign(state, { file: project.names.scenario, selection: null, show3d: {} });
 
-const S = project.scenario;
-const P = project.power;
+let S = project.scenario;
+let P = project.power;
 
 // ---------------------------------------------------------------- names and their uses
 
@@ -446,22 +460,4 @@ function rename(kind, from, to) {
       delete row.power[from];
     });
   }
-}
-
-// ---------------------------------------------------------------- changes
-
-let refreshTimer = 0;
-
-/**
- * Note a change to the project. A change of structure, such as an item added,
- * deleted or renamed, redraws the current view. Every change re-runs the checks.
- */
-function changed(structure = false) {
-  if (structure) drawView();
-  clearTimeout(refreshTimer);
-  refreshTimer = setTimeout(() => {
-    runChecks();
-    if (state.tab === "files") drawPreview();
-    view3d.update();
-  }, 120);
 }

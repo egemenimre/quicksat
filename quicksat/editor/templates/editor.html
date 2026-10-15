@@ -3,136 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>quicksat File Editor</title>
+<title>quicksat Scenario Editor</title>
 <style>
-:root {
-  --bg: #08111f;
-  --panel: #0c1829;
-  --panel-2: #102037;
-  --line: #1a2e4a;
-  --line-2: #24405f;
-  --text: #cdd9ea;
-  --muted: #7d93b3;
-  --dim: #4f6789;
-  --accent: #22d3ee;
-  --accent-soft: rgba(34, 211, 238, 0.12);
-  --amber: #f5b13d;
-  --red: #f87171;
-  --green: #34d399;
-  --ok-bg: #0b2a22;
-  --ok-line: #1f7a5a;
-  --warn-bg: #2b2310;
-  --warn-line: #8a6a1f;
-  --fail-bg: #2d1418;
-  --fail-line: #8f3341;
-  --mono: ui-monospace, "JetBrains Mono", "SF Mono", "Cascadia Mono", Menlo, Consolas,
-    "DejaVu Sans Mono", monospace;
-}
-* { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; }
-body {
-  background: var(--bg);
-  color: var(--text);
-  font: 12px/1.45 var(--mono);
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  overflow: hidden;
-}
-button, select, input, textarea { font: inherit; color: inherit; }
+/*@css@*/
 
-/* Header and tabs, as in the scenario viewer */
-.top {
-  display: flex; align-items: stretch; gap: 16px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--line);
-  background: linear-gradient(#0d1b2f, #0a1526);
-  min-width: 0;
-}
-.top > * { align-self: center; }
-.brand { color: var(--accent); font-weight: 700; letter-spacing: 0.1em; white-space: nowrap; }
-.brand::before { content: "\25C6  "; }
-.brand span { color: var(--muted); font-weight: 400; margin-left: 6px; }
-.spacer { flex: 1; }
-.tabs { display: flex; align-self: stretch; overflow-x: auto; }
-.tabs button {
-  background: none; border: 0; border-bottom: 2px solid transparent;
-  padding: 11px 14px 9px; color: var(--muted); cursor: pointer;
-  text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; white-space: nowrap;
-}
-.tabs button:hover { color: var(--text); }
-.tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
-.tabs button .count {
-  display: inline-block; min-width: 15px; margin-left: 6px; padding: 0 4px; border-radius: 7px;
-  background: var(--fail-bg); border: 1px solid var(--fail-line); color: var(--red);
-  font-size: 9.5px; line-height: 13px; letter-spacing: 0;
-}
-.tabs button .count[hidden] { display: none; }
-.chip {
-  border: 1px solid var(--line-2); border-radius: 3px; padding: 3px 9px;
-  color: var(--accent); background: var(--panel); white-space: nowrap; cursor: pointer;
-}
-.chip.bad { color: var(--red); border-color: var(--fail-line); background: var(--fail-bg); }
-.chip.good { color: var(--green); border-color: var(--ok-line); background: var(--ok-bg); }
-.btn {
-  background: var(--panel); border: 1px solid var(--line-2); color: var(--text);
-  border-radius: 3px; padding: 4px 10px; cursor: pointer; white-space: nowrap;
-}
-.btn:hover { border-color: var(--accent); color: var(--accent); }
-.btn.primary { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
-.btn.small { padding: 1px 7px; font-size: 11px; }
-.btn.danger:hover { border-color: var(--red); color: var(--red); }
-.btn.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
-.btn:disabled { opacity: 0.4; cursor: default; border-color: var(--line-2); color: var(--text); }
-
-.folder-name { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.folder-name::before { content: "\25B8  "; color: var(--dim); }
-
-/* The banner: what to review before saving */
-.banner[hidden] { display: none; }
-.banner {
-  padding: 5px 14px; background: var(--warn-bg); border-bottom: 1px solid var(--warn-line);
-  color: var(--amber); font-size: 11px;
-}
-.banner b { color: var(--text); font-weight: 400; }
-
-/* Main area: the pages, and the 3D panel beside them */
-main { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 0; }
+/* The scenario editor's own parts: the place search, the activities, and the 3D panel */
 main.with-3d { grid-template-columns: minmax(0, 1fr) minmax(320px, 38%); }
-.pages { min-height: 0; min-width: 0; display: grid; }
-.page { display: none; min-height: 0; min-width: 0; }
-.page.active { display: grid; }
-
-/* Setup: the step list, the step, and its information box */
-#page-setup { grid-template-columns: 210px minmax(0, 1fr); }
-.steps { border-right: 1px solid var(--line); overflow: auto; padding: 10px 0; background: #0a1424; }
-.steps button {
-  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
-  background: none; border: 0; border-left: 2px solid transparent; padding: 5px 12px;
-  color: var(--muted); cursor: pointer;
-}
-.steps button:hover { color: var(--text); }
-.steps button.current { color: var(--accent); border-left-color: var(--accent); background: var(--accent-soft); }
-.steps .num {
-  flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--line-2);
-  display: grid; place-items: center; font-size: 10px;
-}
-.steps button.visited .num { border-color: var(--ok-line); color: var(--green); }
-.steps button.problem .num { border-color: var(--fail-line); color: var(--red); background: var(--fail-bg); }
-.steps button.current .num { border-color: var(--accent); color: var(--accent); }
-.steps .group { padding: 10px 12px 3px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; font-size: 10px; }
-.step { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; min-width: 0; }
-.step-head { padding: 12px 18px 10px; display: flex; align-items: flex-end; gap: 12px; border-bottom: 1px solid var(--line); }
-.step-nav { margin-left: auto; display: flex; gap: 8px; }
-.step-head .where { color: var(--dim); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; }
-.step-head h2 { margin: 2px 0 0; font-size: 15px; font-weight: 600; color: var(--text); }
-.step-body {
-  overflow: auto; padding: 12px 18px 18px; min-height: 0;
-  display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start;
-}
-
-/* A Setup step's information box, which the sign by its title opens */
-.step-body > .info { max-width: 900px; }
-.step-head h2 .ibtn { margin-left: 8px; vertical-align: 2px; }
 
 /* The search for places to add as targets */
 .search { margin-bottom: 10px; }
@@ -144,173 +20,12 @@ main.with-3d { grid-template-columns: minmax(0, 1fr) minmax(320px, 38%); }
 .search-results button:hover { border-color: var(--accent); }
 .search-results small { color: var(--muted); }
 
-/* The file's own comments, above its preview */
-.preview-comments { padding: 0 14px 6px; border-bottom: 1px solid var(--line); }
-.preview-comments .comments { margin-top: 6px; }
-.preview-comments .hint { margin: 6px 0 0; }
-
-/* Information boxes */
-.info {
-  border: 1px solid var(--line-2); border-left: 3px solid var(--accent); border-radius: 3px;
-  background: var(--panel); padding: 10px 12px; font-size: 11.5px; line-height: 1.55; align-self: start;
-}
-.info h4 { margin: 0 0 6px; color: var(--accent); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; }
-.info p { margin: 0 0 8px; }
-.info p:last-child { margin-bottom: 0; }
-.info b { color: var(--text); }
-.info .k { color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; display: block; margin-top: 8px; }
-.info code, .card code { color: var(--amber); }
-.card .info { margin: 0 0 10px; }
-
-/* Theme tabs: a column of section cards */
-.sheet { overflow: auto; padding: 12px 18px 30px; min-height: 0; }
-.sheet-intro { color: var(--muted); margin: 2px 0 12px; max-width: 900px; }
-.card {
-  border: 1px solid var(--line); border-radius: 3px; background: #0a1526;
-  margin: 0 0 12px; max-width: 1100px;
-}
-/* The tabs that hold one wide table use the full width */
-#sheet-activities .card, #sheet-consumption .card { max-width: none; }
-.card-head {
-  display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--line);
-  background: var(--panel);
-}
-.card-head .title { text-transform: uppercase; letter-spacing: 0.1em; font-size: 10.5px; color: var(--muted); }
-.card-head .title b { color: var(--text); font-weight: 600; }
-.card-head .file { color: var(--dim); font-size: 10.5px; }
-.card-body { padding: 10px 12px; }
-.ibtn {
-  width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--dim); background: none;
-  color: var(--muted); font: 600 9px/14px var(--mono); padding: 0; cursor: pointer;
-}
-.ibtn.on { border-color: var(--accent); color: var(--accent); }
-
-/* Fields */
-.fields { display: grid; grid-template-columns: minmax(140px, max-content) minmax(0, 1fr); gap: 7px 12px; align-items: center; }
-.fields > label { color: var(--muted); }
-.fields > label small { display: block; color: var(--dim); font-size: 10.5px; }
-.ctl { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 0; }
-input[type=text], input[type=search], input[type=number], input[type=datetime-local], input[type=time], select, textarea {
-  background: #050c18; border: 1px solid var(--line-2); border-radius: 3px; padding: 3px 6px;
-  color: var(--text); min-width: 0;
-}
-input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
-input[type=number] { width: 90px; }
-input.wide, select.wide { width: 260px; max-width: 100%; }
-input.name { width: 150px; }
-.unit { color: var(--muted); }
-.hint { color: var(--dim); font-size: 10.5px; }
-.radio-row { display: flex; gap: 6px; flex-wrap: wrap; }
-.radio-row label {
-  border: 1px solid var(--line-2); border-radius: 3px; padding: 4px 9px; cursor: pointer; color: var(--muted);
-}
-.radio-row label.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-.radio-row input { display: none; }
-
-/* Comments: the user's own notes, kept through every save */
-.comments { margin-top: 10px; }
-.comments summary { cursor: pointer; color: var(--muted); font-size: 11px; list-style: none; }
-.comments summary::-webkit-details-marker { display: none; }
-.comments summary::before { content: "+ "; color: var(--accent); }
-.comments[open] summary::before { content: "\2212  "; }
-.comments summary .has { color: var(--green); }
-.comments textarea, .note-row textarea { width: 100%; min-height: 46px; resize: vertical; margin-top: 4px; }
-.comments .kept { color: var(--dim); font-size: 10.5px; }
-
-/* Item tables: attitudes, targets, panels, activities, consumption */
-.items { width: 100%; border-collapse: collapse; }
-.items th {
-  text-align: left; color: var(--dim); font-weight: 400; text-transform: uppercase; letter-spacing: 0.08em;
-  font-size: 10px; padding: 3px 6px; border-bottom: 1px solid var(--line); white-space: nowrap;
-}
-.items td { padding: 4px 6px; border-bottom: 1px solid #12223a; vertical-align: middle; }
-.items tr.selected > td { background: var(--accent-soft); }
-.items tr.note-row > td { padding-top: 0; }
-.items .tools { white-space: nowrap; text-align: right; }
 .items .trigger-text { color: var(--amber); white-space: nowrap; font-size: 11.5px; margin-top: 5px; }
 /* Activities: the trigger's cell has two lines, so every cell aligns to the top and the
    controls of a row stay on one line, with the written trigger below them */
 .items.activities tr:not(.note-row) > td { vertical-align: top; padding-top: 6px; }
 .items.activities tr:not(.note-row) > td.num { padding-top: 10.5px; }
 .items.activities tr:not(.note-row) > td.tools { padding-top: 8.5px; }
-.items .ctl { flex-wrap: nowrap; }
-.items .ctl.wrap { flex-wrap: wrap; }
-.items .ctl.gap { gap: 6px 22px; }
-.items .push { margin-left: auto; }
-.items tr.first > td { border-bottom: 0; padding-bottom: 2px; }
-.items tr.second > td { padding-top: 2px; padding-bottom: 8px; padding-left: 18px; }
-.overall { max-width: 1100px; margin: 0 0 12px; padding: 4px 12px 8px; border: 1px solid var(--line); border-radius: 3px; background: #0a1526; }
-.step-body .overall { margin-bottom: 4px; }
-.items .stack { display: grid; gap: 4px; justify-items: start; }
-.items input[type=number] { width: 70px; }
-.notebtn { color: var(--dim); }
-.notebtn.has { color: var(--green); border-color: var(--ok-line); }
-.add-row { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
-.confirm { color: var(--red); font-size: 10.5px; }
-.scroll-x { overflow-x: auto; }
-
-/* Problems, the page's own basic checks */
-.problems { margin: 0 0 8px; }
-.problems:empty { display: none; }
-.problems div {
-  border: 1px solid var(--fail-line); background: var(--fail-bg); color: var(--red);
-  border-radius: 3px; padding: 3px 8px; margin-bottom: 4px; font-size: 11px;
-}
-.problems div.note { border-color: var(--warn-line); background: var(--warn-bg); color: var(--amber); }
-.popover {
-  position: fixed; z-index: 30; right: 14px; top: 44px; width: 420px; max-height: 60vh; overflow: auto;
-  background: var(--panel); border: 1px solid var(--line-2); border-radius: 3px; padding: 10px 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
-}
-.popover h4 { margin: 0 0 6px; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; }
-.popover a { color: var(--red); cursor: pointer; text-decoration: none; display: block; padding: 3px 0; border-bottom: 1px solid var(--line); }
-.popover a span { color: var(--dim); }
-.popover p { color: var(--muted); margin: 8px 0 0; font-size: 11px; }
-
-/* Files */
-#page-files { grid-template-columns: 260px minmax(0, 1fr); }
-.filelist { border-right: 1px solid var(--line); overflow: auto; padding: 10px; background: #0a1424; }
-.filelist .folder { color: var(--dim); margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.1em; font-size: 10px; }
-.filelist button {
-  display: block; width: 100%; text-align: left; background: none; border: 1px solid transparent;
-  border-radius: 3px; padding: 4px 8px; color: var(--muted); cursor: pointer;
-}
-.filelist button.current { color: var(--accent); border-color: var(--line-2); background: var(--panel); }
-.filelist button small { color: var(--dim); display: block; font-size: 10px; }
-.filelist .actions { display: grid; gap: 6px; margin-top: 14px; }
-.filelist .fields { grid-template-columns: minmax(0, 1fr); }
-.filelist input.wide { width: 100%; }
-.filelist label { color: var(--muted); display: flex; gap: 6px; align-items: center; cursor: pointer; }
-.preview { display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); min-height: 0; }
-.preview-head { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); }
-.preview-head .name { color: var(--text); }
-.preview pre {
-  margin: 0; padding: 12px 16px; overflow: auto; min-height: 0; font: 11.5px/1.5 var(--mono); color: var(--text);
-  white-space: pre; tab-size: 2;
-}
-.preview pre .c { color: #5d7598; }
-.preview pre .h { color: var(--amber); }
-.preview pre .u { color: var(--green); }
-
-/* The review of the comments written by hand, above the file's text */
-.review { margin: 10px 14px; border: 1px solid var(--warn-line); border-radius: 3px; background: var(--warn-bg); padding: 6px 10px; max-height: 40vh; overflow: auto; }
-.review summary { cursor: pointer; color: var(--amber); }
-.review summary b { font-weight: 600; }
-.review .hint { margin: 6px 0; }
-.review td { vertical-align: top; }
-.review pre.comment-text { margin: 0; white-space: pre-wrap; color: var(--text); font: inherit; }
-.review ul { margin: 4px 0 8px; padding-left: 18px; color: var(--muted); }
-.review .done { color: var(--green); }
-.warn { color: var(--amber); }
-
-/* What quicksat's loaders said when the page was written */
-.python-checks { margin-top: 16px; font-size: 11px; }
-.python-checks h4 { margin: 0 0 6px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 400; }
-.python-checks div { margin-bottom: 6px; }
-.python-checks .ok { color: var(--green); }
-.python-checks .bad { color: var(--red); }
-.python-checks pre { margin: 4px 0 0; white-space: pre-wrap; color: var(--red); font: inherit; }
-.popover .python-checks { border-top: 1px solid var(--line); padding-top: 8px; }
 
 .vp-message { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 20px; text-align: center; }
 
@@ -344,22 +59,15 @@ main:not(.with-3d) .panel3d { display: none; }
 .turn input { flex: 1; }
 .turn[hidden] { display: none; }
 
-
 @media (max-width: 900px) {
   main.with-3d { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 45%; }
   .panel3d { border-left: 0; border-top: 1px solid var(--line); }
-  #page-setup { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .steps { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 0; }
-  .steps .group { display: none; }
-  .steps button { width: auto; border-left: 0; border-bottom: 2px solid transparent; }
-  .step-body { grid-template-columns: minmax(0, 1fr); }
-  #page-files { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
 }
 </style>
 </head>
 <body>
 <header class="top">
-  <div class="brand">QUICKSAT<span>FILE EDITOR</span></div>
+  <div class="brand">QUICKSAT<span>SCENARIO EDITOR</span></div>
   <div class="folder-name" id="folder" title="The folder of input files this page edits"></div>
   <nav class="tabs" id="tabs"></nav>
   <div class="spacer"></div>
@@ -409,6 +117,7 @@ main:not(.with-3d) .panel3d { display: none; }
 <script id="places" type="application/json">@places@</script>
 <script id="project" type="application/json">@project@</script>
 <script>/*@three@*/</script>
+<script>/*@yaml@*/</script>
 <script>/*@editor@*/</script>
 </body>
 </html>

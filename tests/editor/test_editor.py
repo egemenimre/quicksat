@@ -177,7 +177,7 @@ def test_the_page_holds_its_scripts_and_the_folder(power_dir, tmp_path):
     page = write_editor(power_dir, tmp_path / "out")
     assert page == tmp_path / "out" / PAGE_FILE
     text = page.read_text(encoding="utf-8")
-    assert not re.search(r"@(project|places|three|editor)@", text)
+    assert not re.search(r"@(project|places|three|yaml|css|editor)@", text)
     scripts = PACKAGE / "editor" / "templates" / "js"
     for name in SCRIPTS:
         assert (scripts / name).read_text(encoding="utf-8") in text, name

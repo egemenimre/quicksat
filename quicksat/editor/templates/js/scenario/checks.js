@@ -1,4 +1,7 @@
-// quicksat editor: the page's own checks, and quicksat's when the page was written.
+// quicksat scenario editor: the page's own checks.
+
+/** What the page's checks leave to the run, for the checks pop-over. */
+const CHECKS_NOTE = "Whether the triggers come, the constraints hold and the battery lasts needs the Python run.";
 
 /** The page's own checks: names, units and ranges. Proper checks need the Python run. */
 function runChecks() {
@@ -172,53 +175,4 @@ function readNormalVector(text) {
   if (numbers.length !== 3 || numbers.some((v) => v === "" || isNaN(Number(v)))) return null;
   if (numbers.every((v) => Number(v) === 0)) return null;
   return numbers.map(Number);
-}
-
-/** Put the problems where they belong: the header, the tabs, the steps and the sections. */
-function showProblems() {
-  const errors = state.problems.filter((p) => p.level === "error");
-  const chip = $("#checks-chip");
-  chip.textContent = errors.length ? `${errors.length} problem${errors.length > 1 ? "s" : ""}` : "basic checks pass";
-  chip.className = "chip " + (errors.length ? "bad" : "good");
-  for (const tab of TABS) {
-    const n = errors.filter((p) => (tab.sections || []).includes(p.section)).length;
-    const count = document.querySelector(`#tabs button[data-tab=${tab.id}] .count`);
-    if (count) { count.textContent = n; count.hidden = !n; }
-  }
-  STEPS.forEach((step, i) => {
-    const button = document.querySelector(`#steps button[data-step="${i}"]`);
-    if (button) button.classList.toggle("problem", errors.some((p) => p.section === step.section));
-  });
-  for (const box of document.querySelectorAll(".problems[data-section]")) {
-    box.replaceChildren(...state.problems.filter((p) => p.section === box.dataset.section)
-      .map((p) => el("div", { class: p.level === "note" ? "note" : "", text: p.text })));
-  }
-  if (!$("#popover").hidden && $("#popover").dataset.kind === "checks") showChecksPopover();
-}
-
-function showChecksPopover() {
-  const pop = $("#popover");
-  pop.dataset.kind = "checks";
-  const where = (section) => {
-    const step = STEPS.findIndex((s) => s.section === section);
-    return step >= 0 ? STEPS[step].title : section;
-  };
-  pop.replaceChildren(
-    el("h4", { text: "The page's basic checks" }),
-    ...state.problems.map((p) => el("a", {
-      onclick: () => { goToSection(p.section); pop.hidden = true; },
-      style: p.level === "note" ? "color: var(--amber)" : null,
-    }, p.text, el("span", { text: `  ${where(p.section)}` }))),
-    state.problems.length ? null : el("p", { text: "Nothing found." }),
-    el("p", { text: "These check names, units and ranges only. Whether the triggers come, the constraints hold and the battery lasts needs the Python run." }),
-    pythonChecks());
-  pop.hidden = false;
-}
-
-/** What quicksat's own loaders said of the files when the page was written. */
-function pythonChecks() {
-  return el("div", { class: "python-checks" },
-    el("h4", { text: "quicksat's loaders, when this page was written" }),
-    ...DATA.checks.map((check) => el("div", { class: check.ok ? "ok" : "bad" },
-      el("b", { text: check.file }), check.ok ? " reads with no problem" : el("pre", { text: check.message }))));
 }

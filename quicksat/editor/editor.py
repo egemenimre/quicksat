@@ -14,8 +14,9 @@ double-click, and needs no Python and no server.
 The page holds the folder's files inside itself. Python reads them here and
 passes them to the page as JSON: each YAML file as YAML reads it, the CSV as rows
 of text, the 3D model in base64, and an orbit file as text. The page turns them
-into its own fields. When the user saves, it writes the files again, as
-downloads: one by one, or as a zip.
+into its own fields. The user can also open another folder, or one file, in the
+page, which reads them in the same form. When the user saves, the page writes
+the files again, as downloads: one by one, or as a zip.
 
 Saving rewrites each file. The user's notes survive in the `comments` fields,
 which every block of a file has. A `#` comment does not survive: the page writes
@@ -68,16 +69,19 @@ _ORBIT_FILES = ("tle_file", "omm_file", "trajectory_file")
 SCRIPTS = (
     "base.js",
     "files.js",
-    "project.js",
-    "sections.js",
-    "checks.js",
-    "write.js",
-    "view3d.js",
-    "views.js",
+    "open.js",
+    "frame.js",
+    "scenario/project.js",
+    "scenario/sections.js",
+    "scenario/checks.js",
+    "scenario/write.js",
+    "scenario/view3d.js",
+    "scenario/views.js",
 )
-"""The page's scripts in `templates/js/`, in the order they run. `base.js` and
-`files.js` hold the field controls and the file writing, which do not depend on
-the scenario or the power files."""
+"""The page's scripts in `templates/js/`, in the order they run. The first four
+are shared by every editor page: the field controls, the file writing, the
+opening of files in the browser, and the page's frame. The rest are the
+scenario editor's own."""
 
 
 def _json_default(value):
@@ -479,10 +483,16 @@ def editor_page(data: dict) -> str:
     """
     three = (_VENDOR / "three.min.js").read_text(encoding="utf-8")
     notice = (_VENDOR / "three.LICENSE").read_text(encoding="utf-8")
+    js_yaml = (_VENDOR / "js-yaml.min.js").read_text(encoding="utf-8")
+    js_yaml_notice = (_VENDOR / "js-yaml.LICENSE").read_text(encoding="utf-8")
+    scripts = _TEMPLATES / "js"
     parts = {
+        "/*@css@*/": (_TEMPLATES / "editor.css").read_text(encoding="utf-8"),
         "/*@three@*/": f"/*!\n{notice}*/\n{three}",
+        "/*@yaml@*/": f"/*!\n{js_yaml_notice}*/\n{js_yaml}",
         "/*@editor@*/": "\n".join(
-            (_TEMPLATES / "js" / name).read_text(encoding="utf-8") for name in SCRIPTS
+            scripts.joinpath(*name.split("/")).read_text(encoding="utf-8")
+            for name in SCRIPTS
         ),
         "@places@": (_PACKAGE / "data" / "places.json").read_text(encoding="utf-8"),
         "@project@": _script_json(data),

@@ -1,8 +1,10 @@
-// quicksat editor: the helpers, the constants and the field controls.
+// quicksat editor: the helpers and the field controls, which every editor page
+// shares.
 //
 // The page holds one project in memory. The Setup steps and the theme tabs draw
 // the same sections from it, so they cannot disagree. Every change goes through
-// `changed`, which re-runs the basic checks and refreshes what shows the files.
+// `changed`, in frame.js, which re-runs the basic checks and refreshes what shows
+// the files.
 "use strict";
 
 // ---------------------------------------------------------------- helpers
@@ -47,25 +49,8 @@ const str = (value) => (typeof value === "string" ? value : typeof value === "nu
 
 // ---------------------------------------------------------------- constants
 
-const AXES = ["+x", "-x", "+y", "-y", "+z", "-z"];
-const BUILT_IN_DIRECTIONS = ["nadir", "sun", "orbit normal", "velocity", "ground velocity"];
-const CONSTRAINTS = ["", "sunlit", "penumbra", "umbra", "eclipse"];
-const TIME_UNITS = ["s", "min", "h"];
-const TRIGGERS = [
-  ["duration", "after a duration"],
-  ["eclipse entry", "eclipse entry"],
-  ["umbra entry", "umbra entry"],
-  ["umbra exit", "umbra exit"],
-  ["eclipse exit", "eclipse exit"],
-  ["ascending node", "ascending node"],
-  ["descending node", "descending node"],
-  ["latitude", "latitude crossing"],
-  ["rise", "a target rises"],
-  ["set", "a target sets"],
-  ["text", "as written"],
-];
+/** The key of the user's notes in every block. No named item may take it. */
 const RESERVED = "comments";
-const SLEW = "slew";
 
 // ---------------------------------------------------------------- field controls
 
@@ -230,21 +215,4 @@ function nameInput(item, kind, siblings) {
       changed(true);
     },
   });
-}
-
-/** Make a table row select its item in the 3D view when clicked. */
-function selectable(tr, selection) {
-  tr.addEventListener("focusin", () => select(selection));
-  tr.addEventListener("click", () => select(selection));
-  tr._selection = selection;
-  return tr;
-}
-
-function select(selection) {
-  state.selection = selection;
-  for (const tr of document.querySelectorAll("tr.selected")) tr.classList.remove("selected");
-  for (const tr of document.querySelectorAll(".items tr")) {
-    if (tr._selection && selection && tr._selection.item === selection.item) tr.classList.add("selected");
-  }
-  view3d.update();
 }
