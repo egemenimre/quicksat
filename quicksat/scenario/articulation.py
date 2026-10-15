@@ -126,6 +126,26 @@ def clamp_to_range(angles: np.ndarray, low: float, high: float) -> np.ndarray:
     return np.where(outside, nearer, angles)
 
 
+def grid_modes(run: "ScenarioRun") -> np.ndarray:
+    """
+    The mode at each time of the run's grid, `slew` included.
+
+    Parameters
+    ----------
+    run : ScenarioRun
+        The run
+
+    Returns
+    -------
+    modes : ndarray
+        The mode names, as an array of objects
+    """
+    modes = labels_at(run.mode, run.times)
+    # the run is open at its end, so the last time takes the last activity's mode
+    modes[-1] = run.occurrences[-1].activity.mode
+    return modes
+
+
 def articulation_angles(run: "ScenarioRun") -> dict[str, Quantity]:
     """
     The angle of each articulation at each time of the run's grid.
@@ -146,9 +166,7 @@ def articulation_angles(run: "ScenarioRun") -> dict[str, Quantity]:
     if model is None or not model.articulations:
         return {}
     targets = _body_directions(run, {a.point[1] for a in model.articulations.values()})
-    modes = labels_at(run.mode, run.times)
-    # the run is open at its end, so the last time takes the last activity's mode
-    modes[-1] = run.occurrences[-1].activity.mode
+    modes = grid_modes(run)
 
     angles = {}
     for name, articulation in model.articulations.items():

@@ -245,6 +245,57 @@ def body_rates(
     return np.linalg.norm(omega, axis=1), accelerations
 
 
+def lvlh_rotations(position: np.ndarray, velocity: np.ndarray) -> np.ndarray:
+    """
+    The local vertical, local horizontal frame (LVLH) at each state.
+
+    x is along the track, y is minus the orbit normal, and z is the nadir, toward
+    the centre of the Earth. For a near-circular orbit, x is close to the
+    velocity.
+
+    Parameters
+    ----------
+    position, velocity : ndarray
+        The states, shape (n, 3), in an inertial frame
+
+    Returns
+    -------
+    rotations : ndarray
+        Matrices that turn LVLH vectors into the states' frame, shape (n, 3, 3).
+        Column i is LVLH axis i.
+    """
+    z = _unit(-position)
+    y = _unit(-np.cross(position, velocity))
+    return np.stack([np.cross(y, z), y, z], axis=-1)
+
+
+def roll_pitch_yaw(rotations: np.ndarray, frames: np.ndarray) -> np.ndarray:
+    """
+    The body's roll, pitch and yaw against a reference frame, such as LVLH.
+
+    The angles turn the frame onto the body in the order yaw about z, then pitch
+    about the new y, then roll about the newest x: the 3-2-1 sequence. Pitch is
+    within ±90 degrees, and roll and yaw within ±180. Near a pitch of ±90
+    degrees, roll and yaw are not well defined.
+
+    Parameters
+    ----------
+    rotations : ndarray
+        Matrices that turn body vectors into an inertial frame, shape (n, 3, 3)
+    frames : ndarray
+        Matrices that turn the reference frame's vectors into the same inertial
+        frame, shape (n, 3, 3)
+
+    Returns
+    -------
+    angles : ndarray
+        Roll, pitch and yaw, in radians, shape (n, 3)
+    """
+    relative = Rotation.from_matrix(frames).inv() * Rotation.from_matrix(rotations)
+    yaw, pitch, roll = relative.as_euler("ZYX").T
+    return np.column_stack([roll, pitch, yaw])
+
+
 def turn_between(
     start: np.ndarray,
     ends: np.ndarray,

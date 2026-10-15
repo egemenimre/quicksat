@@ -4,14 +4,20 @@
 # Orbit comes from mission.yaml.
 
 generation:
-  raw_datarate: 1000 Mbit/s   # before compression; 416.67 Mbit/s after
+  # Before compression: 416.67 Mbit/s after it.
+  raw_datarate: 1000 Mbit/s
   compression_ratio: 2.4
-  duty_cycle: 5 %          # of each orbit: daytime, full VNIR
+  # Of each orbit: daytime, full VNIR.
+  duty_cycle: 5 %
 
 downlink:
-  rate: 800 Mbit/s              # X-band transmitter throughput
-  contacts_per_day: 7           # usable ground contacts, from Mission Analysis
-  avg_contact_duration: 6 min   # average usable contact
+  # The X-band transmitter's throughput.
+  rate: 800 Mbit/s
+  # Usable ground contacts, from Mission Analysis.
+  contacts_per_day: 7
+  # The average usable contact.
+  avg_contact_duration: 6 min
 
 storage:
-  orbits_without_contact: 3   # sizing case for the mass memory
+  # The sizing case for the mass memory.
+  orbits_without_contact: 3

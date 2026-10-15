@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>quicksat Scenario Editor</title>
+<style>
+/*@css@*/
+
+/* The scenario editor's own parts: the place search, the activities, and the 3D panel */
+main.with-3d { grid-template-columns: minmax(0, 1fr) minmax(320px, 38%); }
+
+/* The search for places to add as targets */
+.search { margin-bottom: 10px; }
+.search-results { display: grid; gap: 2px; margin-top: 4px; max-width: 700px; }
+.search-results button {
+  text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 3px;
+  padding: 3px 8px; color: var(--text); cursor: pointer;
+}
+.search-results button:hover { border-color: var(--accent); }
+.search-results small { color: var(--muted); }
+
+.items .trigger-text { color: var(--amber); white-space: nowrap; font-size: 11.5px; margin-top: 5px; }
+/* Activities: the trigger's cell has two lines, so every cell aligns to the top and the
+   controls of a row stay on one line, with the written trigger below them */
+.items.activities tr:not(.note-row) > td { vertical-align: top; padding-top: 6px; }
+.items.activities tr:not(.note-row) > td.num { padding-top: 10.5px; }
+.items.activities tr:not(.note-row) > td.tools { padding-top: 8.5px; }
+
+.vp-message { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 20px; text-align: center; }
+
+/* The 3D panel */
+.panel3d { border-left: 1px solid var(--line); display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto auto; min-height: 0; min-width: 0; overflow: hidden; background: #0a1424; }
+main:not(.with-3d) .panel3d { display: none; }
+.panel3d-head { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+.panel3d-head .title { text-transform: uppercase; letter-spacing: 0.1em; font-size: 10.5px; color: var(--muted); }
+.panel3d-head .title b { color: var(--text); font-weight: 600; }
+.viewport { position: relative; background: #050c18; min-height: 0; overflow: hidden; }
+.viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.label3d { position: absolute; left: 0; top: 0; font-size: 10.5px; white-space: nowrap; text-shadow: 0 0 3px #000, 0 0 2px #000; }
+.readout {
+  border-top: 1px solid var(--line); background: var(--panel);
+  padding: 6px 10px; font-size: 11px; color: var(--muted); min-height: 44px;
+}
+.readout b { color: var(--text); font-weight: 400; }
+.readout .bad { color: var(--red); }
+.vtoggles { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.parts { border-top: 1px solid var(--line); max-height: 34%; overflow: auto; padding: 6px 10px 10px; }
+.parts .k { color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; font-size: 10px; margin: 4px 0; }
+.parts button {
+  display: block; width: 100%; text-align: left; background: none; border: 0; padding: 2px 4px;
+  color: var(--muted); cursor: pointer; border-radius: 2px;
+}
+.parts button:hover { color: var(--text); }
+.parts button.on { color: var(--accent); background: var(--accent-soft); }
+.parts button small { color: var(--dim); }
+.turn { display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-top: 1px solid var(--line); color: var(--muted); }
+.turn input { flex: 1; }
+.turn[hidden] { display: none; }
+
+@media (max-width: 900px) {
+  main.with-3d { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 45%; }
+  .panel3d { border-left: 0; border-top: 1px solid var(--line); }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">QUICKSAT<span>SCENARIO EDITOR</span></div>
+  <div class="folder-name" id="folder" title="The folder of input files this page edits"></div>
+  <nav class="tabs" id="tabs"></nav>
+  <div class="spacer"></div>
+  <button class="chip" id="checks-chip" title="The page's basic checks"></button>
+  <button class="btn" id="toggle-3d">Show 3D</button>
+</header>
+<div class="banner" id="banner" hidden></div>
+<main id="main" class="with-3d">
+  <div class="pages" id="pages">
+    <section class="page" id="page-setup">
+      <nav class="steps" id="steps"></nav>
+      <div class="step" id="step"></div>
+    </section>
+    <section class="page" id="page-orbit"><div class="sheet" id="sheet-orbit"></div></section>
+    <section class="page" id="page-spacecraft"><div class="sheet" id="sheet-spacecraft"></div></section>
+    <section class="page" id="page-operations"><div class="sheet" id="sheet-operations"></div></section>
+    <section class="page" id="page-activities"><div class="sheet" id="sheet-activities"></div></section>
+    <section class="page" id="page-power"><div class="sheet" id="sheet-power"></div></section>
+    <section class="page" id="page-consumption"><div class="sheet" id="sheet-consumption"></div></section>
+    <section class="page" id="page-files">
+      <nav class="filelist" id="filelist"></nav>
+      <div class="preview" id="preview"></div>
+    </section>
+  </div>
+  <aside class="panel3d" id="panel3d">
+    <div class="panel3d-head">
+      <span class="title"><b>3D model</b> <span id="model-name"></span></span>
+      <span class="spacer"></span>
+      <label class="btn small" title="Load another GLB file">Load GLB<input type="file" id="glb-input" accept=".glb" hidden></label>
+      <button class="btn small" id="hide-3d" title="Hide the 3D panel on this step or tab">Hide</button>
+    </div>
+    <div class="viewport" id="viewport">
+      <canvas></canvas>
+      <div class="labels" id="labels"></div>
+      <div class="vtoggles" id="vtoggles"></div>
+    </div>
+    <div class="readout" id="readout"></div>
+    <div class="turn" id="turn" hidden>
+      <span id="turn-label">turn</span>
+      <input type="range" id="turn-range" min="-180" max="180" step="1" value="0">
+      <span id="turn-value">0°</span>
+    </div>
+    <div class="parts" id="parts"></div>
+  </aside>
+</main>
+<div class="popover" id="popover" hidden></div>
+<script id="places" type="application/json">@places@</script>
+<script id="project" type="application/json">@project@</script>
+<script>/*@three@*/</script>
+<script>/*@yaml@*/</script>
+<script>/*@editor@*/</script>
+</body>
+</html>

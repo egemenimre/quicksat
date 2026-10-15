@@ -1,4 +1,4 @@
-// quicksat editor: the sections, each one block of a file, and their explanations.
+// quicksat scenario editor: the sections, each one block of a file, and their explanations.
 //
 // The Setup steps and the theme tabs both draw these, so each field is built once.
 
@@ -72,7 +72,21 @@ function copyEquipment(row) {
 /** For a folder with no power system file: say so, and offer to start one. */
 function noPower(body) {
   body.append(el("p", { class: "hint", text: `This folder has no ${project.names.power}, as a scenario folder has none. Start one to size the power from this scenario.` }),
-    el("button", { class: "btn", text: `add ${project.names.power}`, onclick: () => { project.hasPower = true; changed(true); } }));
+    el("button", { class: "btn", text: `add ${project.names.power}`, onclick: addPower }));
+}
+
+/** Start a power system file, for a scenario folder that has none. */
+function addPower() {
+  project.hasPower = true;
+  fileAdded("power");
+  changed(true);
+}
+
+/** Start a consumption file, for a folder that has none. */
+function addConsumption() {
+  project.hasConsumption = true;
+  fileAdded("consumption");
+  changed(true);
 }
 
 /** The modes a consumption row needs: each mode, and slew while the body turns. */
@@ -84,14 +98,14 @@ const SECTIONS = {
   project: {
     title: "Folder", file: "all files",
     render(body) {
-      const g = grid(body);
-      row(g, "Folder name", textInput(project, "name", { cls: "wide" }), "the zip's folder");
+      body.append(openFolderButton());
+      body.append(filesTable([{ rows: FILES.map(({ kind }) => ({ kind, add: { power: addPower, consumption: addConsumption }[kind] })) }]));
       body.append(commentsBox(S, "Your comments on the overall scenario", { open: true, note: `They go in the comments field at the top of ${project.names.scenario}. The comments on the overall power subsystem are in the Power steps.` }));
     },
   },
 
   orbit: {
-    title: "Orbit", file: "scenario.yaml",
+    title: "Orbit", file: "scenario",
     render(body) {
       const o = S.orbit;
       const g = grid(body);
@@ -114,6 +128,7 @@ const SECTIONS = {
               if (!file) return;
               o[key] = file.name;
               orbitFile = { name: file.name, text: await file.text() };
+              sources.orbit = { how: "file" };
               changed(true);
             },
           }))), held ? "saved with the other files" : "not held by this page: keep it beside the scenario file");
@@ -123,7 +138,7 @@ const SECTIONS = {
   },
 
   time: {
-    title: "Start, duration and step", file: "scenario.yaml",
+    title: "Start, duration and step", file: "scenario",
     render(body) {
       const g = grid(body);
       row(g, "Start", el("span", { class: "ctl" },
@@ -136,7 +151,7 @@ const SECTIONS = {
   },
 
   model: {
-    title: "3D model", file: "scenario.yaml",
+    title: "3D model", file: "scenario",
     render(body) {
       const m = S.model;
       const g = grid(body);
@@ -151,7 +166,7 @@ const SECTIONS = {
   },
 
   articulations: {
-    title: "Articulations", file: "scenario.yaml",
+    title: "Articulations", file: "scenario",
     render(body) {
       const list = S.model.articulations.items;
       const table = el("table", { class: "items" });
@@ -198,7 +213,7 @@ const SECTIONS = {
   },
 
   targets: {
-    title: "Ground targets", file: "scenario.yaml",
+    title: "Ground targets", file: "scenario",
     render(body) {
       const list = S.targets.items;
       body.append(placeSearch(list));
@@ -227,7 +242,7 @@ const SECTIONS = {
   },
 
   attitudes: {
-    title: "Attitudes", file: "scenario.yaml",
+    title: "Attitudes", file: "scenario",
     render(body) {
       const list = S.attitudes.items;
       const table = el("table", { class: "items" });
@@ -259,7 +274,7 @@ const SECTIONS = {
   },
 
   slew: {
-    title: "Attitude slew performance", file: "scenario.yaml",
+    title: "Attitude slew performance", file: "scenario",
     render(body) {
       const s = S.slew;
       const g = grid(body);
@@ -274,7 +289,7 @@ const SECTIONS = {
   },
 
   modes: {
-    title: "Modes", file: "scenario.yaml and the consumption table",
+    title: "Modes", file: "scenario", also: "and the consumption table",
     render(body) {
       const table = el("table", { class: "items" });
       table.append(el("tr", {}, ["mode", "used by", ""].map((h) => el("th", { text: h }))));
@@ -312,7 +327,7 @@ const SECTIONS = {
   },
 
   activities: {
-    title: "Activities", file: "scenario.yaml",
+    title: "Activities", file: "scenario", wide: true,
     render(body) {
       const list = S.activities;
       const table = el("table", { class: "items activities" });
@@ -357,7 +372,7 @@ const SECTIONS = {
   },
 
   panels: {
-    title: "Solar panels", file: "power_system.yaml",
+    title: "Solar panels", file: "power",
     render(body) {
       if (!project.hasPower) return noPower(body);
       const list = P.panels.items;
@@ -388,7 +403,7 @@ const SECTIONS = {
   },
 
   cells: {
-    title: "Cells, losses and shading", file: "power_system.yaml",
+    title: "Cells, losses and shading", file: "power",
     render(body, { setup = false } = {}) {
       if (!project.hasPower) return noPower(body);
       // In the Power tab this box heads the page, so the card leaves it out
@@ -404,7 +419,7 @@ const SECTIONS = {
   },
 
   battery: {
-    title: "Battery", file: "power_system.yaml",
+    title: "Battery", file: "power",
     render(body) {
       if (!project.hasPower) return noPower(body);
       const b = P.battery;
@@ -421,7 +436,7 @@ const SECTIONS = {
   },
 
   conditioning: {
-    title: "Power conditioning", file: "power_system.yaml",
+    title: "Power conditioning", file: "power",
     render(body) {
       if (!project.hasPower) return noPower(body);
       const c = P.conditioning;
@@ -439,11 +454,11 @@ const SECTIONS = {
   },
 
   consumption: {
-    title: "Consumption", file: "power_consumption.csv",
+    title: "Consumption", file: "consumption", wide: true,
     render(body) {
       if (!project.hasConsumption) {
         body.append(el("p", { class: "hint", text: `This folder has no ${project.names.consumption}. Start one to give what each equipment draws in each mode.` }),
-          el("button", { class: "btn", text: `add ${project.names.consumption}`, onclick: () => { project.hasConsumption = true; changed(true); } }));
+          el("button", { class: "btn", text: `add ${project.names.consumption}`, onclick: addConsumption }));
         return;
       }
       const rows = project.consumption;
@@ -501,7 +516,7 @@ const SECTIONS = {
 const INFO = {
   project: `<h4>The folder</h4>
     <p>The editor works on one folder of input files. A scenario folder holds the scenario file, with the 3D model and any orbit file it names. A power folder also holds the power system file and the consumption file, with its own copy of the scenario, as quicksat's domains keep their own files.</p>
-    <p>Saving downloads the files, one by one or as a zip. Put them back in the folder, then run the notebooks again.</p>
+    ${FILES_HELP}
     <span class="k">Comments</span>
     <p>Every block of a file has a <code>comments</code> field for your own comments. The editor keeps them through every edit and save. The lines that start with <code>#</code> are help that the editor writes. It rewrites them on each save, so do not keep your own comments there.</p>`,
   orbit: `<h4>Trajectory definition</h4>

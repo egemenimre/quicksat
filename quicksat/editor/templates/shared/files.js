@@ -1,5 +1,13 @@
 // quicksat editor: writing YAML and CSV text, the zip, and the downloads.
 
+/** The lines at the top of every YAML file the editor writes. */
+const HEADER = [
+  "# Written by the quicksat editor. Lines that start with # are help text: the",
+  "# editor writes them, and rewrites them each time it saves this file. Put the",
+  "# comments you want to keep in a comments field. Every block has one, and the",
+  "# editor keeps them as they are.",
+];
+
 /** A YAML scalar: plain when that reads back as the same string, otherwise in double quotes. */
 function ys(value) {
   const text = String(value);
@@ -90,6 +98,14 @@ function saveBlob(blob, name) {
 
 function download(file) {
   saveBlob(new Blob([fileBytes(file)]), file.path.split("/").pop());
+}
+
+/** Every file of the page, in one zip with the folder's name. */
+function downloadZip() {
+  const folder = (project.name || "quicksat_project").replace(/[^A-Za-z0-9_.-]+/g, "_");
+  saveBlob(zipBlob(projectFiles().map((f) => ({ name: `${folder}/${f.path}`, data: fileBytes(f) }))), `${folder}.zip`);
+  markSaved(projectFiles().map((file) => file.kind), "export");
+  refreshFiles();
 }
 
 // A zip with no compression: CRC-32, a local header per file, then the central directory

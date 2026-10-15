@@ -26,6 +26,7 @@ from quicksat.editor.editor import (
     FORMAT,
     PAGE_FILE,
     SCRIPTS,
+    SHARED_SCRIPTS,
     comment_blocks,
     editor_data,
     editor_page,
@@ -85,6 +86,18 @@ def test_each_comment_belongs_to_the_key_it_describes():
         (14, ["activities", 1], False),
         (16, [], False),  # no key below it
     ]
+
+
+def test_a_block_with_a_blank_line_below_it_belongs_to_the_section():
+    text = (
+        "attitudes:\n"
+        "  # every attitude here points +z\n"
+        "\n"
+        "  # nadir's own\n"
+        "  nadir: {point: [+z, nadir]}\n"
+    )
+    found = [(block["line"], block["path"]) for block in comment_blocks(text)]
+    assert found == [(2, ["attitudes"]), (4, ["attitudes", "nadir"])]
 
 
 def test_a_block_keeps_its_lines_and_a_hash_in_quotes_is_not_a_comment():
@@ -165,10 +178,11 @@ def test_the_page_holds_its_scripts_and_the_folder(power_dir, tmp_path):
     page = write_editor(power_dir, tmp_path / "out")
     assert page == tmp_path / "out" / PAGE_FILE
     text = page.read_text(encoding="utf-8")
-    assert not re.search(r"@(project|places|three|editor)@", text)
-    scripts = PACKAGE / "editor" / "templates" / "js"
-    for name in SCRIPTS:
-        assert (scripts / name).read_text(encoding="utf-8") in text, name
+    assert not re.search(r"@(project|places|three|yaml|css|editor)@", text)
+    templates = PACKAGE / "editor" / "templates"
+    for folder, names in (("shared", SHARED_SCRIPTS), ("scenario", SCRIPTS)):
+        for name in names:
+            assert (templates / folder / name).read_text(encoding="utf-8") in text, name
     assert page_data(text)["files"]["scenario"]["name"] == "scenario.yaml"
     places = re.search(
         r'<script id="places" type="application/json">(.*?)</script>', text, re.S

@@ -1,9 +1,9 @@
-// quicksat editor: the 3D panel, which shows the model, its parts, the panels,
+// quicksat scenario editor: the 3D panel, which shows the model, its parts, the panels,
 // the articulations and the attitudes' axes.
 
 // The 3D panel is shown or hidden for each Setup step and each tab. It starts
 // shown where it has something to show, and remembers the user's choice.
-const viewKey = () => (state.tab === "setup" ? `step:${STEPS[state.step].section}` : `tab:${state.tab}`);
+const viewKey = () => (state.tab === "setup" ? `step:${STEPS[state.step].sections[0]}` : `tab:${state.tab}`);
 
 function wants3d() {
   const key = viewKey();
@@ -324,7 +324,25 @@ async function loadGlbFile(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (await view3d.load(bytes, file.name)) {
     S.model.file = file.name;
+    sources.model = { how: "file" };
     state.selection = null;
     changed(true);
   }
+}
+
+/** Make a table row select its item in the 3D view when clicked. */
+function selectable(tr, selection) {
+  tr.addEventListener("focusin", () => select(selection));
+  tr.addEventListener("click", () => select(selection));
+  tr._selection = selection;
+  return tr;
+}
+
+function select(selection) {
+  state.selection = selection;
+  for (const tr of document.querySelectorAll("tr.selected")) tr.classList.remove("selected");
+  for (const tr of document.querySelectorAll(".items tr")) {
+    if (tr._selection && selection && tr._selection.item === selection.item) tr.classList.add("selected");
+  }
+  view3d.update();
 }

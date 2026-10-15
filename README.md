@@ -26,7 +26,7 @@ pip install -e .
 
 The sizing sample is a small Earth observation satellite on a 500 km sun-synchronous orbit. Its files are in `sample/sizing/data/`. The workflow:
 
-1. **Edit the files** in `sample/sizing/data/` by hand. They are YAML and CSV, with units written out, such as `750 g` or `800 Mbit/s`. The sizing files have no editor yet.
+1. **Edit the files.** Double-click [`sample/sizing/editor/editor.html`](sample/sizing/editor/editor.html) to open the Sizing Editor in your browser. Its Setup tab takes you through every file, step by step, and the other tabs edit one budget each. Save the files, as a zip or one by one, and put them back in `sample/sizing/data/`. The files are YAML and CSV, with units written out, such as `750 g` or `800 Mbit/s`, so they can be edited by hand too.
 2. **Run the notebooks** in `sample/sizing/`, in the order below. Each reads the files and builds its budget. Delta-V and agility also read the mass budget.
 3. **Read the tables.** Each notebook ends with its budget laid out as a document, and the figures that answer the usual questions.
 
@@ -46,9 +46,9 @@ The sample works one satellite through each budget. The reference explains each 
 The power sample flies a 510 km sun-synchronous orbit for three orbits, with imaging, a downlink to Svalbard, and wings that turn to the sun. Its files are in `sample/power/data/`: the scenario, the 3D model, the power system and the consumption table. The workflow:
 
 1. **Edit the files.** Double-click [`sample/power/editor/editor.html`](sample/power/editor/editor.html) to open the editor in your browser. Its Setup tab takes you through every file, step by step, with an explanation of each choice. The other tabs edit the same data by theme, and a side panel shows the 3D model. Change something, such as the battery's capacity or an activity's trigger. Then save the files, as a zip or one by one, and put them back in `sample/power/data/`.
-2. **Run the notebooks.** Run [`sample/power/power_budget.ipynb`](sample/power/power_budget.ipynb) in Jupyter. It flies the scenario, works out the generation, the loads and the battery, and checks the budget.
-3. **Read the results.** The notebook shows each orbit's energy, the battery's charge, and three checks. In the sample, the lowest charge is 83.6%, above its 70% limit, and every orbit has at least 16.5 W h to spare.
-4. **See the run in the viewer.** The notebook writes [`sample/power/output/power_viewer.html`](sample/power/output/power_viewer.html). Double-click it to see the run in 3D, with the ground track, the timeline and the power.
+2. **Run the budget.** Run [`sample/power/power_budget.ipynb`](sample/power/power_budget.ipynb) in Jupyter, or `python -m quicksat.power sample/power/data sample/power/output` from the command line. Either flies the scenario, works out the generation, the loads and the battery, and checks the budget.
+3. **Read the results.** The notebook shows each orbit's energy, the battery's charge, and three checks. The command prints the checks only. In the sample, the lowest charge is 83.6%, above its 70% limit, and every orbit has at least 16.5 W h to spare.
+4. **See the run in the viewer.** Both write [`sample/power/output/power_viewer.html`](sample/power/output/power_viewer.html). Double-click it to see the run in 3D, with the ground track, the timeline, the power and the attitude. Its Attitude tab also gives the attitude as files for other tools.
 
 ![The editor's Articulations step, with the wing +y selected and turned in the 3D panel](docs/images/file_editor.webp)
 
@@ -58,7 +58,7 @@ The power sample flies a 510 km sun-synchronous orbit for three orbits, with ima
 
 *The viewer's Power tab. The power and the battery's charge follow the timeline, with the power setup beside them.*
 
-The scenario sample works the same way, for the timeline alone: [`sample/scenario/editor/editor.html`](sample/scenario/editor/editor.html), then [`sample/scenario/scenario.ipynb`](sample/scenario/scenario.ipynb), then `sample/scenario/output/scenario_viewer.html`.
+The scenario sample works the same way, for the timeline alone: [`sample/scenario/editor/editor.html`](sample/scenario/editor/editor.html), then [`sample/scenario/scenario.ipynb`](sample/scenario/scenario.ipynb) or `python -m quicksat.scenario sample/scenario/data sample/scenario/output`, then `sample/scenario/output/scenario_viewer.html`.
 
 | Part | What it gives | Sample | Reference |
 |---|---|---|---|
@@ -69,13 +69,13 @@ The scenario sample works the same way, for the timeline alone: [`sample/scenari
 
 [How to edit, run and view a scenario](docs/guides/scenario/edit_and_view_a_scenario.md) goes round this loop in full, for the samples or a folder of your own. For what each field means, see [how to set up and run a scenario](docs/guides/scenario/set_up_a_scenario.md) and [how to set up and run a power budget](docs/guides/power/set_up_a_power_budget.md).
 
-**The editor** holds a folder's files as they were when its page was written. After the files change on disk, or for a folder of your own, write the page again:
+**The editors** open with the files of the folder that their page was written for. **Open a folder…**, on the first Setup step, reads any other folder, and **Open** on a tab reads one file. Or write a page for a folder of your own. A folder with a `scenario.yaml` gets the Scenario Editor, and a folder of sizing files gets the Sizing Editor:
 
 ```bash
 python -m quicksat.editor sample/power/data sample/power/editor
 ```
 
-**Keep your notes in `comments` fields.** Every block of a file can hold one, and so can the file as a whole. The editor writes its own help as `#` lines, and replaces any other `#` comments when it saves. When it opens a file with such comments, it lists them, and moves each one you choose into a `comments` field.
+**Keep your notes in `comments` fields.** Every block of a file can hold one, and so can the file as a whole, in the sizing files too. The editors write their own help as `#` lines, and replace any other `#` comments when they save. When an editor opens a file with such comments, it lists them, and moves each one you choose into a `comments` field. Write a `#` comment on the lines above what it describes, so that it goes to the right block.
 
 ## Documentation
 

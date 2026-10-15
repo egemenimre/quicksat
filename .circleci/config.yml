@@ -77,11 +77,25 @@ jobs:
             ruff format --check quicksat tests
             vulture quicksat tests --ignore-names model_config --ignore-decorators "@field_validator,@model_validator"
 
+  javascript:
+
+    docker:
+      - image: cimg/node:24.21
+
+    steps:
+      - checkout
+      # Node's own test runner, so there is nothing to install. Node expands the
+      # quoted pattern itself.
+      - run:
+          name: Test the viewer's logic
+          command: node --test "tests/**/*.test.js"
+
 
 workflows:
   tests_and_codestyle:
     jobs:
       - codestyle
+      - javascript
       - tests:
           matrix:
             parameters:

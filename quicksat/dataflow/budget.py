@@ -17,15 +17,20 @@ import os
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from quicksat import u
 from quicksat.dataflow.report import tabulate
 from quicksat.utils.mission import Mission
-from quicksat.utils.parser_helpers import DataRateQty, FractionQty, TimeQty
+from quicksat.utils.parser_helpers import (
+    Commented,
+    DataRateQty,
+    FractionQty,
+    TimeQty,
+)
 
 
-class Generation(BaseModel):
+class Generation(Commented):
     """
     What the payload produces.
 
@@ -37,9 +42,11 @@ class Generation(BaseModel):
         Divides the raw rate. 1 means no compression
     duty_cycle : Quantity
         Fraction of each orbit spent generating
+    comments : str, optional
+        The user's notes on the block. quicksat does not read them
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     raw_datarate: DataRateQty
     compression_ratio: float = Field(ge=1)
@@ -54,7 +61,7 @@ class Generation(BaseModel):
         return value
 
 
-class Downlink(BaseModel):
+class Downlink(Commented):
     """
     What the link sends.
 
@@ -69,16 +76,18 @@ class Downlink(BaseModel):
         Usable ground contacts in a day, from Mission Analysis
     avg_contact_duration : Quantity
         How long an average contact lasts
+    comments : str, optional
+        The user's notes on the block. quicksat does not read them
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     rate: DataRateQty
     contacts_per_day: float = Field(ge=0)
     avg_contact_duration: TimeQty
 
 
-class Storage(BaseModel):
+class Storage(Commented):
     """
     The onboard memory sizing case.
 
@@ -86,12 +95,16 @@ class Storage(BaseModel):
     ----------
     orbits_without_contact : float
         Orbits the spacecraft may go without a usable pass
+    comments : str, optional
+        The user's notes on the block. quicksat does not read them
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     orbits_without_contact: float = Field(ge=0)
 
 
-class DataFlowModel(BaseModel):
+class DataFlowModel(Commented):
     """
     The payload dataflow model: generation, downlink and storage.
 
@@ -106,7 +119,11 @@ class DataFlowModel(BaseModel):
         What the link sends
     storage : Storage
         The onboard memory sizing case
+    comments : str, optional
+        The user's notes on the block. quicksat does not read them
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     generation: Generation
     downlink: Downlink

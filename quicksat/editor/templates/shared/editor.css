@@ -1,10 +1,5 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>quicksat File Editor</title>
-<style>
+/* quicksat editor: the styles that every editor page shares, in the scenario
+   viewer's palette. A page adds its own after them. */
 :root {
   --bg: #08111f;
   --panel: #0c1829;
@@ -95,9 +90,8 @@ button, select, input, textarea { font: inherit; color: inherit; }
 }
 .banner b { color: var(--text); font-weight: 400; }
 
-/* Main area: the pages, and the 3D panel beside them */
+/* Main area: the pages, and any panel beside them */
 main { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 0; }
-main.with-3d { grid-template-columns: minmax(0, 1fr) minmax(320px, 38%); }
 .pages { min-height: 0; min-width: 0; display: grid; }
 .page { display: none; min-height: 0; min-width: 0; }
 .page.active { display: grid; }
@@ -131,18 +125,9 @@ main.with-3d { grid-template-columns: minmax(0, 1fr) minmax(320px, 38%); }
 }
 
 /* A Setup step's information box, which the sign by its title opens */
-.step-body > .info { max-width: 900px; }
-.step-head h2 .ibtn { margin-left: 8px; vertical-align: 2px; }
+.step-body .info { max-width: 900px; }
+.step-head h2 .ibtn, .step-body h3 .ibtn { margin-left: 8px; vertical-align: 2px; }
 
-/* The search for places to add as targets */
-.search { margin-bottom: 10px; }
-.search-results { display: grid; gap: 2px; margin-top: 4px; max-width: 700px; }
-.search-results button {
-  text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 3px;
-  padding: 3px 8px; color: var(--text); cursor: pointer;
-}
-.search-results button:hover { border-color: var(--accent); }
-.search-results small { color: var(--muted); }
 
 /* The file's own comments, above its preview */
 .preview-comments { padding: 0 14px 6px; border-bottom: 1px solid var(--line); }
@@ -164,13 +149,13 @@ main.with-3d { grid-template-columns: minmax(0, 1fr) minmax(320px, 38%); }
 
 /* Theme tabs: a column of section cards */
 .sheet { overflow: auto; padding: 12px 18px 30px; min-height: 0; }
-.sheet-intro { color: var(--muted); margin: 2px 0 12px; max-width: 900px; }
+.sheet-intro { color: var(--muted); margin: 2px 0 10px; max-width: 900px; }
 .card {
   border: 1px solid var(--line); border-radius: 3px; background: #0a1526;
   margin: 0 0 12px; max-width: 1100px;
 }
-/* The tabs that hold one wide table use the full width */
-#sheet-activities .card, #sheet-consumption .card { max-width: none; }
+/* The sections that hold one wide table use the full width */
+.card.wide { max-width: none; }
 .card-head {
   display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--line);
   background: var(--panel);
@@ -217,7 +202,7 @@ input.name { width: 150px; }
 .comments textarea, .note-row textarea { width: 100%; min-height: 46px; resize: vertical; margin-top: 4px; }
 .comments .kept { color: var(--dim); font-size: 10.5px; }
 
-/* Item tables: attitudes, targets, panels, activities, consumption */
+/* Item tables, such as the attitudes, the panels or the equipment */
 .items { width: 100%; border-collapse: collapse; }
 .items th {
   text-align: left; color: var(--dim); font-weight: 400; text-transform: uppercase; letter-spacing: 0.08em;
@@ -227,12 +212,6 @@ input.name { width: 150px; }
 .items tr.selected > td { background: var(--accent-soft); }
 .items tr.note-row > td { padding-top: 0; }
 .items .tools { white-space: nowrap; text-align: right; }
-.items .trigger-text { color: var(--amber); white-space: nowrap; font-size: 11.5px; margin-top: 5px; }
-/* Activities: the trigger's cell has two lines, so every cell aligns to the top and the
-   controls of a row stay on one line, with the written trigger below them */
-.items.activities tr:not(.note-row) > td { vertical-align: top; padding-top: 6px; }
-.items.activities tr:not(.note-row) > td.num { padding-top: 10.5px; }
-.items.activities tr:not(.note-row) > td.tools { padding-top: 8.5px; }
 .items .ctl { flex-wrap: nowrap; }
 .items .ctl.wrap { flex-wrap: wrap; }
 .items .ctl.gap { gap: 6px 22px; }
@@ -312,42 +291,44 @@ input.name { width: 150px; }
 .python-checks pre { margin: 4px 0 0; white-space: pre-wrap; color: var(--red); font: inherit; }
 .popover .python-checks { border-top: 1px solid var(--line); padding-top: 8px; }
 
-.vp-message { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 20px; text-align: center; }
 
-/* The 3D panel */
-.panel3d { border-left: 1px solid var(--line); display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto auto; min-height: 0; min-width: 0; overflow: hidden; background: #0a1424; }
-main:not(.with-3d) .panel3d { display: none; }
-.panel3d-head { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-bottom: 1px solid var(--line); }
-.panel3d-head .title { text-transform: uppercase; letter-spacing: 0.1em; font-size: 10.5px; color: var(--muted); }
-.panel3d-head .title b { color: var(--text); font-weight: 600; }
-.viewport { position: relative; background: #050c18; min-height: 0; overflow: hidden; }
-.viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.label3d { position: absolute; left: 0; top: 0; font-size: 10.5px; white-space: nowrap; text-shadow: 0 0 3px #000, 0 0 2px #000; }
-.readout {
-  border-top: 1px solid var(--line); background: var(--panel);
-  padding: 6px 10px; font-size: 11px; color: var(--muted); min-height: 44px;
+/* Parts that a page may use: greyed tabs and steps, section headings in a step,
+   tables in the information boxes, and narrower fields */
+.tabs button.off, .steps button.off { color: var(--dim); }
+.step-body h3 {
+  margin: 4px 0 8px; font-size: 10.5px; font-weight: 400; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.1em;
 }
-.readout b { color: var(--text); font-weight: 400; }
-.readout .bad { color: var(--red); }
-.vtoggles { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
-.parts { border-top: 1px solid var(--line); max-height: 34%; overflow: auto; padding: 6px 10px 10px; }
-.parts .k { color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; font-size: 10px; margin: 4px 0; }
-.parts button {
-  display: block; width: 100%; text-align: left; background: none; border: 0; padding: 2px 4px;
-  color: var(--muted); cursor: pointer; border-radius: 2px;
-}
-.parts button:hover { color: var(--text); }
-.parts button.on { color: var(--accent); background: var(--accent-soft); }
-.parts button small { color: var(--dim); }
-.turn { display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-top: 1px solid var(--line); color: var(--muted); }
-.turn input { flex: 1; }
-.turn[hidden] { display: none; }
+.step-body h3 .file { color: var(--dim); text-transform: none; letter-spacing: 0; margin-left: 8px; }
+.info table { border-collapse: collapse; margin: 4px 0 8px; }
+.info td, .info th { padding: 2px 10px 2px 0; text-align: left; vertical-align: top; }
+.info th { color: var(--dim); font-weight: 400; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+input.mid { width: 160px; }
+input.short { width: 100px; }
+.items td.fill { width: 100%; }
+.items input.fill { width: 100%; min-width: 110px; }
+.items td > label.ctl { white-space: nowrap; flex-wrap: nowrap; }
 
+/* The folder's files: opening them, where they came from, whether they changed */
+.open-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+.file-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: 1100px; margin: 0 0 8px;
+  padding: 5px 10px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel);
+}
+.file-bar .file-name { color: var(--text); font-weight: 600; }
+.file-state[data-value="unchanged"] { color: var(--muted); }
+.file-state[data-value="downloaded"] { color: var(--green); }
+.file-state[data-value="modified"] { color: var(--amber); }
+.file-state[data-value="new"] { color: var(--accent); }
+.file-state[data-value="absent"] { color: var(--dim); }
+.files-table td.ok, .checks .ok { color: var(--green); }
+.files-table td.bad, .checks .bad { color: var(--red); }
+.files-table td.warn, .checks .warn { color: var(--amber); }
+.files-table tr.group-row > td { padding-top: 10px; color: var(--muted); border-bottom-color: var(--line); }
+.files-table td .btn[hidden] { display: none; }
+.review .key { color: var(--muted); }
 
 @media (max-width: 900px) {
-  main.with-3d { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 45%; }
-  .panel3d { border-left: 0; border-top: 1px solid var(--line); }
   #page-setup { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .steps { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 0; }
   .steps .group { display: none; }
@@ -355,60 +336,3 @@ main:not(.with-3d) .panel3d { display: none; }
   .step-body { grid-template-columns: minmax(0, 1fr); }
   #page-files { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
 }
-</style>
-</head>
-<body>
-<header class="top">
-  <div class="brand">QUICKSAT<span>FILE EDITOR</span></div>
-  <div class="folder-name" id="folder" title="The folder of input files this page edits"></div>
-  <nav class="tabs" id="tabs"></nav>
-  <div class="spacer"></div>
-  <button class="chip" id="checks-chip" title="The page's basic checks"></button>
-  <button class="btn" id="toggle-3d">Show 3D</button>
-</header>
-<div class="banner" id="banner" hidden></div>
-<main id="main" class="with-3d">
-  <div class="pages" id="pages">
-    <section class="page" id="page-setup">
-      <nav class="steps" id="steps"></nav>
-      <div class="step" id="step"></div>
-    </section>
-    <section class="page" id="page-orbit"><div class="sheet" id="sheet-orbit"></div></section>
-    <section class="page" id="page-spacecraft"><div class="sheet" id="sheet-spacecraft"></div></section>
-    <section class="page" id="page-operations"><div class="sheet" id="sheet-operations"></div></section>
-    <section class="page" id="page-activities"><div class="sheet" id="sheet-activities"></div></section>
-    <section class="page" id="page-power"><div class="sheet" id="sheet-power"></div></section>
-    <section class="page" id="page-consumption"><div class="sheet" id="sheet-consumption"></div></section>
-    <section class="page" id="page-files">
-      <nav class="filelist" id="filelist"></nav>
-      <div class="preview" id="preview"></div>
-    </section>
-  </div>
-  <aside class="panel3d" id="panel3d">
-    <div class="panel3d-head">
-      <span class="title"><b>3D model</b> <span id="model-name"></span></span>
-      <span class="spacer"></span>
-      <label class="btn small" title="Load another GLB file">Load GLB<input type="file" id="glb-input" accept=".glb" hidden></label>
-      <button class="btn small" id="hide-3d" title="Hide the 3D panel on this step or tab">Hide</button>
-    </div>
-    <div class="viewport" id="viewport">
-      <canvas></canvas>
-      <div class="labels" id="labels"></div>
-      <div class="vtoggles" id="vtoggles"></div>
-    </div>
-    <div class="readout" id="readout"></div>
-    <div class="turn" id="turn" hidden>
-      <span id="turn-label">turn</span>
-      <input type="range" id="turn-range" min="-180" max="180" step="1" value="0">
-      <span id="turn-value">0°</span>
-    </div>
-    <div class="parts" id="parts"></div>
-  </aside>
-</main>
-<div class="popover" id="popover" hidden></div>
-<script id="places" type="application/json">@places@</script>
-<script id="project" type="application/json">@project@</script>
-<script>/*@three@*/</script>
-<script>/*@editor@*/</script>
-</body>
-</html>

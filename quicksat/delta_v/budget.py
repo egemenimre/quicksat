@@ -37,6 +37,7 @@ if TYPE_CHECKING:  # a type annotation only, so quicksat.mass stays unimported
     from quicksat.mass.budget import MassBudget
 
 from quicksat.utils.parser_helpers import (
+    Commented,
     NoSpaceStr,
     PlainQty,
     TimeQty,
@@ -156,23 +157,25 @@ class Manoeuvre(BaseModel):
         return self
 
 
-class Propulsion(BaseModel):
+class Propulsion(Commented):
     """What the propulsion system delivers, for the rocket equation."""
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     isp: TimeQty
 
 
-class CollisionAvoidance(BaseModel):
+class CollisionAvoidance(Commented):
     """Policy for how a collision avoidance manoeuvre is flown."""
+
+    model_config = ConfigDict(extra="forbid")
 
     return_burn: bool = True
     """Up and back down. False when the satellite was due to be raised anyway, so the
     manoeuvre also serves as that raise."""
 
 
-class DeltaVConfig(BaseModel):
+class DeltaVConfig(Commented):
     """
     Budget settings.
 
@@ -180,6 +183,8 @@ class DeltaVConfig(BaseModel):
     mission file, because other budgets need them too. What stays here is what only this
     budget can use.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     propulsion: Propulsion
     margin: Annotated[float, Field(ge=0)] = 0.0

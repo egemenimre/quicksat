@@ -1,11 +1,4 @@
-// quicksat editor: writing the folder's files from the project.
-
-const HEADER = [
-  "# Written by the quicksat editor. Lines that start with # are help text: the",
-  "# editor writes them, and rewrites them each time it saves this file. Put the",
-  "# comments you want to keep in a comments field. Every block has one, and the",
-  "# editor keeps them as they are.",
-];
+// quicksat scenario editor: writing the folder's files from the project.
 
 const YAML_HELP = {
   orbit: "The orbit, given one of four ways: sso, tle_file, omm_file or trajectory_file. A relative path is taken from the folder of this file.",
@@ -219,22 +212,17 @@ function savePath(name) {
 
 /** Every file the folder saves: the scenario, its model and orbit file, and the power files. */
 function projectFiles() {
-  const files = [{ path: project.names.scenario, text: scenarioYaml() }];
+  const files = [{ kind: "scenario", path: project.names.scenario, text: scenarioYaml() }];
   if (S.model.file && model.bytes) {
     const { path, note } = savePath(S.model.file);
-    files.push({ path, bytes: model.bytes, note: note || "the 3D model" });
+    files.push({ kind: "model", path, bytes: model.bytes, note: note || "the 3D model" });
   }
   const key = ORBIT_KEYS[S.orbit.source];
   if (key && orbitFile && orbitFile.name === S.orbit[key]) {
     const { path, note } = savePath(S.orbit[key]);
-    files.push({ path, text: orbitFile.text, note: note || "the orbit file" });
+    files.push({ kind: "orbit", path, text: orbitFile.text, note: note || "the orbit file" });
   }
-  if (project.hasPower) files.push({ path: project.names.power, text: powerYaml() });
-  if (project.hasConsumption) files.push({ path: project.names.consumption, text: consumptionCsv() });
+  if (project.hasPower) files.push({ kind: "power", path: project.names.power, text: powerYaml() });
+  if (project.hasConsumption) files.push({ kind: "consumption", path: project.names.consumption, text: consumptionCsv() });
   return files;
-}
-
-function downloadZip() {
-  const folder = (project.name || "quicksat_project").replace(/[^A-Za-z0-9_.-]+/g, "_");
-  saveBlob(zipBlob(projectFiles().map((f) => ({ name: `${folder}/${f.path}`, data: fileBytes(f) }))), `${folder}.zip`);
 }

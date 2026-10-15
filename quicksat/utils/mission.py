@@ -26,13 +26,13 @@ from pathlib import Path
 
 import numpy as np
 import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
 
 from quicksat import MU_EARTH, Q_, R_EARTH, u
-from quicksat.utils.parser_helpers import AngleQty, LengthQty, TimeQty
+from quicksat.utils.parser_helpers import AngleQty, Commented, LengthQty, TimeQty
 
 
-class Mission(BaseModel):
+class Mission(Commented):
     """
     A mission: a circular Earth orbit, and how long it is flown.
 
@@ -45,9 +45,11 @@ class Mission(BaseModel):
     duration : Quantity
         Design life. Scales the recurring delta-V manoeuvres, and the power and
         radiator work will need it too.
+    comments : str, optional
+        The user's notes on the block. quicksat does not read them
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     altitude: LengthQty
     inclination: AngleQty

@@ -110,6 +110,16 @@ Details: [`power_budget_ref.ipynb`](../../power/power_budget_ref.ipynb), section
 
 ## 6. Run the budget
 
+The quickest way is the command line:
+
+```bash
+python -m quicksat.power winter winter/output
+```
+
+It reads the folder's three files and runs the budget. It prints the scenario's summary, any occurrence with a problem, the warnings, the notes on the panels and the loads, and the three checks. Then it writes the viewer into `winter/output/`, and prints the page's path. A check that fails does not stop it, so you can see the failing run in the viewer.
+
+For the tables and the plots, run it in Python or in a notebook instead:
+
 ```python
 import matplotlib.pyplot as plt
 
@@ -165,6 +175,16 @@ Run every case the same way, each from its own folder. The sizing must pass ever
 - `power_viewer.html` is the page. Double-click it to open it in a browser.
 - `scenario.js` holds the run, and `power.js` the budget. The page shows the power only when the two come from the same run.
 
-The page is the scenario viewer, with a Power tab: each panel's power, the loads, the battery's charge and the setup. The Results tab lists the checks. Write each case to its own output folder, so that one does not replace another.
+The page is the scenario viewer, with a Power tab: each panel's power, the loads, the battery's charge and the setup. The Attitude tab shows the body's roll, pitch and yaw, its turn rate and its acceleration, and offers the attitude files for download. The Results tab lists the checks. Write each case to its own output folder, so that one does not replace another.
 
 To share a case, send its whole `output` folder. Whoever gets it opens the page with a double-click, and needs nothing installed.
+
+To pass the attitude to other tools, write it next to the viewer:
+
+```python
+from quicksat.scenario.attitude_files import write_attitude_files
+
+write_attitude_files(run, "winter/output")
+```
+
+This writes `attitude.ecsv`, with the body's quaternion at each step, and one file for each articulation, such as a solar wing, with its angle. Step 11 of the [scenario guide](../scenario/set_up_a_scenario.md#11-pass-the-attitude-to-other-tools) says what they hold.

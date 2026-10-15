@@ -62,6 +62,7 @@ from quicksat.scenario.config import (
     GROUND_VELOCITY,
     NADIR,
     ORBIT_NORMAL,
+    SLEW,
     SUN,
     VELOCITY,
     Scenario,
@@ -472,6 +473,27 @@ def _slew_rotations(
     )
 
 
+def _activity_attitudes(run: "ScenarioRun") -> np.ndarray:
+    """
+    The attitude of the activity under way at each time of the run's grid,
+    with no regard to the slews.
+
+    Parameters
+    ----------
+    run : ScenarioRun
+        The run
+
+    Returns
+    -------
+    names : ndarray
+        The attitude names, as an array of objects
+    """
+    names = labels_at(_attitude_row(run.occurrences), run.times)
+    # the run is open at its end, so the last time takes the last activity's attitude
+    names[-1] = run.occurrences[-1].activity.attitude
+    return names
+
+
 def body_rotations(run: "ScenarioRun") -> np.ndarray:
     """
     The body's orientation at each time of the run's grid, slews included.
@@ -487,9 +509,7 @@ def body_rotations(run: "ScenarioRun") -> np.ndarray:
         Matrices that turn body vectors into GCRS, shape (n, 3, 3), one for each
         time of the grid. Column i is body axis i, seen in GCRS.
     """
-    attitude = labels_at(_attitude_row(run.occurrences), run.times)
-    # the run is open at its end, so the last time takes the last activity's attitude
-    attitude[-1] = run.occurrences[-1].activity.attitude
+    attitude = _activity_attitudes(run)
 
     def state_at(rows: np.ndarray) -> tuple[SkyCoord, CartesianRepresentation]:
         sun = cast(CartesianRepresentation, run.sun[rows])
@@ -512,3 +532,25 @@ def body_rotations(run: "ScenarioRun") -> np.ndarray:
                     window, slew, run.times[rows], targets
                 )
     return rotations
+
+
+def attitude_names(run: "ScenarioRun") -> np.ndarray:
+    """
+    The attitude in effect at each time of the run's grid, as `body_rotations`
+    turns the body.
+
+    Parameters
+    ----------
+    run : ScenarioRun
+        The run
+
+    Returns
+    -------
+    names : ndarray
+        The attitude names, as an array of objects. A time inside a slew gets
+        `slew`.
+    """
+    names = _activity_attitudes(run)
+    for window in run.slews:
+        names[(run.times >= window.start) & (run.times < window.end)] = SLEW
+    return names

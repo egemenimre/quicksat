@@ -145,6 +145,16 @@ Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), section "The
 
 ## 8. Run the scenario
 
+The quickest way is the command line, with the folder that holds `scenario.yaml`:
+
+```bash
+python -m quicksat.scenario my_scenario my_scenario/output
+```
+
+It prints the summary line, a table of the occurrences whose status is not `ok`, and the warnings. Then it writes the viewer into `my_scenario/output/`, and prints the page's path.
+
+For the activity table and the plots, run it in Python or in a notebook instead:
+
 ```python
 import matplotlib.pyplot as plt
 
@@ -193,8 +203,27 @@ Then read `run.warnings`. With a `slew` block, the run measures how fast each at
 - `scenario_viewer.html` is the page. Double-click it to open it in a browser.
 - `scenario.js` holds the data of the run.
 
-The page shows the run in 3D, with the ground track, the timeline and the activity table. It needs no Python, no server and no network. Keep the two files together, because the page reads `scenario.js` from its own folder.
+The page shows the run in 3D, with the ground track, the timeline and the activity table. Its Attitude tab shows the body's roll, pitch and yaw against LVLH, its turn rate and its acceleration against the slew limits, and the warnings. Amber bands mark where an attitude turns the body faster than the slews may. The tab also offers the attitude files of step 11 for download. The page needs no Python, no server and no network. Keep the two files together, because the page reads `scenario.js` from its own folder.
 
 After you change the scenario, run it again and reload the page. The page then reads the new `scenario.js`.
 
 To share the run, send the whole `output` folder. Whoever gets it opens the page with a double-click, and needs nothing installed.
+
+## 11. Pass the attitude to other tools
+
+The run works out the body's attitude, slews included, and the angle of each articulation. `write_attitude_files` writes them as ECSV files, which other tools can read:
+
+```python
+from quicksat.scenario.attitude_files import write_attitude_files
+
+write_attitude_files(run, "my_scenario/output")
+```
+
+- `attitude.ecsv` holds the time, the quaternion `qx qy qz qw`, and the attitude in effect, or `slew`.
+- `articulation_<name>.ecsv` holds the time, the angle about the drive axis, and whether the part is parked. Each articulation has a file of its own, such as `articulation_wing_+y.ecsv`.
+
+Each file's header gives the epoch, the time scale, and what the numbers mean. The quaternion has its scalar part last, and turns body vectors into GCRS. In scipy, `Rotation.from_quat([qx, qy, qz, qw]).apply(v_body)` gives the vector in GCRS. Without a slew block, an attitude change is instant, so do not interpolate across a change in the `attitude` column. The same holds where `parked` changes.
+
+astropy reads each file with `QTable.read(path, format="ascii.ecsv")`. Other tools can read the rows below the `#` lines of the header, with spaces between the columns.
+
+The viewer's Attitude tab offers the same files for download, with no Python needed. quicksat does not write the orbit, since you gave it.

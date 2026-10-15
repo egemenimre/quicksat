@@ -204,7 +204,8 @@ def test_the_summary_gives_the_headlines(budget):
 def read_js(path) -> dict:
     """The data of a `.js` file that sets one `window.quicksat` key."""
     text = path.read_text()
-    return json.loads(text[text.rindex(" = ") + 3 :].rstrip().rstrip(";"))
+    # the data is the object assigned after the line that starts window.quicksat
+    return json.loads(text[text.index(" = {") + 3 :].rstrip().rstrip(";"))
 
 
 def test_the_viewer_folder_holds_both_data_files(budget, tmp_path):

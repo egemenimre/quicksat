@@ -24,16 +24,20 @@ The steps below use `my_project/winter`.
 python -m quicksat.editor my_project/winter my_project/winter/editor
 ```
 
-This writes `my_project/winter/editor/editor.html`. Python reads the folder's files and puts them inside the page, with the 3D model and any orbit file that the scenario names. It also reads the files with quicksat's own loaders, and the page shows what they said.
+This writes `my_project/winter/editor/editor.html`. Python reads the folder's files and puts them inside the page, with the 3D model and any orbit file that the scenario names. It also reads the files with quicksat's own loaders: the full check.
 
 The page needs no Python and no server. Double-click it to open it in a browser.
+
+A page you have already can open the folder instead: click **Open a folder…** on its first Setup step, and pick `my_project/winter`. The page reads every file it knows there, and fills every step. quicksat's loaders do not read a folder opened this way, so its files have only the page's simple check, and their full check shows *not run*.
 
 ## 3. Edit
 
 The page has two ways in, and both edit the same data:
 
 - **Setup** takes you through every file, step by step, from the orbit to the consumption. The small **i** by a step's title opens its explanation: why the fields matter, the options and what follows from them. Each card on the other tabs has the same sign, and a section's explanation stays open or closed in both places. Back and Next are at the top.
-- **The other tabs** hold the same fields by theme: orbit and time, spacecraft, operations, activities, power and consumption. Use them to change one thing without going through every step.
+- **The other tabs** hold the same fields by theme: orbit and time, spacecraft, operations, activities, power and consumption. Use them to change one thing without going through every step. A bar at the top of each tab names its file, says where it came from and whether you have changed it, and has **Open** and **download** for that file.
+
+The first Setup step lists the folder's files: where each came from, whether it has changed, and two checks. The **simple check** is the page's own, on names, units and ranges, as you type. The **full check** is what quicksat's loaders said when Python wrote the page. The Files tab shows both under each file.
 
 Names are chosen from lists. An activity picks its attitude and its mode, and an articulation picks its part of the model. Renaming an attitude, a target or a mode changes every use of it. Deleting one that is in use asks again, and says what uses it.
 
@@ -53,22 +57,30 @@ If the files hold `#` comments that the editor did not write, a banner under the
 - **drop** lets it go;
 - **move all** and **drop all** do the same for every comment left.
 
-Do this before you first save a file that you wrote by hand. The samples' explanations show up here too: they are `#` comments.
+Do this before you first save a file that you wrote by hand. The samples' explanations show up here too: they are `#` comments. Each comment goes to the block below it, so write your own `#` comments on the lines above what they describe.
 
 ## 5. Save, and put the files back
 
 Open the Files tab to see each file as it will be written. Then save, from there or from the last Setup step:
 
 - **download the zip** gives the whole folder in one file;
-- **download** next to a file gives that file alone.
+- **download** next to a file, or on a tab's bar, gives that file alone.
+
+A saved file shows as *downloaded* until you change it again.
 
 The browser puts the downloads in its downloads folder. Copy the files over the ones in `my_project/winter/`. Check their names: a browser can add a number, such as `scenario (1).yaml`, to a file it has downloaded before.
 
 ## 6. Run
 
-For a sample folder, run its notebook: [`sample/scenario/scenario.ipynb`](../../../sample/scenario/scenario.ipynb), or [`sample/power/power_budget.ipynb`](../../../sample/power/power_budget.ipynb) for the power.
+Run the folder from the command line. For a power folder:
 
-For your own folder, run the code in step 8 of the [scenario guide](set_up_a_scenario.md#8-run-the-scenario), or in step 6 of the [power guide](../power/set_up_a_power_budget.md#6-run-the-budget), with your folder's path. A file that quicksat cannot read stops the run with an error that names the problem. Fix it in the editor, and save again.
+```bash
+python -m quicksat.power my_project/winter my_project/winter/output
+```
+
+For a scenario folder, with no power files, use `python -m quicksat.scenario` in the same way. Either prints the results, writes the viewer into the output folder, and prints the page's path. A file that quicksat cannot read stops the run with an error that names the problem, and nothing is written. Fix it in the editor, and save again.
+
+For the tables and the plots, run a notebook instead. For a sample folder, that is [`sample/scenario/scenario.ipynb`](../../../sample/scenario/scenario.ipynb), or [`sample/power/power_budget.ipynb`](../../../sample/power/power_budget.ipynb) for the power. For your own folder, run the code in step 8 of the [scenario guide](set_up_a_scenario.md#8-run-the-scenario), or in step 6 of the [power guide](../power/set_up_a_power_budget.md#6-run-the-budget), with your folder's path.
 
 ## 7. Read the results
 
@@ -77,16 +89,16 @@ For your own folder, run the code in step 8 of the [scenario guide](set_up_a_sce
 
 ## 8. Open the viewer
 
-The run writes the viewer's page into the output folder you gave it: `scenario_viewer.html` for a scenario, and `power_viewer.html` for a power budget. Double-click it. It shows the run in 3D, with the ground track, the timeline and the activity table, and the power if there is one.
+The run writes the viewer's page into the output folder you gave it: `scenario_viewer.html` for a scenario, and `power_viewer.html` for a power budget. Double-click it. It shows the run in 3D, with the ground track, the timeline and the activity table, and the power if there is one. Its Attitude tab shows the roll, pitch and yaw, the turn rate and the acceleration, and the warnings, and offers the attitude files for download.
 
 If the page is open already, reload it after each run. It then reads the new run.
 
 ## 9. Go round again
 
-The editor page holds the files as they were when you wrote it. So after you put new files in the folder, write the page again before the next edit:
+If the page is still open, keep editing: it holds your changes. If you closed it, open it again and click **Open a folder…** to read the folder's files as they are now. Or write the page again, to have quicksat's loaders check the files too:
 
 ```bash
 python -m quicksat.editor my_project/winter my_project/winter/editor
 ```
 
-Then reload the page in the browser. One round is then: edit, save, put the files back, run, read, view, and write the page again.
+Then reload the page in the browser. One round is then: edit, save, put the files back, run, read, view, and open the folder again.

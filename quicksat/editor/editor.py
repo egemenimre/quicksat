@@ -14,8 +14,9 @@ double-click, and needs no Python and no server.
 The page holds the folder's files inside itself. Python reads them here and
 passes them to the page as JSON: each YAML file as YAML reads it, the CSV as rows
 of text, the 3D model in base64, and an orbit file as text. The page turns them
-into its own fields. When the user saves, it writes the files again, as
-downloads: one by one, or as a zip.
+into its own fields. The user can also open another folder, or one file, in the
+page, which reads them in the same form. When the user saves, the page writes
+the files again, as downloads: one by one, or as a zip.
 
 Saving rewrites each file. The user's notes survive in the `comments` fields,
 which every block of a file has. A `#` comment does not survive: the page writes
@@ -65,9 +66,12 @@ _VENDOR = _PACKAGE / "scenario" / "templates" / "vendor"
 _ORBIT_FILES = ("tle_file", "omm_file", "trajectory_file")
 """The orbit's keys that name a file."""
 
+SHARED_SCRIPTS = ("base.js", "files.js", "open.js", "frame.js")
+"""The scripts in `templates/shared/` that every editor page runs first: the
+field controls, the file writing, the opening of files in the browser, and the
+page's frame. `templates/shared/editor.css` holds the styles they share."""
+
 SCRIPTS = (
-    "base.js",
-    "files.js",
     "project.js",
     "sections.js",
     "checks.js",
@@ -75,9 +79,8 @@ SCRIPTS = (
     "view3d.js",
     "views.js",
 )
-"""The page's scripts in `templates/js/`, in the order they run. `base.js` and
-`files.js` hold the field controls and the file writing, which do not depend on
-the scenario or the power files."""
+"""The scenario editor's own scripts in `templates/scenario/`, in the order they
+run after the shared ones."""
 
 
 def _json_default(value):
@@ -169,12 +172,14 @@ def comment_blocks(text: str) -> list[dict]:
     """
     Every `#` comment in a YAML text, with the key it belongs to.
 
-    Lines of comment with nothing between them form one block. A block belongs
-    to the first key below it, or to the file if no key follows. A block above
-    the first key, with a blank line after it, belongs to the file too. A block that
-    is indented more than that key closes a section, such as a comment after the
-    last attitude: it belongs to the section of the keys at its own indent. A
-    comment at the end of a line belongs to the outermost key on that line.
+    Comments go above what they describe. Lines of comment with nothing between
+    them form one block. A block belongs to the first key below it, or to the
+    file if no key follows. A block with a blank line between it and that key
+    belongs to the section that holds the key, or to the file at the top level.
+    A block that is indented more than that key closes a section, such as a
+    comment after the last attitude: it belongs to the section of the keys at
+    its own indent. A comment at the end of a line belongs to the outermost key
+    on that line.
 
     Parameters
     ----------
@@ -214,17 +219,12 @@ def comment_blocks(text: str) -> list[dict]:
                 {"start": number, "end": number, "lines": [comment], "path": path}
             )
     lines = text.splitlines()
-    first_key = keys[0][0] if keys else len(lines)
     out = []
     for block in blocks:
         path = block.get("path")
         inline = path is not None
         if not inline:
-            after = block["end"] + 1
-            heads_the_file = block["end"] < first_key and (
-                after >= len(lines) or not lines[after].strip()
-            )
-            path = [] if heads_the_file else _owner(keys, block)
+            path = _owner(keys, block, lines)
         out.append(
             {
                 "line": block["start"] + 1,
@@ -236,7 +236,7 @@ def comment_blocks(text: str) -> list[dict]:
     return out
 
 
-def _owner(keys: list[tuple[int, int, list]], block: dict) -> list:
+def _owner(keys: list[tuple[int, int, list]], block: dict, lines: list[str]) -> list:
     """
     The path of the key that a block of full-line comments belongs to.
 
@@ -246,51 +246,59 @@ def _owner(keys: list[tuple[int, int, list]], block: dict) -> list:
         The keys, from `_key_lines`
     block : dict
         The block, with its first and last lines and its indent
+    lines : list of str
+        The text's lines
 
     Returns
     -------
     path : list
         The first key below the block. If that key is less indented than the
         block, the section of the last key above the block at the block's own
-        indent. Empty for the file.
+        indent. If a blank line comes between the block and the key, the section
+        that holds the key. Empty for the file.
     """
-    below = next(((col, path) for line, col, path in keys if line > block["end"]), None)
+    below = next(
+        ((line, col, path) for line, col, path in keys if line > block["end"]), None
+    )
     if below is None:
         return []
-    column, path = below
+    key_line, column, path = below
     if column < block["indent"]:
         siblings = [
-            path
-            for line, col, path in keys
+            above
+            for line, col, above in keys
             if line < block["start"] and col == block["indent"]
         ]
         if siblings:
             return siblings[-1][:-1]
+    after = block["end"] + 1
+    if after < key_line and not lines[after].strip():
+        return path[:-1]
     return path
 
 
-def _check(read, path: Path) -> dict:
+def _check(label: str, read) -> dict:
     """
-    What one of quicksat's loaders says of a file.
+    What one of quicksat's loaders says of a file, or of files read together.
 
     Parameters
     ----------
+    label : str
+        The file's name, such as `scenario.yaml`, or the files' names, such as
+        `equipment.csv with mass_budget_config.yaml`
     read : callable
-        The loader, such as `Scenario.from_yaml_file`
-    path : Path
-        The file
+        Reads the files with the loader, and takes no argument
 
     Returns
     -------
     check : dict
-        `file`, the file's name; `ok`; and `message`, the loader's error, or
-        empty
+        `file`, the label; `ok`; and `message`, the loader's error, or empty
     """
     try:
-        read(path)
+        read()
     except Exception as exc:  # the page shows any failure, whatever its kind
-        return {"file": path.name, "ok": False, "message": str(exc)}
-    return {"file": path.name, "ok": True, "message": ""}
+        return {"file": label, "ok": False, "message": str(exc)}
+    return {"file": label, "ok": True, "message": ""}
 
 
 def _yaml_file(path: Path) -> dict:
@@ -312,6 +320,28 @@ def _yaml_file(path: Path) -> dict:
         "name": path.name,
         "data": yaml.safe_load(text),
         "comments": comment_blocks(text),
+    }
+
+
+def _csv_file(path: Path) -> dict:
+    """
+    A CSV file for the page: its name, its header, and its rows of text.
+
+    Parameters
+    ----------
+    path : Path
+        The file
+
+    Returns
+    -------
+    file : dict
+        `name`, `header`, the first row, and `rows`, the others that are not empty
+    """
+    rows = list(csv.reader(io.StringIO(path.read_text(encoding="utf-8"))))
+    return {
+        "name": path.name,
+        "header": rows[0] if rows else [],
+        "rows": [row for row in rows[1:] if any(cell.strip() for cell in row)],
     }
 
 
@@ -382,24 +412,29 @@ def editor_data(
     if not scenario_path.is_file():
         raise FileNotFoundError(f"no scenario file: {scenario_path}")
     scenario = _yaml_file(scenario_path)
-    checks = [_check(Scenario.from_yaml_file, scenario_path)]
+    checks = [
+        _check(scenario_path.name, lambda: Scenario.from_yaml_file(scenario_path))
+    ]
     raw = scenario["data"] if isinstance(scenario["data"], dict) else {}
 
     power = None
     power_path = folder / power_file
     if power_path.is_file():
         power = _yaml_file(power_path)
-        checks.append(_check(PowerSystem.from_yaml_file, power_path))
+        checks.append(
+            _check(power_path.name, lambda: PowerSystem.from_yaml_file(power_path))
+        )
 
     consumption = None
     consumption_path = folder / consumption_file
     if consumption_path.is_file():
-        rows = list(csv.reader(io.StringIO(consumption_path.read_text("utf-8"))))
-        consumption = {"name": consumption_path.name, "header": rows[0] if rows else []}
-        consumption["rows"] = [
-            row for row in rows[1:] if any(cell.strip() for cell in row)
-        ]
-        checks.append(_check(PowerConsumption.from_csv, consumption_path))
+        consumption = _csv_file(consumption_path)
+        checks.append(
+            _check(
+                consumption_path.name,
+                lambda: PowerConsumption.from_csv(consumption_path),
+            )
+        )
 
     spacecraft = raw.get("3d_model")
     spacecraft = spacecraft.get("file") if isinstance(spacecraft, dict) else spacecraft
@@ -452,14 +487,41 @@ def _script_json(value) -> str:
     return text.replace("</", "<\\/")
 
 
-def editor_page(data: dict) -> str:
+def _vendor(name: str) -> str:
     """
-    The editor page, with its libraries, its places and the folder's files inside.
+    A library from the viewer's vendor folder, with its licence in front.
 
     Parameters
     ----------
+    name : str
+        The library's file, such as `three.min.js`. Its licence is the file of
+        the same name before the first dot, with `.LICENSE`.
+
+    Returns
+    -------
+    text : str
+        The licence, as a comment that minifiers keep, then the library
+    """
+    notice = (_VENDOR / f"{name.split('.')[0]}.LICENSE").read_text(encoding="utf-8")
+    return f"/*!\n{notice}*/\n" + (_VENDOR / name).read_text(encoding="utf-8")
+
+
+def build_page(page: str, scripts: tuple[str, ...], data: dict, **parts: str) -> str:
+    """
+    An editor page, from its template, the shared parts and its own scripts.
+
+    Parameters
+    ----------
+    page : str
+        The page's folder in `templates/`, such as `scenario` or `sizing`. It
+        holds the page's `editor.html` and its own scripts.
+    scripts : tuple of str
+        The page's own scripts, in the order they run, after the shared ones
     data : dict
-        The folder's files, from `editor_data`
+        The folder's files, which go in the page as JSON
+    **parts : str
+        Any other placeholder of the template and its text, such as
+        `{"@places@": ...}`
 
     Returns
     -------
@@ -472,24 +534,49 @@ def editor_page(data: dict) -> str:
         If a placeholder is missing from the template or appears twice, or if a
         script holds text that would end its tag early
     """
-    three = (_VENDOR / "three.min.js").read_text(encoding="utf-8")
-    notice = (_VENDOR / "three.LICENSE").read_text(encoding="utf-8")
+    shared = _TEMPLATES / "shared"
+    folder = _TEMPLATES / page
+    code = [shared / name for name in SHARED_SCRIPTS] + [
+        folder / name for name in scripts
+    ]
     parts = {
-        "/*@three@*/": f"/*!\n{notice}*/\n{three}",
-        "/*@editor@*/": "\n".join(
-            (_TEMPLATES / "js" / name).read_text(encoding="utf-8") for name in SCRIPTS
-        ),
-        "@places@": (_PACKAGE / "data" / "places.json").read_text(encoding="utf-8"),
+        "/*@css@*/": (shared / "editor.css").read_text(encoding="utf-8"),
+        "/*@yaml@*/": _vendor("js-yaml.min.js"),
+        "/*@editor@*/": "\n".join(path.read_text(encoding="utf-8") for path in code),
         "@project@": _script_json(data),
+        **parts,
     }
-    page = (_TEMPLATES / "editor.html").read_text(encoding="utf-8")
+    html = (folder / "editor.html").read_text(encoding="utf-8")
     for placeholder, text in parts.items():
-        if page.count(placeholder) != 1:
-            raise ValueError(f"{placeholder} must appear once in the editor template")
+        if html.count(placeholder) != 1:
+            raise ValueError(f"{placeholder} must appear once in the {page} template")
         if "</script" in text.lower():
             raise ValueError(f"the text for {placeholder} holds '</script'")
-        page = page.replace(placeholder, text)
-    return page
+        html = html.replace(placeholder, text)
+    return html
+
+
+def editor_page(data: dict) -> str:
+    """
+    The scenario editor's page, with three.js, the places and the folder's files.
+
+    Parameters
+    ----------
+    data : dict
+        The folder's files, from `editor_data`
+
+    Returns
+    -------
+    page : str
+        The page, as HTML text
+    """
+    places = (_PACKAGE / "data" / "places.json").read_text(encoding="utf-8")
+    return build_page(
+        "scenario",
+        SCRIPTS,
+        data,
+        **{"/*@three@*/": _vendor("three.min.js"), "@places@": places},
+    )
 
 
 def write_editor(

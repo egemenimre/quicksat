@@ -27,3 +27,5 @@ Rules the code and the notebooks follow.
 ## Tests
 
 **Tolerances carry units.** Use `assert_quantity_allclose` from `astropy.tests.helper`, as in `assert_quantity_allclose(actual, expected, atol=Q_(0.1, "kg"))`. It refuses a bare `atol` unless the quantity is dimensionless. That is deliberate: a tolerance without a unit is the kind of error units exist to catch.
+
+**The viewer's logic is tested in Node.** The checks on the data files and the values between grid steps sit in `quicksat/scenario/templates/viewer_logic.js`, apart from the page's drawing code. The tests in `tests/scenario/js/` load that file as the page does. They run with Node's own test runner, `node --test "tests/**/*.test.js"`, or with `tox -e javascript`, and need no npm packages. CircleCI runs them in its `javascript` job. The drawing code, with three.js and uPlot, has no tests: check it in a browser.
