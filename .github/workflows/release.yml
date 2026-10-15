@@ -1,0 +1,72 @@
+# Uploads quicksat to PyPI when a version tag, such as v0.2.0, is pushed. Nothing
+# else starts it, so a commit or a push to a branch releases nothing.
+#
+# The tests run on CircleCI, not here. The tag must be on a commit of master, which
+# CircleCI has already checked, and must match __version__ and a section of
+# CHANGELOG.md.
+#
+# The upload uses PyPI's trusted publishing, so no token is stored anywhere. PyPI
+# trusts this file, in this repository, with the `pypi` environment, and gives
+# each run a token that lasts 15 minutes. CircleCI cannot do this: PyPI does not
+# trust it as a publisher.
+name: release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # the whole history, to check that the tag is on master
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Check the tag against master, the version and the changelog
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "The tag $GITHUB_REF_NAME is not on a commit of master"
+            exit 1
+          fi
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' quicksat/__init__.py)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "The tag $GITHUB_REF_NAME does not match __version__ $version"
+            exit 1
+          fi
+          if ! grep -q "^## \[$version\]" CHANGELOG.md; then
+            echo "CHANGELOG.md has no section for $version"
+            exit 1
+          fi
+      # from this clean checkout, so no file that git ignores reaches the package
+      - name: Build the package
+        run: |
+          pip install build twine
+          python -m build
+          twine check --strict dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # A job of its own, so that only the upload can ask PyPI for a token
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/quicksat/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
