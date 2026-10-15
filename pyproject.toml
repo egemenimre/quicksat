@@ -1,10 +1,11 @@
 [build-system]
-requires = ["flit_core>=3.4"]
+requires = ["flit_core>=3.12"]
 build-backend = "flit_core.buildapi"
 
 [project]
 name = "quicksat"
-version = "0.1.0"
+# read from __version__ in quicksat/__init__.py, so it is written in one place
+dynamic = ["version"]
 dependencies = [
     "astropy",
     # static plots: the scenario's Gantt chart and ground track maps
@@ -27,9 +28,10 @@ requires-python = ">=3.12"
 
 authors = [{ name = "Egemen Imre" }]
 
-description = "Basic satellite sizing tool: mass budget, power and battery sizing, delta-V"
+description = "First-pass satellite sizing: mass, data, delta-V and agility budgets, a scenario on a real orbit, power and battery checks, a 3D viewer and file editors"
 readme = "README.md"
-license = { text = "GPL-3.0-or-later" }
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE.md"]
 
 keywords = [
     "satellite",
@@ -38,9 +40,14 @@ keywords = [
     "power budget",
     "spacecraft design",
     "delta-v",
+    "attitude",
+    "solar panels",
+    "orbit",
 ]
 classifiers = [
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
+    "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
@@ -48,12 +55,16 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Astronomy",
     "Topic :: Scientific/Engineering :: Physics",
 ]
 
 [project.urls]
 Homepage = "https://github.com/egemenimre/quicksat/"
 Repository = "https://github.com/egemenimre/quicksat/"
+Documentation = "https://github.com/egemenimre/quicksat/tree/master/docs"
+Changelog = "https://github.com/egemenimre/quicksat/blob/master/CHANGELOG.md"
+Issues = "https://github.com/egemenimre/quicksat/issues"
 
 [project.optional-dependencies]
 test = ["pytest", "coverage", "pytest-xdist"]

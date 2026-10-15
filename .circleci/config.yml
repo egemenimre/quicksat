@@ -91,6 +91,44 @@ jobs:
           command: node --test "tests/**/*.test.js"
 
 
+  # Uploads the package to PyPI, for a version tag only: see the release workflow.
+  # It builds from this clean checkout, so no file that git ignores can reach the
+  # package. PYPI_API_TOKEN comes from the pypi context, as a token scoped to the
+  # quicksat project.
+  release:
+
+    docker:
+      - image: cimg/python:3.13
+
+    steps:
+      - checkout
+      - run:
+          name: Check the tag against the version and the changelog
+          command: |
+            version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' quicksat/__init__.py)
+            if [ "v$version" != "$CIRCLE_TAG" ]; then
+              echo "The tag $CIRCLE_TAG does not match __version__ $version"
+              exit 1
+            fi
+            if ! grep -q "^## \[$version\]" CHANGELOG.md; then
+              echo "CHANGELOG.md has no section for $version"
+              exit 1
+            fi
+      - run:
+          name: Build the package
+          command: |
+            pip install build twine
+            python -m build
+            twine check --strict dist/*
+      - store_artifacts:
+          path: dist
+      - run:
+          name: Upload to PyPI
+          command: TWINE_PASSWORD="$PYPI_API_TOKEN" twine upload --non-interactive dist/*
+          environment:
+            TWINE_USERNAME: __token__
+
+
 workflows:
   tests_and_codestyle:
     jobs:
@@ -103,3 +141,27 @@ workflows:
   coverage:
     jobs:
       - codecov-coverage-report
+  # Runs only for a version tag, such as v0.2.0, and never for a branch, so a push
+  # releases nothing. Pushing the tag starts it: the checks run again, and the
+  # upload waits for all of them.
+  release:
+    jobs:
+      - codestyle: &on-version-tag
+          filters:
+            tags:
+              only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
+            branches:
+              ignore: /.*/
+      - javascript: *on-version-tag
+      - tests:
+          <<: *on-version-tag
+          matrix:
+            parameters:
+              python-version: ["3.12", "3.13", "3.14"]
+      - release:
+          <<: *on-version-tag
+          context: pypi
+          requires:
+            - codestyle
+            - javascript
+            - tests
