@@ -208,3 +208,22 @@ The page shows the run in 3D, with the ground track, the timeline and the activi
 After you change the scenario, run it again and reload the page. The page then reads the new `scenario.js`.
 
 To share the run, send the whole `output` folder. Whoever gets it opens the page with a double-click, and needs nothing installed.
+
+## 11. Pass the attitude to other tools
+
+The run works out the body's attitude, slews included, and the angle of each articulation. `write_attitude_files` writes them as ECSV files, which other tools can read:
+
+```python
+from quicksat.scenario.attitude_files import write_attitude_files
+
+write_attitude_files(run, "my_scenario/output")
+```
+
+- `attitude.ecsv` holds the time, the quaternion `qx qy qz qw`, and the attitude in effect, or `slew`.
+- `articulation_<name>.ecsv` holds the time, the angle about the drive axis, and whether the part is parked. Each articulation has a file of its own, such as `articulation_wing_+y.ecsv`.
+
+Each file's header gives the epoch, the time scale, and what the numbers mean. The quaternion has its scalar part last, and turns body vectors into GCRS. In scipy, `Rotation.from_quat([qx, qy, qz, qw]).apply(v_body)` gives the vector in GCRS. Without a slew block, an attitude change is instant, so do not interpolate across a change in the `attitude` column. The same holds where `parked` changes.
+
+astropy reads each file with `QTable.read(path, format="ascii.ecsv")`. Other tools can read the rows below the `#` lines of the header, with spaces between the columns.
+
+quicksat does not write the orbit, since you gave it.

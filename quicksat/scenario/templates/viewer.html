@@ -437,12 +437,13 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
 <script id="coastlines" type="application/json">@coastlines@</script>
 <script>/*@three@*/</script>
 <script>/*@uplot@*/</script>
+<!-- The checks on the data and the values between grid steps, which the tests
+     in tests/scenario/js/ run in Node: templates/viewer_logic.js -->
+<script>/*@logic@*/</script>
 <script>
 "use strict";
 
 // ---------------------------------------------------------------- Data and its checks
-
-const PAGE_VERSION = 5;
 
 function stop(message) {
   document.body.innerHTML = "";
@@ -450,49 +451,13 @@ function stop(message) {
   throw new Error(message);
 }
 
+if (typeof THREE === "undefined" || typeof uPlot === "undefined" || typeof scenarioProblem === "undefined") {
+  stop("This is the page's source, without its libraries. Build the page with viewer_page() in quicksat.scenario.viewer.");
+}
 const DATA = window.quicksat || {};
 const scenario = DATA.scenario;
-if (!scenario) {
-  stop("This folder has no scenario.js, so there is nothing to show. The page reads its data from the " +
-    "files next to it. Run the notebook that writes this folder again.");
-}
-if (scenario.format !== "quicksat-scenario" || !Number.isInteger(scenario.version)) {
-  stop("scenario.js is not a quicksat scenario file.");
-}
-if (scenario.version > PAGE_VERSION) {
-  stop(`scenario.js is version ${scenario.version}, but this page reads version ${PAGE_VERSION} and older. ` +
-    "Run the notebook again: it copies a matching page into the folder.");
-}
-if (typeof THREE === "undefined" || typeof uPlot === "undefined") {
-  stop("This is the page's source, without its libraries. Build the page with build_page.py.");
-}
-
-/** The power data, if power.js is here and belongs to this scenario.js, and why not otherwise. */
-function checkPower(power) {
-  if (!power) return [null, ""];
-  if (power.format !== "quicksat-power" || !Number.isInteger(power.version)) {
-    return [null, "power.js is not a quicksat power file."];
-  }
-  if (power.version > PAGE_VERSION) {
-    return [null, `power.js is version ${power.version}, newer than this page, which reads version ${PAGE_VERSION}.`];
-  }
-  if (power.scenario_id !== scenario.id) {
-    return [null, "power.js was written with another scenario.js, so it may not match this run."];
-  }
-  const n = scenario.grid.t_s.length;
-  const grid = power.grid;
-  const lengths = [grid.generated_w, grid.consumed_w, grid.soc, ...grid.sun_cos, ...(grid.panel_w || [])].map(
-    (a) => a.length,
-  );
-  if (lengths.some((length) => length !== n)) {
-    return [null, "power.js has a different number of time steps from scenario.js."];
-  }
-  if (grid.panel_w && grid.panel_w.length !== power.spacecraft.panels.length) {
-    return [null, "power.js gives the power of a different number of panels from its panel list."];
-  }
-  return [power, ""];
-}
-const [power, powerNote] = checkPower(DATA.power);
+if (scenarioProblem(scenario)) stop(scenarioProblem(scenario));
+const [power, powerNote] = checkPower(DATA.power, scenario);
 
 const THEME = {
   accent: "#22d3ee",
@@ -541,16 +506,8 @@ const PERIOD = scenario.orbit.period_s ?? scenario.orbit.nodal_period_s;
 const R_E = scenario.earth_radius_km;
 const START_MS = Date.parse(scenario.start + "Z");
 const TRACKS = scenario.tracks;
-// The eclipses, each from its entry to its exit. The illumination track splits
-// an eclipse into penumbra, umbra and penumbra, so touching shadow pieces join.
-const ECLIPSES = TRACKS.illumination
-  .filter((piece) => piece.value !== "sunlit")
-  .reduce((joined, piece) => {
-    const last = joined[joined.length - 1];
-    if (last && last.end_s === piece.start_s) last.end_s = piece.end_s;
-    else joined.push({ start_s: piece.start_s, end_s: piece.end_s });
-    return joined;
-  }, []);
+// The eclipses, each from its entry to its exit
+const ECLIPSES = joinEclipses(TRACKS.illumination);
 const ROWS = [
   ["illumination", "ILLUMINATION"],
   ["attitude", "ATTITUDE"],
@@ -581,8 +538,6 @@ const MONO = getComputedStyle(document.body).fontFamily;
 // ---------------------------------------------------------------- Helpers
 
 const $ = (selector) => document.querySelector(selector);
-const pad = (value) => String(value).padStart(2, "0");
-const clamp = (x, lo, hi) => Math.min(Math.max(x, lo), hi);
 const colourOf = (value) => COLOURS[value] || MUTED_VALUE;
 
 const coastlines = (() => {
@@ -633,32 +588,9 @@ function setText(node, text) {
   if (node.textContent !== text) node.textContent = text;
 }
 
-/** The last item of a list sorted by `start_s` that starts at or before `time`. */
-function pieceIndexAt(list, time) {
-  let lo = 0;
-  let hi = list.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (list[mid].start_s <= time) lo = mid;
-    else hi = mid - 1;
-  }
-  return lo;
-}
-
-function pieceAt(list, time) {
-  return list[pieceIndexAt(list, time)];
-}
-
-/** The text a track piece shows. A slew names the attitude it turns into. */
-const pieceText = (piece) => (piece.value === "slew" && piece.target ? `${piece.target} (slewing)` : piece.value);
-
 /** The grid step that holds `time`, and how far `time` is along it. */
 function sampleAt(time) {
-  const t = clamp(time, 0, T_END);
-  let i = clamp(Math.floor(t / STEP), 0, N - 2);
-  while (i > 0 && T[i] > t) i--;
-  while (i < N - 2 && T[i + 1] <= t) i++;
-  return [i, clamp((t - T[i]) / (T[i + 1] - T[i]), 0, 1)];
+  return stepAt(T, time);
 }
 
 /** The nearest grid index to `time`. */
@@ -688,10 +620,6 @@ function quaternionAt(array, i, f, out) {
       array[a + 3] + (sign * array[a + 7] - array[a + 3]) * f,
     )
     .normalize();
-}
-
-function angleBetween(a, b, f) {
-  return a + (((b - a + 540) % 360) - 180) * f;
 }
 
 /** LVLH to GCRS: x along track, y minus the orbit normal, z nadir. */
@@ -731,30 +659,16 @@ function updateState() {
   vectorAt(R, i, f, state.r);
   vectorAt(V, i, f, state.v);
   vectorAt(S, i, f, state.sun).normalize();
-  // An attitude change without a slew is instant. Where one falls inside this
-  // step, keep the attitude of the side the time is on, rather than turning
-  // across the step. A slew turns the body smoothly, so across its edges the
-  // page interpolates as anywhere else.
-  const next = pieceAt(TRACKS.attitude, T[i + 1]);
-  const here = pieceAt(TRACKS.attitude, T[i]);
-  const instant = next.start_s > T[i] && next.value !== "slew" && here.value !== "slew";
-  if (instant) quaternionAt(Q_BODY, i, state.t < next.start_s ? 0 : 1, state.qBody);
-  else quaternionAt(Q_BODY, i, f, state.qBody);
+  // instant attitude changes and parking parts happen at once, not across the step
+  quaternionAt(Q_BODY, i, attitudeFraction(TRACKS.attitude, T, i, f, state.t), state.qBody);
   quaternionAt(Q_EARTH, i, f, state.qEarth);
-  // A mode change parks or frees a part at once. Inside a step that holds one,
-  // keep the angle of the side the time is on, as for an instant attitude change.
-  const modeHere = pieceAt(TRACKS.mode, T[i]);
-  const modeNext = pieceAt(TRACKS.mode, T[i + 1]);
   ARTICULATIONS.forEach((joint, j) => {
-    const angles = joint.angle_deg;
-    const parks = joint.park_modes.includes(modeHere.value) || joint.park_modes.includes(modeNext.value);
-    state.joints[j] =
-      modeNext.start_s > T[i] && parks ? angles[state.t < modeNext.start_s ? i : i + 1] : angleBetween(angles[i], angles[i + 1], f);
+    state.joints[j] = jointAngle(joint, TRACKS.mode, T, i, f, state.t);
   });
   state.lat = LAT[i] + (LAT[i + 1] - LAT[i]) * f;
   state.lon = ((angleBetween(LON[i], LON[i + 1], f) + 540) % 360) - 180;
   state.beta = BETA[i] + (BETA[i + 1] - BETA[i]) * f;
-  state.light = lightFraction(state.t, i);
+  state.light = lightFraction(TRACKS.illumination, T, LIGHT, state.t, i);
   state.k = f < 0.5 ? i : i + 1;
   markAll();
 }
@@ -765,30 +679,6 @@ function setTime(time) {
 }
 
 const lightAt = (time) => pieceAt(TRACKS.illumination, time).value;
-
-/**
- * The fraction of the sun's disk seen at `time`, in grid step `i`. It follows
- * the illumination track: exactly 1 when sunlit and 0 in the umbra. In the
- * penumbra it runs straight between the grid values inside the penumbra and its
- * edges, where it is 1 on the sunlit side and 0 on the umbra side. A plain line
- * between grid values would not do: a 10 s step can jump a whole 9 s penumbra,
- * and would then show part of the sun at a time that is sunlit.
- */
-function lightFraction(time, i) {
-  const pieces = TRACKS.illumination;
-  const index = pieceIndexAt(pieces, time);
-  const piece = pieces[index];
-  if (piece.value === "sunlit") return 1;
-  if (piece.value === "umbra" || !LIGHT) return 0;
-  const edge = (neighbour) => (!neighbour ? null : neighbour.value === "sunlit" ? 1 : neighbour.value === "umbra" ? 0 : null);
-  const before = edge(pieces[index - 1]);
-  const after = edge(pieces[index + 1]);
-  let [t0, v0] = [T[i], LIGHT[i]];
-  let [t1, v1] = [T[i + 1], LIGHT[i + 1]];
-  if (t0 < piece.start_s && before !== null) [t0, v0] = [piece.start_s, before];
-  if (t1 > piece.end_s && after !== null) [t1, v1] = [piece.end_s, after];
-  return clamp(t1 > t0 ? v0 + ((v1 - v0) * (time - t0)) / (t1 - t0) : v0, 0, 1);
-}
 const occurrenceAt = (time) => pieceAt(OCCURRENCES, time);
 
 // ---------------------------------------------------------------- Spacecraft model

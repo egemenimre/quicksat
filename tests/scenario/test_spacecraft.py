@@ -15,7 +15,6 @@ import base64
 import dataclasses
 import json
 import struct
-from importlib.resources import files
 
 import numpy as np
 import pytest
@@ -250,6 +249,6 @@ def test_the_data_carries_the_model_byte_for_byte(run, model):
 
 
 def test_the_page_reads_this_version_and_carries_the_loader():
-    template = files("quicksat") / "scenario" / "templates" / "viewer.html"
-    assert f"const PAGE_VERSION = {VERSION};" in template.read_text(encoding="utf-8")
-    assert "GLTFLoader" in viewer_page()
+    page = viewer_page()
+    assert f"const PAGE_VERSION = {VERSION};" in page
+    assert "GLTFLoader" in page

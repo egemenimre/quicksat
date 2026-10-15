@@ -13,7 +13,9 @@ folder holds the page, `scenario_viewer.html`, and its data, `scenario.js`.
 The page is the same for every run. Its source is the template
 `quicksat/scenario/templates/viewer.html`. `viewer_page` puts the libraries
 from `templates/vendor/` and the coastlines from `quicksat/data/` into it, so
-the page needs nothing else to open.
+the page needs nothing else to open. It puts in `templates/viewer_logic.js` too:
+the page's checks on its data and its values between grid steps, which the
+tests in `tests/scenario/js/` run in Node.
 
 A page opened from disk cannot read a JSON file next to it, but it can load a
 script. So the data is JSON with one assignment in front:
@@ -82,9 +84,11 @@ _PAGE_PARTS = {
     "/*@three@*/": (_VENDOR / "three.min.js", _VENDOR / "three.LICENSE"),
     "/*@uplot@*/": (_VENDOR / "uPlot.iife.min.js", _VENDOR / "uPlot.LICENSE"),
     "@coastlines@": (_PACKAGE / "data" / "coastlines.json", None),
+    "/*@logic@*/": (_TEMPLATES / "viewer_logic.js", None),
 }
 """Each placeholder in the template, the file that replaces it, and the licence
-notice that goes in front of a library."""
+notice that goes in front of a library. `viewer_logic.js` is the page's own
+logic that needs no browser, kept apart so that Node can test it."""
 
 
 def _flat(values: np.ndarray, decimals: int) -> list[float]:
@@ -398,8 +402,9 @@ def viewer_page() -> str:
     The viewer page, built from its template with everything it needs inside.
 
     Each placeholder in `templates/viewer.html` is replaced by a file: the
-    three.js and uPlot libraries, uPlot's stylesheet, and the coastlines. Each
-    library's MIT licence notice goes in front of it, as a comment.
+    three.js and uPlot libraries, uPlot's stylesheet, the coastlines, and the
+    page's logic from `templates/viewer_logic.js`. Each library's MIT licence
+    notice goes in front of it, as a comment.
 
     Returns
     -------
