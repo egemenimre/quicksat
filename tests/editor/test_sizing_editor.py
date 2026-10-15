@@ -108,8 +108,8 @@ def test_the_page_holds_its_scripts_and_the_folder(sizing_dir, tmp_path):
         for name in names:
             assert (TEMPLATES / folder / name).read_text(encoding="utf-8") in text, name
     assert page_data(text)["files"]["mission"]["name"] == "mission.yaml"
-    # the scenario page's 3D library and places are not needed here
-    assert "GLTFLoader" not in text and 'id="places"' not in text
+    # the scenario page's 3D library and place search are not needed here
+    assert "GLTFLoader" not in text and "nominatim" not in text
     assert sizing_page(sizing_data(sizing_dir)) == text
 
 

@@ -178,18 +178,15 @@ def test_the_page_holds_its_scripts_and_the_folder(power_dir, tmp_path):
     page = write_editor(power_dir, tmp_path / "out")
     assert page == tmp_path / "out" / PAGE_FILE
     text = page.read_text(encoding="utf-8")
-    assert not re.search(r"@(project|places|three|yaml|css|editor)@", text)
+    assert not re.search(r"@(project|three|yaml|css|editor)@", text)
     templates = PACKAGE / "editor" / "templates"
     for folder, names in (("shared", SHARED_SCRIPTS), ("scenario", SCRIPTS)):
         for name in names:
             assert (templates / folder / name).read_text(encoding="utf-8") in text, name
     assert page_data(text)["files"]["scenario"]["name"] == "scenario.yaml"
-    places = re.search(
-        r'<script id="places" type="application/json">(.*?)</script>', text, re.S
-    )
-    assert places is not None
-    expected = (PACKAGE / "data" / "places.json").read_text(encoding="utf-8")
-    assert json.loads(places.group(1)) == json.loads(expected)
+    # the place search asks Nominatim, so the page holds no list of places
+    assert 'id="places"' not in text
+    assert "nominatim.openstreetmap.org" in text
 
 
 def test_text_that_would_end_a_script_tag_is_escaped(power_dir):

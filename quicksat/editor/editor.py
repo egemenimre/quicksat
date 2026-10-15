@@ -521,7 +521,7 @@ def build_page(page: str, scripts: tuple[str, ...], data: dict, **parts: str) ->
         The folder's files, which go in the page as JSON
     **parts : str
         Any other placeholder of the template and its text, such as
-        `{"@places@": ...}`
+        `{"/*@three@*/": ...}`
 
     Returns
     -------
@@ -558,7 +558,7 @@ def build_page(page: str, scripts: tuple[str, ...], data: dict, **parts: str) ->
 
 def editor_page(data: dict) -> str:
     """
-    The scenario editor's page, with three.js, the places and the folder's files.
+    The scenario editor's page, with three.js and the folder's files.
 
     Parameters
     ----------
@@ -570,12 +570,8 @@ def editor_page(data: dict) -> str:
     page : str
         The page, as HTML text
     """
-    places = (_PACKAGE / "data" / "places.json").read_text(encoding="utf-8")
     return build_page(
-        "scenario",
-        SCRIPTS,
-        data,
-        **{"/*@three@*/": _vendor("three.min.js"), "@places@": places},
+        "scenario", SCRIPTS, data, **{"/*@three@*/": _vendor("three.min.js")}
     )
 
 

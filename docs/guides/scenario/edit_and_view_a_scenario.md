@@ -39,6 +39,8 @@ The page has two ways in, and both edit the same data:
 
 The first Setup step lists the folder's files: where each came from, whether it has changed, and two checks. The **simple check** is the page's own, on names, units and ranges, as you type. The **full check** is what quicksat's loaders said when Python wrote the page. The Files tab shows both under each file.
 
+**Ground targets** has a search box. It asks OpenStreetMap's Nominatim, so it needs a connection, and it sends the text you search for to openstreetmap.org. It finds towns, addresses and many ground stations, such as SvalSat. Press Enter or **search**, then click a result to add it. Nominatim gives no altitude, so set it yourself, or it is 0 m. Without a connection, type the position in.
+
 Names are chosen from lists. An activity picks its attitude and its mode, and an articulation picks its part of the model. Renaming an attitude, a target or a mode changes every use of it. Deleting one that is in use asks again, and says what uses it.
 
 **Show 3D**, at the top right, opens the 3D panel. It shows the model, its parts and the body axes. Click a row, such as a panel, an articulation or an attitude, to see it there: a panel's normal and area, an articulation's axis with a slider to turn it, or an attitude's two axes. The panel starts open on the steps that need it, and you can hide it on any step or tab.

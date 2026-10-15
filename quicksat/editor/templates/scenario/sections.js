@@ -8,37 +8,57 @@ function partOptions() {
 
 // ---------------------------------------------------------------- places and copies
 
-// Natural Earth's populated places: [name, ASCII name, region, country, latitude,
-// longitude, population], largest first. Public domain.
-const PLACES = JSON.parse($("#places").textContent).map(([name, ascii, region, country, latitude, longitude, population]) => ({
-  name, region, country, latitude, longitude, population,
-  key: `${name} ${ascii}`.toLowerCase(),
-}));
+// OpenStreetMap's Nominatim search. Its usage policy allows at most one request a
+// second, and no search as the user types, so a search runs on Enter or the button.
+// The answers are kept, so the same text is asked only once.
+const NOMINATIM = "https://nominatim.openstreetmap.org/search";
+const placeAnswers = new Map();
+let lastSearch = 0;
 
-/** A search box that adds a populated place as a target. */
+/** The places Nominatim finds for a text, at most 8: name, where, latitude, longitude. */
+async function findPlaces(text) {
+  if (placeAnswers.has(text)) return placeAnswers.get(text);
+  const wait = lastSearch + 1000 - Date.now();
+  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  lastSearch = Date.now();
+  const url = `${NOMINATIM}?${new URLSearchParams({ q: text, format: "jsonv2", limit: "8" })}`;
+  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error(`Nominatim answered ${response.status}`);
+  const places = (await response.json()).map((found) => ({
+    name: found.name || found.display_name.split(",")[0],
+    where: found.display_name,
+    latitude: Number(found.lat),
+    longitude: Number(found.lon),
+  }));
+  placeAnswers.set(text, places);
+  return places;
+}
+
+/** A search box that adds a place found by Nominatim as a target. */
 function placeSearch(list) {
   const results = el("div", { class: "search-results" });
-  const input = el("input", { type: "search", class: "wide", placeholder: "Search towns and cities", oninput: () => show() });
-  function show() {
-    const query = input.value.trim().toLowerCase();
+  const input = el("input", { type: "search", class: "wide", placeholder: "Search a place, an address or a station",
+    onkeydown: (event) => { if (event.key === "Enter") search(); } });
+  const button = el("button", { class: "btn", text: "search", onclick: () => search() });
+  async function search() {
+    const text = input.value.trim();
     results.replaceChildren();
-    if (query.length < 2) return;
-    // Names that start with the text come first, then names that hold it; each
-    // group keeps the list's order, largest first
-    const starts = [], holds = [];
-    for (const place of PLACES) {
-      if (place.key.startsWith(query) || place.key.includes(" " + query)) starts.push(place);
-      else if (place.key.includes(query)) holds.push(place);
-      if (starts.length >= 8) break;
-    }
-    const hits = [...starts, ...holds].slice(0, 8);
-    if (!hits.length) results.append(el("div", { class: "hint", text: "No town or city of that name." }));
-    for (const place of hits) {
-      const where = [place.region, place.country].filter((x, i, all) => x && all.indexOf(x) === i).join(", ");
-      const people = place.population ? ` · ${place.population.toLocaleString("en")} people` : "";
-      results.append(el("button", { onclick: () => add(place) },
-        el("b", { text: place.name }),
-        el("small", { text: `  ${where} · ${place.latitude.toFixed(3)}°, ${place.longitude.toFixed(3)}°${people}` })));
+    if (!text) return;
+    button.disabled = true;
+    results.append(el("div", { class: "hint", text: "Searching…" }));
+    try {
+      const places = await findPlaces(text);
+      results.replaceChildren();
+      if (!places.length) results.append(el("div", { class: "hint", text: "Nominatim found no place of that name." }));
+      for (const place of places) {
+        results.append(el("button", { onclick: () => add(place) },
+          el("b", { text: place.name }),
+          el("small", { text: `  ${place.where} · ${place.latitude.toFixed(4)}°, ${place.longitude.toFixed(4)}°` })));
+      }
+    } catch (error) {
+      results.replaceChildren(el("div", { class: "hint", text: `The search needs a connection to nominatim.openstreetmap.org (${error.message}). You can still type a target's position.` }));
+    } finally {
+      button.disabled = false;
     }
   }
   function add(place) {
@@ -46,11 +66,14 @@ function placeSearch(list) {
     for (let n = 2; list.some((target) => target.name === name); n++) name = `${place.name} ${n}`;
     list.push({ name, latitude: q(place.latitude, "deg"), longitude: q(place.longitude, "deg"), altitude: q("", "m"), min_elevation: q("", "deg"), comments: "" });
     input.value = "";
+    results.replaceChildren();
     changed(true);
   }
-  return el("div", { class: "search" },
-    el("div", { class: "ctl" }, input, el("span", { class: "hint", text: `Natural Earth's ${PLACES.length.toLocaleString("en")} populated places. The position is the town's centre. No altitude is given, so it is 0 m unless you set it.` })),
-    results);
+  const credit = el("span", { class: "hint" },
+    "Search by OpenStreetMap's Nominatim, online only. Data © ",
+    el("a", { href: "https://www.openstreetmap.org/copyright", target: "_blank", rel: "noopener", text: "OpenStreetMap contributors" }),
+    ". No altitude is given, so it is 0 m unless you set it.");
+  return el("div", { class: "search" }, el("div", { class: "ctl" }, input, button, credit), results);
 }
 
 /** The comments on the overall power subsystem, which head the Power pages. */
@@ -553,7 +576,7 @@ const INFO = {
     <p>No drive is simulated: the angle is set from the geometry at each step. When the direction lies along the axis, the part keeps its last angle.</p>`,
   targets: `<h4>Ground targets</h4>
     <p>Points on the ground that an attitude can point at, such as a ground station. Each gives two triggers: <code>name rise</code> and <code>name set</code>, when it starts and stops seeing the satellite.</p>
-    <p>The search adds a town or a city from Natural Earth's populated places. For a ground station, check its own position: a station can lie some way from the town it is named after.</p>
+    <p>The search asks OpenStreetMap's Nominatim, so it needs a connection. It finds towns, addresses, and many ground stations by name, such as SvalSat. Check a station's position: a town's is its centre, which can lie some way from the station. The text you search for is sent to openstreetmap.org.</p>
     <span class="k">Options</span>
     <p>The altitude is above the WGS84 ellipsoid. The minimum elevation sets when the target sees the satellite: 5 deg if left out.</p>`,
   attitudes: `<h4>Attitudes</h4>

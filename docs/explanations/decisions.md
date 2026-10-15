@@ -6,6 +6,18 @@ Newest first. When a decision replaces an earlier one, the earlier one is kept i
 
 ---
 
+## 17. The editor finds places with Nominatim
+
+**2026-10-15. Implemented. Replaces a list of places held in the page.**
+
+The Ground targets step has a search box that asks OpenStreetMap's Nominatim. It finds any address, and many ground stations by their own names, such as SvalSat. The page sends the search text to openstreetmap.org, and needs a connection for it. Without one, the user types the position in, as before.
+
+Nominatim's usage policy sets how the page asks. It allows at most one request a second, and no search as the user types. So a search runs on Enter or its button, waits a second after the last one, and keeps its answers for the session. The page credits OpenStreetMap beside the box.
+
+The page first held Natural Earth's 1:10m populated places: 7,342 towns and cities, 514 kB, offline. A town's position is its centre, and a station can lie far from it: Kiruna town is about 30 km from ESA's station. The list made each scenario page half a megabyte larger, and found no station by name. So it was deleted.
+
+---
+
 ## 16. The editor also opens files in the browser
 
 **2026-10-14. Settled.**
