@@ -311,9 +311,9 @@ const SECTIONS = {
 // ---------------------------------------------------------------- information boxes
 
 const INFO = {
-  folder: `<h4>Folder and budgets</h4>
+  folder: `<h4>Folder</h4>
 <p>This folder holds the input files of quicksat's sizing budgets. Each budget is a notebook, which reads its files and builds one table.</p>
-<p>Untick a budget that this folder does not hold. Its steps then stay empty, and saving leaves its files out.</p>
+<p>Saving always writes every budget's files. A folder that lacks a budget's files gets them started here, as new, for you to fill in.</p>
 ${FILES_HELP}
 <span class="k">What follows</span>
 <p>Data, delta-V and agility read <code>mission.yaml</code>, so the folder always holds it. Delta-V and agility also read the mass budget: delta-V for the dry mass, and agility for the mass of an envelope case. Without the mass files, their notebooks must give a mass instead.</p>

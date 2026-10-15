@@ -15,7 +15,7 @@ const TABS = [
 ];
 
 const STEPS = [
-  { group: "Start", title: "Folder and budgets", sections: ["folder"] },
+  { group: "Start", title: "Folder", sections: ["folder"] },
   { group: "Mission", title: "Reference orbit and design life", sections: ["mission"] },
   { group: "Mass", title: "Locations: margins and harness", sections: ["locations"], top: () => overallBox("mass") },
   { title: "Equipment", sections: ["equipment"] },

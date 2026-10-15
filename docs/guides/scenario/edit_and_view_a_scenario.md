@@ -4,7 +4,7 @@ This guide takes you round the loop of the scenario and power work. You edit the
 
 The loop is the same for a scenario folder and for a power folder. A power folder holds its own copy of the scenario, so its editor edits the scenario, the power system and the consumption together.
 
-You need quicksat installed first. The README has the steps. What each field of the files means is in the other two guides: [how to set up and run a scenario](set_up_a_scenario.md) and [how to set up and run a power budget](../power/set_up_a_power_budget.md).
+You need quicksat installed first. The README has the steps. The sizing files have an editor of their own: see [how to edit and run the sizing files](../sizing/edit_the_sizing_files.md). What each field of the files means is in the other two guides: [how to set up and run a scenario](set_up_a_scenario.md) and [how to set up and run a power budget](../power/set_up_a_power_budget.md).
 
 ## 1. Pick a folder
 
