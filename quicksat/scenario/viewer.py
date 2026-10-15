@@ -47,10 +47,16 @@ import portion as P
 from astropy.coordinates import CartesianDifferential, CartesianRepresentation
 
 from quicksat import R_EARTH, u
-from quicksat.orbit.attitude import quaternions
+from quicksat.orbit.attitude import (
+    body_rates,
+    lvlh_rotations,
+    quaternions,
+    roll_pitch_yaw,
+)
 from quicksat.orbit.geometry import earth_rotations
 from quicksat.orbit.tle import Tle
-from quicksat.scenario.attitude import SlewWindow, body_rotations
+from quicksat.scenario.attitude import SlewWindow, attitude_names, body_rotations
+from quicksat.scenario.attitude_files import attitude_file_texts
 from quicksat.scenario.config import SLEW
 from quicksat.scenario.plots import scenario_colours
 from quicksat.scenario.run import ScenarioRun
@@ -107,7 +113,88 @@ def _flat(values: np.ndarray, decimals: int) -> list[float]:
     flat : list of float
         The rounded values, row by row
     """
-    return np.round(values, decimals).ravel().tolist()
+    # adding zero turns -0.0 into 0.0
+    return (np.round(values, decimals) + 0.0).ravel().tolist()
+
+
+def _with_gaps(values: np.ndarray, decimals: int) -> list[float | None]:
+    """
+    Values rounded, as a list, with None where a value is NaN.
+
+    Parameters
+    ----------
+    values : ndarray
+        Values, shape (n,)
+    decimals : int
+        The number of decimals to keep
+
+    Returns
+    -------
+    values : list of float or None
+        The rounded values. JSON has no NaN, and the page draws None as a gap.
+    """
+    rounded = np.round(values, decimals)
+    return [None if np.isnan(value) else float(value) for value in rounded]
+
+
+def _attitude_data(
+    run: ScenarioRun, rotations: np.ndarray, position: np.ndarray, velocity: np.ndarray
+) -> dict:
+    """
+    The body's attitude, as the page's Attitude tab shows it.
+
+    Parameters
+    ----------
+    run : ScenarioRun
+        The run
+    rotations : ndarray
+        The body's orientation at each time of the grid, from `body_rotations`
+    position, velocity : ndarray
+        The states in GCRS, in km and km/s, shape (n, 3)
+
+    Returns
+    -------
+    attitude : dict
+        `roll_deg`, `pitch_deg` and `yaw_deg` against LVLH, from
+        `roll_pitch_yaw`. `rate_deg_s`, the turn rate over the step from each
+        time, None at the last. `acceleration_deg_s2`, at each time between two
+        steps, None at both ends. Both are None across an attitude change with no
+        slew, which is instant. `max_rate_deg_s` and `max_acceleration_deg_s2`,
+        the `slew` block's limits, or None. `files`, the text of each file of
+        `attitude_file_texts`, by its name.
+    """
+    n = len(rotations)
+    angles = np.degrees(roll_pitch_yaw(rotations, lvlh_rotations(position, velocity)))
+    seconds = np.asarray((run.times - run.times[0]).to_value(u.s))
+    rates, accelerations = body_rates(rotations, seconds)
+    names = attitude_names(run)
+    # an attitude change with no slew is instant, so it has no rate to show
+    jumps = (names[1:] != names[:-1]) & (names[1:] != SLEW) & (names[:-1] != SLEW)
+    rate = np.full(n, np.nan)
+    rate[:-1] = np.where(jumps, np.nan, np.degrees(rates))
+    acceleration = np.full(n, np.nan)
+    acceleration[1:-1] = np.where(
+        jumps[:-1] | jumps[1:], np.nan, np.degrees(accelerations)
+    )
+    slew = run.scenario.slew
+    max_rate = None if slew is None else slew.max_rate
+    max_acceleration = None if slew is None else slew.max_acceleration
+    return {
+        "roll_deg": _flat(angles[:, 0], 3),
+        "pitch_deg": _flat(angles[:, 1], 3),
+        "yaw_deg": _flat(angles[:, 2], 3),
+        "rate_deg_s": _with_gaps(rate, 5),
+        "acceleration_deg_s2": _with_gaps(acceleration, 6),
+        "max_rate_deg_s": (
+            None if max_rate is None else float(max_rate.to_value(u.deg / u.s))
+        ),
+        "max_acceleration_deg_s2": (
+            None
+            if max_acceleration is None
+            else float(max_acceleration.to_value(u.deg / u.s**2))
+        ),
+        "files": attitude_file_texts(run),
+    }
 
 
 def _slew_ends(run: ScenarioRun) -> list[tuple[SlewWindow, TimeArray]]:
@@ -267,6 +354,7 @@ def scenario_data(run: ScenarioRun) -> dict:
     velocity = cartesian.differentials["s"]
     assert isinstance(velocity, CartesianDifferential)
     position = cartesian.xyz.to_value(u.km).T
+    rotations = body_rotations(run)
     towards_sun = run.sun.xyz.to_value(u.km).T - position
     towards_sun /= np.linalg.norm(towards_sun, axis=1, keepdims=True)
 
@@ -344,12 +432,15 @@ def scenario_data(run: ScenarioRun) -> dict:
             "lon_deg": _flat(run.longitude.to(u.deg).value, 4),
             "beta_deg": _flat(run.beta.to(u.deg).value, 4),
             "light": _flat(run.light, 6),
-            "q_body": _flat(quaternions(body_rotations(run)), 6),
+            "q_body": _flat(quaternions(rotations), 6),
             "q_earth": _flat(quaternions(earth_rotations(run.times)), 6),
         },
         "tracks": tracks,
         "occurrences": occurrences,
         "warnings": run.warnings,
+        "attitude": _attitude_data(
+            run, rotations, position, velocity.d_xyz.to_value(u.km / u.s).T
+        ),
     }
     header = {"format": FORMAT, "version": VERSION}
     text = json.dumps(header | content, allow_nan=False, separators=(",", ":"))

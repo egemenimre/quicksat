@@ -25,9 +25,9 @@ const LOGIC = path.join(ROOT, "quicksat", "scenario", "templates", "viewer_logic
 // A script's functions and constants are globals, as in the page. Run in this
 // realm, the arrays they return compare with deepEqual.
 vm.runInThisContext(fs.readFileSync(LOGIC, "utf8"), { filename: LOGIC });
-const { PAGE_VERSION, scenarioProblem, checkPower, joinEclipses, pieceAt, stepAt, attitudeFraction, jointAngle, lightFraction } =
+const { PAGE_VERSION, scenarioProblem, checkPower, joinEclipses, pieceAt, stepAt, attitudeFraction, jointAngle, lightFraction, excessPieces } =
   vm.runInThisContext(
-    "({ PAGE_VERSION, scenarioProblem, checkPower, joinEclipses, pieceAt, stepAt, attitudeFraction, jointAngle, lightFraction })",
+    "({ PAGE_VERSION, scenarioProblem, checkPower, joinEclipses, pieceAt, stepAt, attitudeFraction, jointAngle, lightFraction, excessPieces })",
   );
 
 /** The data a viewer folder gives the page, from its scenario.js and power.js. */
@@ -152,4 +152,34 @@ test("a part parks at once when its mode parks it, and turns the short way other
   assert.equal(jointAngle(free, modes, t, 1, 0.5, 15), -85);
   // from 170 to -170 deg, through 180 rather than through 0
   assert.equal(jointAngle(free, modes, t, 0, 0.5, 5), 180);
+});
+
+test("the steps past the slew limits inside one attitude join into spans", () => {
+  const t = [0, 10, 20, 30, 40, 50, 60, 70];
+  const track = [
+    { value: "track station", start_s: 0, end_s: 60 },
+    { value: "slew", target: "nadir", start_s: 60, end_s: 70 },
+  ];
+  const attitude = {
+    rate_deg_s: [0.5, 0.8, 0.9, 0.5, 0.5, 0.5, 0.9, null],
+    acceleration_deg_s2: [null, 0.01, 0.01, 0.01, 0.01, 0.2, 0.01, null],
+    max_rate_deg_s: 0.7,
+    max_acceleration_deg_s2: 0.08,
+  };
+  // the rate passes from 10 to 30 s, and the acceleration at 50 s, which marks
+  // the steps on both sides of it; the slew from 60 s is left out
+  assert.deepEqual(excessPieces(t, attitude, track), [
+    { start_s: 10, end_s: 30 },
+    { start_s: 40, end_s: 60 },
+  ]);
+  // with no limits, nothing is passed
+  assert.deepEqual(excessPieces(t, { ...attitude, max_rate_deg_s: null, max_acceleration_deg_s2: null }, track), []);
+});
+
+test("the sample's spans past the limits are its warnings' passes", () => {
+  const { scenario: run } = readFolder(path.join("sample", "power", "output"));
+  if (!run.attitude) return;
+  const spans = excessPieces(run.grid.t_s, run.attitude, run.tracks.attitude);
+  const attitudes = new Set(spans.map((span) => pieceAt(run.tracks.attitude, span.start_s).value));
+  assert.deepEqual([...attitudes], ["track Svalbard"]);
 });

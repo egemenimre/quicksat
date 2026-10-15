@@ -183,6 +183,22 @@ button[data-help], select[data-help], input[data-help] { cursor: pointer; }
 #power-charts { grid-area: 1 / 1; }
 .power-side { grid-area: 1 / 2; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px; min-height: 0; min-width: 0; }
 #page-power .controls { grid-area: 2 / 1 / 3 / 3; }
+/* The Attitude page: the timeline, the roll, pitch and yaw, the body rate and
+   its acceleration, with the current attitude, the files and the warnings
+   beside them. It shares the time controls too. */
+#page-attitude {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.22fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px; padding: 8px 8px 0;
+}
+#attitude-charts { grid-area: 1 / 1; grid-template-rows: auto 96px auto minmax(0, 1fr) auto minmax(0, 0.55fr) auto minmax(0, 0.55fr); }
+.attitude-side { grid-area: 1 / 2; display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 8px; min-height: 0; min-width: 0; }
+#page-attitude .controls { grid-area: 2 / 1 / 3 / 3; }
+.attitude-files { display: grid; gap: 6px; }
+.attitude-files .toggle { text-align: left; }
+.attitude-files p { color: var(--muted); font-size: 11px; margin: 4px 0 0; }
+#attitude-warnings p { color: var(--amber); font-size: 11.5px; margin: 0 0 8px; }
+#attitude-warnings .none { color: var(--muted); }
 /* The current power: a label and a value on each line, the panels indented
    under the total generated */
 .power-now { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 12px; margin: 0; align-items: center; }
@@ -319,6 +335,9 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
   #page-power { grid-template-columns: minmax(0, 1fr); grid-template-rows: 640px auto auto; }
   .power-side { grid-area: 2 / 1; }
   #page-power .controls { grid-area: 3 / 1; }
+  #page-attitude { grid-template-columns: minmax(0, 1fr); grid-template-rows: 640px auto auto; }
+  .attitude-side { grid-area: 2 / 1; }
+  #page-attitude .controls { grid-area: 3 / 1; }
   .blocks, #inputs { grid-template-columns: minmax(0, 1fr); }
 }
 </style>
@@ -330,6 +349,7 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
   <nav class="tabs" id="page-tabs">
     <button class="active" data-page="scenario" data-help="tabScenario">Scenario</button>
     <button data-page="power" data-help="tabPower" hidden>Power</button>
+    <button data-page="attitude" data-help="tabAttitude" hidden>Attitude</button>
     <button data-page="activities" data-help="tabActivities">Activities</button>
     <button data-page="inputs" data-help="tabInputs">Inputs</button>
     <button data-page="results" data-help="tabResults">Results</button>
@@ -398,6 +418,33 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
       <div class="data-panel" id="vp-power-setup">
         <div class="vp-title" data-help="powerSetup"><b>Power setup</b></div>
         <div id="power-setup"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="page-attitude">
+    <div class="charts" id="attitude-charts">
+      <div class="chart-head"><span class="title" data-help="timeline">TIMELINE</span><span class="zooms" id="attitude-zooms"></span></div>
+      <div class="chart-body" id="attitude-gantt"></div>
+      <div class="chart-head" id="head-angles"></div>
+      <div class="chart-body" id="chart-angles"></div>
+      <div class="chart-head" id="head-rate"></div>
+      <div class="chart-body" id="chart-rate"></div>
+      <div class="chart-head" id="head-acceleration"></div>
+      <div class="chart-body" id="chart-acceleration"></div>
+    </div>
+    <div class="attitude-side">
+      <div class="data-panel" id="vp-attitude-now">
+        <div class="vp-title" data-help="attitudeNow"><b>Current attitude</b></div>
+        <dl class="power-now" id="attitude-now"></dl>
+      </div>
+      <div class="data-panel" id="vp-attitude-files">
+        <div class="vp-title" data-help="attitudeFiles"><b>Download</b></div>
+        <div class="attitude-files" id="attitude-files"></div>
+      </div>
+      <div class="data-panel" id="vp-attitude-warnings">
+        <div class="vp-title" data-help="warnings"><b>Warnings</b></div>
+        <div id="attitude-warnings"></div>
       </div>
     </div>
   </section>
@@ -5282,6 +5329,39 @@ function lightFraction(illumination, t, light, time, i) {
   if (t1 > piece.end_s && after !== null) [t1, v1] = [piece.end_s, after];
   return clamp(t1 > t0 ? v0 + ((v1 - v0) * (time - t0)) / (t1 - t0) : v0, 0, 1);
 }
+
+/**
+ * The spans where the body turns faster than the slew block allows, from the
+ * Attitude data: each step whose rate passes the rate limit, or with an
+ * acceleration past its limit at either end. As in the run's warnings, only
+ * steps inside one attitude count: the slews, and the steps across an
+ * attitude's ends, are left out. Neighbouring steps join into one piece,
+ * `{start_s, end_s}`. A limit that is null is never passed.
+ */
+function excessPieces(t, attitude, attitudeTrack) {
+  const over = (value, limit) => limit !== null && value !== null && value !== undefined && value > limit;
+  // a step wholly inside one piece of the attitude track, other than a slew
+  const inside = (k) => {
+    if (k < 0 || k >= t.length - 1) return false;
+    const piece = pieceAt(attitudeTrack, t[k]);
+    return piece.value !== "slew" && t[k + 1] <= piece.end_s;
+  };
+  const rate = attitude.rate_deg_s;
+  const acceleration = attitude.acceleration_deg_s2;
+  const pieces = [];
+  for (let k = 0; k < t.length - 1; k++) {
+    if (!inside(k)) continue;
+    const passed =
+      over(rate[k], attitude.max_rate_deg_s) ||
+      (inside(k - 1) && over(acceleration[k], attitude.max_acceleration_deg_s2)) ||
+      (inside(k + 1) && over(acceleration[k + 1], attitude.max_acceleration_deg_s2));
+    if (!passed) continue;
+    const last = pieces[pieces.length - 1];
+    if (last && last.end_s === t[k]) last.end_s = t[k + 1];
+    else pieces.push({ start_s: t[k], end_s: t[k + 1] });
+  }
+  return pieces;
+}
 </script>
 <script>
 "use strict";
@@ -5319,6 +5399,7 @@ const THEME = {
   soc: "#22d3ee",
   socFill: "rgba(34, 211, 238, 0.12)",
   limit: "#f87171",
+  excessBand: "rgba(245, 177, 61, 0.22)",
   critical: "#f87171",
   warning: "#f5b13d",
 };
@@ -5375,6 +5456,10 @@ const MODEL = scenario.model || null;
 // The parts of the model that turn, such as solar wings, from version 5 of
 // scenario.js. Each has its angle at each time of the grid.
 const ARTICULATIONS = (MODEL && MODEL.articulations) || [];
+// The body's attitude for the Attitude page: roll, pitch and yaw, the rates,
+// the slew limits and the files to download. An older scenario.js has none.
+const ATTITUDE = scenario.attitude || null;
+const EXCESSES = ATTITUDE ? excessPieces(T, ATTITUDE, TRACKS.attitude) : [];
 const AXIS_VECTORS = { "+x": [1, 0, 0], "-x": [-1, 0, 0], "+y": [0, 1, 0], "-y": [0, -1, 0], "+z": [0, 0, 1], "-z": [0, 0, -1] };
 const MONO = getComputedStyle(document.body).fontFamily;
 
@@ -6693,6 +6778,70 @@ const charts = (() => {
     battery("#chart-soc-detail", "#head-soc-detail");
   }
 
+  // The Attitude page: the timeline, the roll, pitch and yaw against LVLH,
+  // the body rate and its acceleration. Where the rate or the acceleration
+  // passes the slew block's limit, an amber band crosses all three charts.
+  if (ATTITUDE) {
+    $("#page-tabs").querySelector('[data-page="attitude"]').hidden = false;
+    gantt("#attitude-gantt", hiddenX);
+    const shadeExcesses = (u) =>
+      clipped(u, (c, box) => {
+        c.fillStyle = THEME.excessBand;
+        for (const piece of EXCESSES) {
+          const x0 = u.valToPos(piece.start_s / 60, "x", true);
+          c.fillRect(x0, box.top, Math.max(u.valToPos(piece.end_s / 60, "x", true) - x0, 1), box.height);
+        }
+      });
+    // a jump across ±180 deg is a wrap, not a turn: leave a gap there
+    const unwrapped = (values) => values.map((value, k) => (k > 0 && Math.abs(value - values[k - 1]) > 180 ? null : value));
+    const angles = [
+      ["Roll", ATTITUDE.roll_deg, AXIS_COLOURS[0]],
+      ["Pitch", ATTITUDE.pitch_deg, AXIS_COLOURS[1]],
+      ["Yaw", ATTITUDE.yaw_deg, AXIS_COLOURS[2]],
+    ];
+    make(
+      "#chart-angles",
+      {
+        range: () => [-180, 180],
+        xAxis: hiddenX,
+        yAxis: { splits: () => [-180, -90, 0, 90, 180] },
+        series: angles.map(([, , colour]) => ({ stroke: colour, width: 1.3 })),
+        drawClear: shadeExcesses,
+      },
+      angles.map(([, values]) => unwrapped(values)),
+    );
+    head("#head-angles", "ROLL, PITCH, YAW", "deg, against LVLH", angles.map(([label, , colour]) => [label, colour]), "attitudeAngles").forEach(
+      (value) => value.remove(),
+    );
+    // the rate and the acceleration, each with its limit as a dashed line
+    function rateChart(target, headTarget, title, unit, values, limit, help, last) {
+      const top = Math.max(limit || 0, ...values.filter((v) => v !== null)) * 1.15 || 1;
+      make(
+        target,
+        {
+          range: () => [0, top],
+          xAxis: last ? shownX : hiddenX,
+          yAxis: {},
+          series: [
+            { stroke: THEME.accent, fill: THEME.socFill, paths: uPlot.paths.stepped({ align: 1 }) },
+            { stroke: THEME.limit, dash: [6, 4], width: 1.2 },
+          ],
+          drawClear: shadeExcesses,
+        },
+        [values, values.map(() => limit)],
+      );
+      const keys = [["Body", THEME.accent], ...(limit === null ? [] : [["Slew limit", THEME.limit]])];
+      const [bodyValue, limitValue] = head(headTarget, title, unit, keys, help);
+      bodyValue.remove();
+      if (limitValue) limitValue.textContent = `${numberText(limit, 4)} ${unit}`;
+    }
+    rateChart("#chart-rate", "#head-rate", "BODY RATE", "deg/s", ATTITUDE.rate_deg_s, ATTITUDE.max_rate_deg_s, "bodyRate", false);
+    rateChart(
+      "#chart-acceleration", "#head-acceleration", "ACCELERATION", "deg/s²",
+      ATTITUDE.acceleration_deg_s2, ATTITUDE.max_acceleration_deg_s2, "bodyAcceleration", true,
+    );
+  }
+
   function zoom(from, to) {
     list[0].setScale("x", { min: clamp(from, 0, T_END / 60), max: clamp(to, 0, T_END / 60) });
   }
@@ -6702,7 +6851,7 @@ const charts = (() => {
     ["1 orbit", () => zoom(now() - PERIOD / 120, now() + PERIOD / 120), "zoomOrbit"],
     ["30 min", () => zoom(now() - 15, now() + 15), "zoom30"],
   ];
-  for (const target of power ? ["#zooms", "#power-zooms"] : ["#zooms"]) {
+  for (const target of ["#zooms", ...(power ? ["#power-zooms"] : []), ...(ATTITUDE ? ["#attitude-zooms"] : [])]) {
     for (const [label, action, help] of zooms) {
       $(target).append(element("button", { class: "toggle", text: label, onclick: action, "data-help": help }));
     }
@@ -6806,6 +6955,24 @@ const readouts = (() => {
     line("Net", THEME.netSwatch, NET_W, (value) => `${value >= 0 ? "+" : ""}${value.toFixed(1)} W`);
     line("Battery", THEME.soc, grid.soc, (value) => `${(100 * value).toFixed(1)} %`);
   }
+  // The Attitude page's current attitude, each line in its chart's colour
+  const attitudeNow = [];
+  const attitudeName = element("dd");
+  if (ATTITUDE) {
+    $("#attitude-now").append(element("dt", { text: "Attitude" }), attitudeName);
+    const line = (label, colour, data, format) => {
+      const value = element("dd");
+      $("#attitude-now").append(element("dt", {}, [element("span", { class: "fill", style: `background:${colour}` }), label]), value);
+      attitudeNow.push([value, data, format]);
+    };
+    const degrees = (value) => `${value.toFixed(1)}°`;
+    const orDash = (format) => (value) => (value === null ? "—" : format(value));
+    line("Roll", AXIS_COLOURS[0], ATTITUDE.roll_deg, degrees);
+    line("Pitch", AXIS_COLOURS[1], ATTITUDE.pitch_deg, degrees);
+    line("Yaw", AXIS_COLOURS[2], ATTITUDE.yaw_deg, degrees);
+    line("Rate", THEME.accent, ATTITUDE.rate_deg_s, orDash((value) => `${value.toFixed(3)} deg/s`));
+    line("Acceleration", THEME.accent, ATTITUDE.acceleration_deg_s2, orDash((value) => `${value.toFixed(4)} deg/s²`));
+  }
   const jointValues = ARTICULATIONS.map((joint) => {
     const value = element("span");
     $("#now").append(element("dt", { text: joint.name, "data-help": "articulation" }), element("dd", { "data-help": "articulation" }, [value]));
@@ -6819,7 +6986,12 @@ const readouts = (() => {
       setText(charts.values.net, `${NET_W[k] >= 0 ? "+" : ""}${NET_W[k].toFixed(1)} W`);
       setText(charts.values.soc, `${(100 * power.grid.soc[k]).toFixed(1)} %`);
       for (const [value, data, format] of powerNow) setText(value, format(data[k]));
-    } else {
+    }
+    if (ATTITUDE) {
+      setText(attitudeName, pieceText(pieceAt(TRACKS.attitude, state.t)));
+      for (const [value, data, format] of attitudeNow) setText(value, format(data[k]));
+    }
+    if (!power) {
       sunBody.copy(state.sun).applyQuaternion(inverse.copy(state.qBody).invert());
       ["x", "y", "z"].forEach((name, j) => setText(bodyValues[j], (sunBody[name] >= 0 ? " " : "") + sunBody[name].toFixed(3)));
     }
@@ -6885,7 +7057,8 @@ function showActivities() {
   $("#activities-file").textContent = SCENARIO_FILE;
   $("#activity-summary").textContent = activitySummary();
   // warnings came with the rate check; an older scenario.js has none
-  const warnings = scenario.warnings || [];
+  // they show on the Attitude page, which an older scenario.js has none of
+  const warnings = ATTITUDE ? [] : scenario.warnings || [];
   const warningBlock = $("#activity-warnings");
   warningBlock.hidden = !warnings.length;
   warningBlock.replaceChildren(
@@ -6979,6 +7152,42 @@ function showPowerSetup() {
   );
   const note = power.setup ? `From ${power.power_file}. The file itself is on the Inputs tab.` : "power.js gives no setup.";
   $("#power-setup").replaceChildren(...blocks, element("p", { class: "note", text: note }));
+}
+
+/** Give the user a text file, as a download. */
+function saveText(name, text) {
+  const link = element("a", { href: URL.createObjectURL(new Blob([text], { type: "text/plain" })), download: name });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+/**
+ * The Attitude page's side: a button that downloads the attitude file, one for
+ * each articulation's file, and the warnings. The files' texts come in
+ * scenario.js, as quicksat writes them.
+ */
+function showAttitude() {
+  if (!ATTITUDE) return;
+  const [attitudeFile, ...jointFiles] = Object.keys(ATTITUDE.files);
+  const button = (file, label, help) =>
+    element("button", { class: "toggle", "data-help": help, onclick: () => saveText(file, ATTITUDE.files[file]) }, [
+      element("b", { text: label }),
+      ` · ${file}`,
+    ]);
+  $("#attitude-files").replaceChildren(
+    button(attitudeFile, "Attitude", "downloadAttitude"),
+    ...jointFiles.map((file, j) => button(file, ARTICULATIONS[j] ? ARTICULATIONS[j].name : file, "downloadArticulation")),
+    element("p", { text: "Each file's header gives the epoch, the time scale, the frame and the quaternion's convention." }),
+  );
+  const warnings = scenario.warnings || [];
+  const unchecked = ATTITUDE.max_rate_deg_s === null && ATTITUDE.max_acceleration_deg_s2 === null;
+  $("#attitude-warnings").replaceChildren(
+    ...(warnings.length
+      ? warnings.map((text) => element("p", { text }))
+      : [element("p", { class: "none", text: unchecked ? "None. The scenario has no slew block, so there are no limits to check." : "None. Every attitude stays within the slew block's limits." })]),
+  );
 }
 
 function showInputs() {
@@ -7357,6 +7566,48 @@ const HELP = {
     title: "Power",
     text: "The timeline over a larger power chart and the battery, with the current power and the power setup beside them.",
   },
+  tabAttitude: {
+    title: "Attitude",
+    text: "The body's roll, pitch and yaw, its turn rate and its acceleration over the run, with the warnings, and the attitude files to download.",
+  },
+  attitudeAngles: {
+    title: "Roll, pitch and yaw",
+    text:
+      "The body against LVLH: x along the track, y minus the orbit normal, z nadir. Yaw turns about z, then pitch about the new y, " +
+      "then roll about the newest x. A nadir attitude reads zero. Near a pitch of ±90°, roll and yaw are not well defined, and they " +
+      "jump. A jump across ±180° is left as a gap. An amber band marks where the body turns faster than the slew block allows.",
+  },
+  bodyRate: {
+    title: "Body rate",
+    text:
+      "How fast the body turns, over each time step, about whatever axis. The dashed line is the slew block's maximum rate. " +
+      "An attitude change with no slew is instant, so it has no rate and shows as a gap.",
+  },
+  bodyAcceleration: {
+    title: "Acceleration",
+    text:
+      "The change of the turn rate, as a vector, between two time steps: a change of the axis counts as well as one of the rate. " +
+      "The dashed line is the slew block's maximum acceleration. Both are averages over a step, so a short peak reads low.",
+  },
+  attitudeNow: { title: "Current attitude", text: "The attitude, its angles against LVLH, and the body rate and acceleration, at the time cursor." },
+  attitudeFiles: {
+    title: "Download",
+    text: "The attitude, and each articulation's angle, as ECSV files: the same files that write_attitude_files writes from Python.",
+  },
+  downloadAttitude: {
+    title: "Attitude file",
+    text:
+      "The time, the quaternion qx qy qz qw and the attitude in effect. The quaternion has its scalar last, and turns body " +
+      "vectors into GCRS.",
+  },
+  downloadArticulation: {
+    title: "Articulation file",
+    text: "The time, the part's angle about its drive axis, and whether it is parked, for this articulation alone.",
+  },
+  warnings: {
+    title: "Warnings",
+    text: "Each attitude that turns the body faster, or with more acceleration, than the slew block allows, such as tracking a ground station overhead.",
+  },
   tabActivities: { title: "Activities", text: "Every occurrence of every activity, with its times, its slew and its statuses." },
   tabInputs: { title: "Inputs", text: "The scenario file and the power file as written, the orbit, and the conventions." },
   tabResults: { title: "Results", text: "The summary, the checks, and which data files were found." },
@@ -7413,10 +7664,13 @@ const HELP = {
 
 // ---------------------------------------------------------------- Pages and controls
 
+/** The pages with the time controls and the charts. */
+const TIMED_PAGES = ["scenario", "power", "attitude"];
+
 function showPage(page) {
   state.page = page;
-  // The Scenario and Power pages share the time controls
-  if (page === "scenario" || page === "power") $(`#page-${page}`).append($(".controls"));
+  // The Scenario, Power and Attitude pages share the time controls
+  if (TIMED_PAGES.includes(page)) $(`#page-${page}`).append($(".controls"));
   for (const button of $("#page-tabs").querySelectorAll("button")) button.classList.toggle("active", button.dataset.page === page);
   for (const section of document.querySelectorAll(".page")) section.classList.toggle("active", section.id === `page-${page}`);
   markAll();
@@ -7483,6 +7737,7 @@ function observe(selector, resize) {
 
 setupControls();
 showActivities();
+showAttitude();
 showInputs();
 showResults();
 showPowerSetup();
@@ -7504,7 +7759,7 @@ function frame(now) {
     }
     setTime(next);
   }
-  if (dirty.charts && (state.page === "scenario" || state.page === "power")) {
+  if (dirty.charts && TIMED_PAGES.includes(state.page)) {
     charts.redraw();
     dirty.charts = false;
   }

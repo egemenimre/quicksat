@@ -167,3 +167,36 @@ function lightFraction(illumination, t, light, time, i) {
   if (t1 > piece.end_s && after !== null) [t1, v1] = [piece.end_s, after];
   return clamp(t1 > t0 ? v0 + ((v1 - v0) * (time - t0)) / (t1 - t0) : v0, 0, 1);
 }
+
+/**
+ * The spans where the body turns faster than the slew block allows, from the
+ * Attitude data: each step whose rate passes the rate limit, or with an
+ * acceleration past its limit at either end. As in the run's warnings, only
+ * steps inside one attitude count: the slews, and the steps across an
+ * attitude's ends, are left out. Neighbouring steps join into one piece,
+ * `{start_s, end_s}`. A limit that is null is never passed.
+ */
+function excessPieces(t, attitude, attitudeTrack) {
+  const over = (value, limit) => limit !== null && value !== null && value !== undefined && value > limit;
+  // a step wholly inside one piece of the attitude track, other than a slew
+  const inside = (k) => {
+    if (k < 0 || k >= t.length - 1) return false;
+    const piece = pieceAt(attitudeTrack, t[k]);
+    return piece.value !== "slew" && t[k + 1] <= piece.end_s;
+  };
+  const rate = attitude.rate_deg_s;
+  const acceleration = attitude.acceleration_deg_s2;
+  const pieces = [];
+  for (let k = 0; k < t.length - 1; k++) {
+    if (!inside(k)) continue;
+    const passed =
+      over(rate[k], attitude.max_rate_deg_s) ||
+      (inside(k - 1) && over(acceleration[k], attitude.max_acceleration_deg_s2)) ||
+      (inside(k + 1) && over(acceleration[k + 1], attitude.max_acceleration_deg_s2));
+    if (!passed) continue;
+    const last = pieces[pieces.length - 1];
+    if (last && last.end_s === t[k]) last.end_s = t[k + 1];
+    else pieces.push({ start_s: t[k], end_s: t[k + 1] });
+  }
+  return pieces;
+}

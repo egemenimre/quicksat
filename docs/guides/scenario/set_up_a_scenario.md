@@ -203,7 +203,7 @@ Then read `run.warnings`. With a `slew` block, the run measures how fast each at
 - `scenario_viewer.html` is the page. Double-click it to open it in a browser.
 - `scenario.js` holds the data of the run.
 
-The page shows the run in 3D, with the ground track, the timeline and the activity table. It needs no Python, no server and no network. Keep the two files together, because the page reads `scenario.js` from its own folder.
+The page shows the run in 3D, with the ground track, the timeline and the activity table. Its Attitude tab shows the body's roll, pitch and yaw against LVLH, its turn rate and its acceleration against the slew limits, and the warnings. Amber bands mark where an attitude turns the body faster than the slews may. The tab also offers the attitude files of step 11 for download. The page needs no Python, no server and no network. Keep the two files together, because the page reads `scenario.js` from its own folder.
 
 After you change the scenario, run it again and reload the page. The page then reads the new `scenario.js`.
 
@@ -226,4 +226,4 @@ Each file's header gives the epoch, the time scale, and what the numbers mean. T
 
 astropy reads each file with `QTable.read(path, format="ascii.ecsv")`. Other tools can read the rows below the `#` lines of the header, with spaces between the columns.
 
-quicksat does not write the orbit, since you gave it.
+The viewer's Attitude tab offers the same files for download, with no Python needed. quicksat does not write the orbit, since you gave it.

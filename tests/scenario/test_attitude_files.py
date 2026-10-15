@@ -20,6 +20,7 @@ from scipy.spatial.transform import Rotation
 
 from quicksat import u
 from quicksat.scenario import attitude_files
+from quicksat.scenario.attitude import attitude_names
 from quicksat.scenario.attitude_files import (
     QUATERNION_NOTES,
     articulation_file,
@@ -27,6 +28,7 @@ from quicksat.scenario.attitude_files import (
 )
 from quicksat.scenario.config import Scenario
 from quicksat.scenario.run import ScenarioRun, run_scenario
+from quicksat.scenario.viewer import scenario_data
 
 from .conftest import SLEW
 
@@ -151,3 +153,26 @@ def test_names_that_give_the_same_file_are_refused(run, tmp_path, monkeypatch):
     monkeypatch.setattr(attitude_files, "articulation_tables", lambda _: tables)
     with pytest.raises(ValueError, match="'wing a' and 'wing_a' would both be written"):
         write_attitude_files(run, tmp_path)
+
+
+def test_the_viewer_gets_the_angles_the_rates_and_the_files(run, slew_run, tmp_path):
+    attitude = scenario_data(run)["attitude"]
+    names = attitude_names(run)
+    rpy = np.array([attitude[key] for key in ("roll_deg", "pitch_deg", "yaw_deg")])
+    # nadir, +z to nadir and -y to the orbit normal, is LVLH itself
+    assert np.abs(rpy[:, names == "nadir"]).max() < 1e-3
+    # without slews, an attitude change is instant: no rate across it
+    rate = attitude["rate_deg_s"]
+    changes = np.flatnonzero(names[1:] != names[:-1])
+    assert changes.size and all(rate[k] is None for k in changes)
+    assert rate[-1] is None and attitude["max_rate_deg_s"] is None
+    # with slews, the rate is known everywhere, and the limits come along
+    slewing = scenario_data(slew_run)["attitude"]
+    assert None not in slewing["rate_deg_s"][:-1]
+    assert (slewing["max_rate_deg_s"], slewing["max_acceleration_deg_s2"]) == (
+        0.7,
+        0.08,
+    )
+    # the files to download are the ones Python writes
+    paths = write_attitude_files(run, tmp_path)
+    assert attitude["files"] == {path.name: path.read_text() for path in paths}

@@ -32,6 +32,7 @@ The files hold no time stamps. So the same run writes the same bytes.
 
 """
 
+import io
 import re
 from pathlib import Path
 
@@ -233,23 +234,22 @@ def articulation_file(name: str) -> str:
     return "articulation_" + re.sub(r"[^\w+-]+", "_", name).strip("_") + ".ecsv"
 
 
-def write_attitude_files(run: ScenarioRun, folder: str | Path) -> list[Path]:
+def attitude_file_texts(run: ScenarioRun) -> dict[str, str]:
     """
-    Write the body's attitude, and the angles of each articulation, as ECSV
-    files in a folder. See the module notes for what each holds.
+    The text of each attitude file, by its file name. The viewer offers these
+    for download, so they are the same as the files `write_attitude_files`
+    writes.
 
     Parameters
     ----------
     run : ScenarioRun
         The run
-    folder : str | Path
-        The folder to write in. It is made if it does not exist.
 
     Returns
     -------
-    paths : list of Path
-        The files written: `attitude.ecsv` first, then one for each
-        articulation, from `articulation_file`
+    texts : dict of str to str
+        `attitude.ecsv` first, then one for each articulation, from
+        `articulation_file`
 
     Raises
     ------
@@ -265,11 +265,43 @@ def write_attitude_files(run: ScenarioRun, folder: str | Path) -> list[Path]:
                 f"'{name}' would both be written to {file}: rename one of them"
             )
         tables[file] = table
+    texts = {}
+    for file, table in tables.items():
+        buffer = io.StringIO()
+        table.write(buffer, format="ascii.ecsv")
+        texts[file] = buffer.getvalue()
+    return texts
+
+
+def write_attitude_files(run: ScenarioRun, folder: str | Path) -> list[Path]:
+    """
+    Write the body's attitude, and the angles of each articulation, as ECSV
+    files in a folder. See the module notes for what each holds.
+
+    Parameters
+    ----------
+    run : ScenarioRun
+        The run
+    folder : str | Path
+        The folder to write in. It is made if it does not exist.
+
+    Returns
+    -------
+    paths : list of Path
+        The files written, as `attitude_file_texts` names them
+
+    Raises
+    ------
+    ValueError
+        If two articulations' names give the same file name
+    """
+    texts = attitude_file_texts(run)
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     paths = []
-    for file, table in tables.items():
+    for file, text in texts.items():
         path = folder / file
-        table.write(path, format="ascii.ecsv", overwrite=True)
+        # no newline translation, so the file is the same on every system
+        path.write_text(text, encoding="utf-8", newline="")
         paths.append(path)
     return paths

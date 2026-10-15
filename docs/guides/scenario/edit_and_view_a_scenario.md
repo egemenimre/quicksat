@@ -89,7 +89,7 @@ For the tables and the plots, run a notebook instead. For a sample folder, that 
 
 ## 8. Open the viewer
 
-The run writes the viewer's page into the output folder you gave it: `scenario_viewer.html` for a scenario, and `power_viewer.html` for a power budget. Double-click it. It shows the run in 3D, with the ground track, the timeline and the activity table, and the power if there is one.
+The run writes the viewer's page into the output folder you gave it: `scenario_viewer.html` for a scenario, and `power_viewer.html` for a power budget. Double-click it. It shows the run in 3D, with the ground track, the timeline and the activity table, and the power if there is one. Its Attitude tab shows the roll, pitch and yaw, the turn rate and the acceleration, and the warnings, and offers the attitude files for download.
 
 If the page is open already, reload it after each run. It then reads the new run.
 
