@@ -12,9 +12,17 @@ Write the editor page for a folder of input files, from the command line:
 A folder with a `scenario.yaml` gets the Scenario Editor, and a folder of sizing
 files, such as `mission.yaml`, gets the Sizing Editor.
 
+Or serve the Scenario Editor from this computer, with a button that runs the
+files and writes the viewer into the output folder:
+
+    python -m quicksat.editor serve sample/power/data sample/power/output
+
+See `quicksat.editor.server`.
+
 """
 
 import argparse
+import sys
 from pathlib import Path
 
 from quicksat.editor.editor import write_editor
@@ -24,13 +32,17 @@ from quicksat.scenario import SCENARIO_FILE
 
 def main(argv: list[str] | None = None) -> None:
     """
-    Write the editor page, and print where it went.
+    Write the editor page, and print where it went. Or, after `serve`, serve it.
 
     Parameters
     ----------
     argv : list of str, optional
         The arguments, the command line's by default
     """
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["serve"]:
+        serve_main(argv[1:])
+        return
     parser = argparse.ArgumentParser(
         prog="python -m quicksat.editor",
         description="Write the editor page for a folder of input files: the "
@@ -50,6 +62,45 @@ def main(argv: list[str] | None = None) -> None:
             f"{args.folder} holds no {SCENARIO_FILE} and no sizing file, "
             "such as mission.yaml"
         )
+
+
+def serve_main(argv: list[str]) -> None:
+    """
+    Serve the Scenario Editor for a folder, until the user stops it.
+
+    Parameters
+    ----------
+    argv : list of str
+        The arguments after `serve`
+    """
+    parser = argparse.ArgumentParser(
+        prog="python -m quicksat.editor serve",
+        description="Serve the Scenario Editor for a folder, on this computer "
+        "only. Its Create the viewer button runs the page's files, and writes the "
+        "viewer into the output folder.",
+    )
+    parser.add_argument("folder", help=f"the folder that holds {SCENARIO_FILE}")
+    parser.add_argument("output", help="the folder to write the viewer in")
+    parser.add_argument(
+        "--port",
+        type=int,
+        help="the port to listen on, and 0 for any free one: 8780 by default, or "
+        "the next free one",
+    )
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="do not open the editor in the browser",
+    )
+    args = parser.parse_args(argv)
+    # here, so that writing a page does not import the run
+    from quicksat.editor.server import EditorServer, serve
+
+    try:
+        server = EditorServer(args.folder, args.output, args.port)
+    except OSError as error:
+        parser.exit(1, f"error: {error}\n")
+    serve(server, open_browser=not args.no_browser)
 
 
 if __name__ == "__main__":

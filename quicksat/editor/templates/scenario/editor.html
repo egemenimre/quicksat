@@ -27,6 +27,24 @@ main.with-3d { grid-template-columns: minmax(0, 1fr) minmax(320px, 38%); }
 .items.activities tr:not(.note-row) > td.num { padding-top: 10.5px; }
 .items.activities tr:not(.note-row) > td.tools { padding-top: 8.5px; }
 
+/* The viewer, made by the editor's server: in the Files tab and on the last Setup step */
+.viewer-panel { display: grid; gap: 8px; max-width: 900px; min-width: 0; overflow-wrap: anywhere; }
+.viewer-panel > * { min-width: 0; }
+.viewer-panel .run-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.viewer-panel a.btn { text-decoration: none; }
+.viewer-panel .hint { margin: 0; }
+.viewer-panel pre.command { margin: 6px 0 8px; padding: 6px 8px; background: #050c18; border-radius: 3px; color: var(--amber); white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.viewer-panel .run-result p { margin: 0 0 4px; }
+.viewer-panel .run-result .ok { color: var(--green); }
+.viewer-panel pre.report { margin: 6px 0 0; white-space: pre-wrap; font: inherit; font-size: 11px; color: var(--muted); max-height: 320px; overflow: auto; }
+.viewer-panel .python-checks { margin-top: 0; }
+.files-viewer { margin-top: 14px; }
+.step-body h3.viewer-head { margin-top: 26px; }
+.files-viewer .viewer-panel { gap: 6px; }
+/* in the narrow file list, the link fills the column as the list's buttons do */
+.files-viewer .run-row { display: grid; gap: 6px; }
+.files-viewer a.btn { display: block; text-align: left; padding: 4px 8px; }
+
 .vp-message { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 20px; text-align: center; }
 
 /* The 3D panel */

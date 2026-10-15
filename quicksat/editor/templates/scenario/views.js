@@ -36,7 +36,7 @@ const STEPS = [
   { title: "Battery", sections: ["battery"] },
   { title: "Power conditioning", sections: ["conditioning"] },
   { title: "Consumption", sections: ["consumption"] },
-  { group: "Finish", title: "Save the files", sections: ["save"] },
+  { group: "Finish", title: "Save and view", sections: ["save"] },
 ];
 
 /** The file's own comments, for the files that can hold them. */
@@ -191,6 +191,7 @@ const OPENERS = {
 Object.assign(page, {
   onShow: apply3d,
   afterChange: () => view3d.update(),
+  filesExtra: () => el("div", { class: "files-viewer" }, el("div", { class: "folder", text: "the viewer" }), viewerPanel()),
   describeBinary: (file) => `A binary GLB file of ${(file.bytes.length / 1024).toFixed(1)} kB, with ${model.parts.length} named parts:\n\n${model.parts.map((p) => "  " + p.name).join("\n")}`,
 });
 

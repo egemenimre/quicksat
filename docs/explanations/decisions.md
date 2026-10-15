@@ -6,6 +6,36 @@ Newest first. When a decision replaces an earlier one, the earlier one is kept i
 
 ---
 
+## 18. The Scenario Editor runs quicksat through a local server
+
+**2026-10-15. Implemented.**
+
+`python -m quicksat.editor serve FOLDER OUTPUT` serves the Scenario Editor from the user's own computer. Its **Create the viewer** button sends the page's files to the server. The server runs them with quicksat, and writes the viewer into the output folder. One round of the loop is then: edit, create the viewer, look at it. Before, it was: edit, download, copy the files back, run a command, and open the viewer.
+
+**Why a local server, and not Python in the browser.** Pyodide runs quicksat unchanged in a page, as a spike showed on 2026-10-11. But a browser loads Pyodide only from a web address, so the page would be hosted, for example on GitHub Pages. The run would still happen in the user's browser, and no file would reach the host. But the page's code would come from the host at each visit. A company cannot easily check that this code never sends its files elsewhere, and many companies forbid such tools for their data. A local server keeps the code, the files and the run on the user's computer. It also runs natively, about twice as fast, with no 55 MB to load first. The users are engineers and students, who can install Python and quicksat with pip.
+
+**What the server does not do.**
+
+- **It does not save the files into the folder.** The run takes the files as they are on the page, saved or not, in a temporary folder that it then deletes. Saving is still a download. Saving rewrites every `#` comment, so the user reviews those first.
+- **It serves the Scenario Editor only.** The Sizing Editor works out its budgets on the page, and needs no run.
+
+**How the server keeps to its user.**
+
+- It listens on 127.0.0.1, which other computers cannot reach.
+- Each start makes a random key of 12 characters, which every address ends with: `http://localhost:8780/quicksat/editor?key=k3Xq9vTzR2mA`. A page from another site does not know the key, so it cannot read the folder's files, the viewer's data or ask for a run. The key stays in the address, not in a cookie, because a user can block or delete cookies, and a browser shares them between all the ports of `localhost`.
+- The port is 8780, or the next free one, so the address stays the same from one start to the next, apart from the key. The host is `localhost`, as names such as `quicksat.localhost` fail in Safari, and other names need a change to each computer's hosts file.
+- It refuses a request whose `Host` is not its own address. This stops a site that points its own name at 127.0.0.1.
+- It refuses a run asked by a page from another origin.
+- Its pages tell the browser not to send their address, with the key, to other sites, such as the place search.
+
+**The page without a server.** A page opened from a file has the button greyed out, with the command that starts the server. A page from the server asks it every few seconds whether it still answers. When it stops, the button is greyed out, with how to start it again.
+
+**After a run,** the page's full check becomes what the loaders said in that run. The server also serves the output folder, so **Open the viewer** opens the new viewer.
+
+A hosted page with Pyodide stays possible, for a demo that needs no install. It would answer the same request as the server.
+
+---
+
 ## 17. The editor finds places with Nominatim
 
 **2026-10-15. Implemented. Replaces a list of places held in the page.**
