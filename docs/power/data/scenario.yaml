@@ -83,9 +83,12 @@ attitudes:
 # are close to the sizing sample's agility budget, but nothing reads them from it.
 # Leave the block out for instant changes.
 slew:
-  max_rate: 0.7 deg/s            # the fastest the body turns
-  max_acceleration: 0.08 deg/s2  # how fast the turn speeds up and slows down
-  settling_time: 20 s            # time to settle after the turn
+  # The fastest the body turns.
+  max_rate: 0.7 deg/s
+  # How fast the turn speeds up and slows down.
+  max_acceleration: 0.08 deg/s2
+  # The time to settle after the turn.
+  settling_time: 20 s
 
 # One repeat of the list. The run repeats it until the duration ends, and cuts
 # the last activity there. Each activity is a chain link: it starts where the one

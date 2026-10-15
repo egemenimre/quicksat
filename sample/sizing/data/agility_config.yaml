@@ -12,37 +12,49 @@ inertia_cases:
   # estimate OR a stated inertia, never both, so there is never a question which
   # of the two produced a number.
 
-  first_guess:               # inertia estimated from a uniform box
+  # Inertia estimated from a uniform box.
+  first_guess:
+    # The box: x along track, y cross track, z nadir.
     body:
-      x: 1.5 m               # along track
-      y: 1.5 m               # cross track
-      z: 2.0 m               # nadir
-    appendage_factor:        # uplift for arrays, radiator, booms; per axis,
-      roll: 1.07             # because the appendages are not symmetric
-      pitch: 1.02            # same modifier for pitch
-    propellant: 100 %        # of the load still aboard. The mass comes from the
-                             # mass budget and this picks the mission point, so
-                             # the inertia follows the mass automatically.
+      x: 1.5 m
+      y: 1.5 m
+      z: 2.0 m
+    # Uplift for arrays, radiator and booms. It is per axis, because the
+    # appendages are not symmetric.
+    appendage_factor:
+      roll: 1.07
+      pitch: 1.02
+    # Of the load still aboard. The mass comes from the mass budget and this
+    # picks the mission point, so the inertia follows the mass automatically.
+    propellant: 100 %
 
-  measured_bol:              # stated outright, as a mass properties report gives it
+  # Stated outright, as a mass properties report gives it. NOTE: a stated
+  # inertia is a fixed number. It does not follow the mass budget, and nothing
+  # checks that it still describes the spacecraft you costed.
+  measured_bol:
     inertia:
-      roll: 264.7 kg*m**2    # NOTE: a stated inertia is a fixed number. It does
-      pitch: 280.0 kg*m**2   # not follow the mass budget, and nothing checks that
-                             # it still describes the spacecraft you costed.
+      roll: 264.7 kg*m**2
+      pitch: 280.0 kg*m**2
 
-  measured_eol:              # the same spacecraft, tanks empty
+  # The same spacecraft, tanks empty.
+  measured_eol:
     inertia:
       roll: 250.0 kg*m**2
       pitch: 264.0 kg*m**2
 
+# A pyramid, with its symmetry axis along yaw. The momentum and the torque are
+# nameplate figures, per wheel. The use factor and the derating are policy: the
+# rest of the momentum is disturbance storage, and the rest of the torque is
+# control authority.
 wheels:
-  count: 4                   # pyramid, symmetry axis along yaw
-  elevation: 26.5 deg        # of each wheel above the pyramid base plane
-  momentum: 4.0 N*m*s        # nameplate, per wheel
-  torque: 0.2 N*m            # nameplate, per wheel
-  momentum_use_factor: 33.3 %   # policy: the rest is disturbance storage
-  torque_derating: 75 %         # policy: the rest is control authority
+  count: 4
+  # Of each wheel above the pyramid base plane.
+  elevation: 26.5 deg
+  momentum: 4.0 N*m*s
+  torque: 0.2 N*m
+  momentum_use_factor: 33.3 %
+  torque_derating: 75 %
 
-settling_time: 20 s          # what the platform needs after a slew before the
-                             # payload can work. An ADCS property, applied once
-                             # at the end of a manoeuvre and not between steps.
+# What the platform needs after a slew before the payload can work. An ADCS
+# property, applied once at the end of a manoeuvre and not between steps.
+settling_time: 20 s

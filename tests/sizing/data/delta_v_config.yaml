@@ -5,11 +5,13 @@
 # not the only thing that needs either. What stays here is what only it can use.
 
 propulsion:
-  isp: 220 s               # hydrazine monopropellant, for the rocket equation
+  # Hydrazine monopropellant, for the rocket equation.
+  isp: 220 s
 
-margin: 5                  # percent, one allowance on the total
+# Percent, one allowance on the total.
+margin: 5
 
 collision_avoidance:
-  return_burn: false       # a hop up and back down; false when the satellite was
-                           # due to be raised anyway and the manoeuvre does double
-                           # duty against the maintenance debt
+  # A hop up and back down. False when the satellite was due to be raised
+  # anyway, and the manoeuvre does double duty against the maintenance debt.
+  return_burn: false

@@ -169,12 +169,14 @@ def comment_blocks(text: str) -> list[dict]:
     """
     Every `#` comment in a YAML text, with the key it belongs to.
 
-    Lines of comment with nothing between them form one block. A block belongs
-    to the first key below it, or to the file if no key follows. A block above
-    the first key, with a blank line after it, belongs to the file too. A block that
-    is indented more than that key closes a section, such as a comment after the
-    last attitude: it belongs to the section of the keys at its own indent. A
-    comment at the end of a line belongs to the outermost key on that line.
+    Comments go above what they describe. Lines of comment with nothing between
+    them form one block. A block belongs to the first key below it, or to the
+    file if no key follows. A block with a blank line between it and that key
+    belongs to the section that holds the key, or to the file at the top level.
+    A block that is indented more than that key closes a section, such as a
+    comment after the last attitude: it belongs to the section of the keys at
+    its own indent. A comment at the end of a line belongs to the outermost key
+    on that line.
 
     Parameters
     ----------
@@ -214,17 +216,12 @@ def comment_blocks(text: str) -> list[dict]:
                 {"start": number, "end": number, "lines": [comment], "path": path}
             )
     lines = text.splitlines()
-    first_key = keys[0][0] if keys else len(lines)
     out = []
     for block in blocks:
         path = block.get("path")
         inline = path is not None
         if not inline:
-            after = block["end"] + 1
-            heads_the_file = block["end"] < first_key and (
-                after >= len(lines) or not lines[after].strip()
-            )
-            path = [] if heads_the_file else _owner(keys, block)
+            path = _owner(keys, block, lines)
         out.append(
             {
                 "line": block["start"] + 1,
@@ -236,7 +233,7 @@ def comment_blocks(text: str) -> list[dict]:
     return out
 
 
-def _owner(keys: list[tuple[int, int, list]], block: dict) -> list:
+def _owner(keys: list[tuple[int, int, list]], block: dict, lines: list[str]) -> list:
     """
     The path of the key that a block of full-line comments belongs to.
 
@@ -246,26 +243,34 @@ def _owner(keys: list[tuple[int, int, list]], block: dict) -> list:
         The keys, from `_key_lines`
     block : dict
         The block, with its first and last lines and its indent
+    lines : list of str
+        The text's lines
 
     Returns
     -------
     path : list
         The first key below the block. If that key is less indented than the
         block, the section of the last key above the block at the block's own
-        indent. Empty for the file.
+        indent. If a blank line comes between the block and the key, the section
+        that holds the key. Empty for the file.
     """
-    below = next(((col, path) for line, col, path in keys if line > block["end"]), None)
+    below = next(
+        ((line, col, path) for line, col, path in keys if line > block["end"]), None
+    )
     if below is None:
         return []
-    column, path = below
+    key_line, column, path = below
     if column < block["indent"]:
         siblings = [
-            path
-            for line, col, path in keys
+            above
+            for line, col, above in keys
             if line < block["start"] and col == block["indent"]
         ]
         if siblings:
             return siblings[-1][:-1]
+    after = block["end"] + 1
+    if after < key_line and not lines[after].strip():
+        return path[:-1]
     return path
 
 

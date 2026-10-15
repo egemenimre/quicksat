@@ -5,10 +5,13 @@
 # it defaults to no margins, no harness, and being dropped at separation.
 
 locations:
+  # All three figures are percentages. The system margin applies to the
+  # location's subtotal. The harness is a share of the location's equipment
+  # mass, before margin, and takes its own contingency.
   Platform:
-    system_margin: 20     # percent, applied to the location subtotal
-    harness_fraction: 4   # percent of this location's equipment mass, before margin
-    harness_margin: 25    # percent, the harness's own contingency
+    system_margin: 20
+    harness_fraction: 4
+    harness_margin: 25
   Payload:
     system_margin: 20
     harness_fraction: 5

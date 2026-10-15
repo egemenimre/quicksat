@@ -46,6 +46,10 @@ An earlier proposal kept the user's `#` comments, and marked the editor's help w
 
 Since a section's notes sit under the key `comments`, no item may take that name.
 
+**Extended on 2026-10-14.** The sizing files take `comments` fields too, in every block. Their YAML files now refuse a key they do not know, as the scenario and power files do. Before, a typo in an optional key, such as `return_brn: false`, left the default in place with no warning. The CSV files still accept columns of their own.
+
+**A `#` comment goes on the lines above what it describes,** not at the end of a line. A block of comment belongs to the key below it. With a blank line between them, it belongs to the section that holds that key, or to the whole file. quicksat's own files were rewritten in this style on the same day. A comment at the end of a line still goes to the key on that line, but one that runs on to the next lines is split.
+
 ---
 
 ## 12. The power losses sit in three places, and a slew is a mode

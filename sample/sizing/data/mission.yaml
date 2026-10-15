@@ -8,5 +8,7 @@
 # The orbit is circular throughout. quicksat models no eccentricity.
 
 altitude: 500 km
-inclination: 97.4 deg      # sun-synchronous at this altitude
-duration: 7 yr             # design life, scales the recurring manoeuvres
+# Sun-synchronous at this altitude.
+inclination: 97.4 deg
+# The design life. It scales the recurring manoeuvres.
+duration: 7 yr

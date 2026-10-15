@@ -87,6 +87,18 @@ def test_each_comment_belongs_to_the_key_it_describes():
     ]
 
 
+def test_a_block_with_a_blank_line_below_it_belongs_to_the_section():
+    text = (
+        "attitudes:\n"
+        "  # every attitude here points +z\n"
+        "\n"
+        "  # nadir's own\n"
+        "  nadir: {point: [+z, nadir]}\n"
+    )
+    found = [(block["line"], block["path"]) for block in comment_blocks(text)]
+    assert found == [(2, ["attitudes"]), (4, ["attitudes", "nadir"])]
+
+
 def test_a_block_keeps_its_lines_and_a_hash_in_quotes_is_not_a_comment():
     blocks = comment_blocks(COMMENTED)
     assert blocks[3]["text"] == "a spare one:\nroll: {point: [+z, nadir]}"
