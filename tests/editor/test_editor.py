@@ -26,6 +26,7 @@ from quicksat.editor.editor import (
     FORMAT,
     PAGE_FILE,
     SCRIPTS,
+    SHARED_SCRIPTS,
     comment_blocks,
     editor_data,
     editor_page,
@@ -178,9 +179,10 @@ def test_the_page_holds_its_scripts_and_the_folder(power_dir, tmp_path):
     assert page == tmp_path / "out" / PAGE_FILE
     text = page.read_text(encoding="utf-8")
     assert not re.search(r"@(project|places|three|yaml|css|editor)@", text)
-    scripts = PACKAGE / "editor" / "templates" / "js"
-    for name in SCRIPTS:
-        assert (scripts / name).read_text(encoding="utf-8") in text, name
+    templates = PACKAGE / "editor" / "templates"
+    for folder, names in (("shared", SHARED_SCRIPTS), ("scenario", SCRIPTS)):
+        for name in names:
+            assert (templates / folder / name).read_text(encoding="utf-8") in text, name
     assert page_data(text)["files"]["scenario"]["name"] == "scenario.yaml"
     places = re.search(
         r'<script id="places" type="application/json">(.*?)</script>', text, re.S

@@ -25,7 +25,7 @@ from quicksat.editor.editor import _key_lines, comment_blocks
 NODE = shutil.which("node")
 
 ROOT = Path(__file__).parent.parent.parent
-OPEN_JS = ROOT / "quicksat" / "editor" / "templates" / "js" / "open.js"
+OPEN_JS = ROOT / "quicksat" / "editor" / "templates" / "shared" / "open.js"
 
 RUN = """
 const fs = require("fs");

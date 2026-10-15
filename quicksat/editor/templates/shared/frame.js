@@ -10,8 +10,9 @@
 //   PAGE_TITLE, CHECKS_NOTE       the page's name, and what its checks leave out
 //   TABS, STEPS, SECTIONS, INFO   the tabs, the steps, the sections and their help
 //   YAML_HELP, YAML_KINDS         the help it writes, and its YAML files' kinds
+//   FILES                         the folder's files, by kind: [{kind, what}]
 //   OPENERS                       how the folder, and each of its files, opens
-//   projectFiles()                the files to save
+//   projectFiles()                the files to save, each with its kind
 //   fileComments(path)            the comments box of a whole file, or null
 //   commentTarget(kind, path)     the block of a comment: [block, label, depth]
 //   runChecks()                   its checks, which end with showProblems()
@@ -42,7 +43,6 @@ const state = {
   file: "",
   pendingDelete: null,
   problems: [],
-  dirty: false,
 };
 
 // ---------------------------------------------------------------- what reading noticed
@@ -80,7 +80,6 @@ let refreshTimer = 0;
  * deleted or renamed, redraws the current view. Every change re-runs the checks.
  */
 function changed(structure = false) {
-  state.dirty = true;
   if (structure) drawView();
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => {
@@ -164,14 +163,11 @@ function infoSign(id) {
   return [ibtn, info];
 }
 
-/** A theme tab: its introduction, a button to open each of its files, and a card for each section. */
+/** A theme tab: its introduction, a bar for each of its files, and a card for each section. */
 function drawSheet(tab) {
   const sheet = $(`#sheet-${tab.id}`);
   const kinds = [...new Set(tab.sections.map((id) => SECTIONS[id].file))].filter((kind) => OPENERS[kind]);
-  sheet.replaceChildren(el("div", { class: "sheet-head" },
-    el("p", { class: "sheet-intro", text: tab.intro }),
-    el("span", { class: "spacer" }),
-    ...kinds.map(openButton)));
+  sheet.replaceChildren(el("p", { class: "sheet-intro", text: tab.intro }), ...kinds.map(fileBar));
   if (tab.top) sheet.append(tab.top() || "");
   for (const id of tab.sections) {
     const section = SECTIONS[id];
@@ -245,6 +241,7 @@ function showProblems() {
       .map((p) => el("div", { class: p.level === "note" ? "note" : "", text: p.text })));
   }
   if (!$("#popover").hidden && $("#popover").dataset.kind === "checks") showChecksPopover();
+  refreshFiles();
 }
 
 function showChecksPopover() {
@@ -287,7 +284,7 @@ function drawFiles() {
     list.append(el("button", {
       class: state.file === file.path ? "current" : "",
       onclick: () => { state.file = file.path; drawFiles(); },
-    }, file.path, file.note ? el("small", { text: file.note }) : null));
+    }, file.path, el("small", {}, file.note ? `${file.note} · ` : "", el("span", { "data-state": file.kind }))));
   }
   list.append(el("div", { class: "actions" },
     el("label", {}, el("input", { type: "checkbox", checked: state.writeHelp, onchange: (e) => { state.writeHelp = e.target.checked; drawFiles(); } }), "write the # help lines"),
@@ -453,6 +450,186 @@ function updateBanner() {
     el("button", { class: "btn small", text: "review them", onclick: () => showTab("files") }));
 }
 
+// ---------------------------------------------------------------- the folder's files
+
+/** The explanation of the table of files and of the buttons, for each page's first step. */
+const FILES_HELP = `<span class="k">The table of files</span>
+<p><b>From</b> says where each file came from: the folder the page was written for, a folder you opened, or a file opened alone. A browser does not tell a page which folder a file opened alone came from.</p>
+<p><b>State</b> says whether the file has changed: <i>unchanged</i> since it was opened, <i>modified</i>, <i>exported</i> when saved and not changed since, or <i>new</i> for a file started on the page.</p>
+<p><b>Page checks</b> are the page's own: names, units and ranges. <b>quicksat's loaders</b> read the files when Python wrote the page. They have not read a file opened since.</p>
+<span class="k">Opening and saving</span>
+<p><b>Open a folder</b> reads every file of the folder that the page knows, and fills every step. <b>Open</b>, on a row or on a tab, reads one file in place of that one. <b>Export</b> saves one file, as a download, and the Files tab saves them all as a zip. Put the files back in the folder yourself: a browser cannot write into it.</p>`;
+
+/**
+ * Where each file came from, by its kind: `{how, folder}`. `how` is `page` for a
+ * file that Python wrote into the page, `folder` for one opened with its folder,
+ * `file` for one opened alone, and `new` for one started on the page.
+ */
+const sources = {};
+
+/** Each file's text, or bytes, as it was last opened or saved: a file that differs has changed. */
+const savedText = {};
+
+/** How each file was last saved, by kind: `export` once the page has saved it, and otherwise not set. */
+const savedBy = {};
+
+/** Each file's text, or bytes, as saving would write it now, by kind. The help lines are always in. */
+function currentTexts() {
+  const writeHelp = state.writeHelp;
+  state.writeHelp = true;
+  try {
+    return Object.fromEntries(projectFiles().map((file) => [file.kind, file.text ?? file.bytes]));
+  } finally {
+    state.writeHelp = writeHelp;
+  }
+}
+
+/** Note the files of `kinds` as saved, as they are now: opened, or exported by the page. */
+function markSaved(kinds, by = "") {
+  const texts = currentTexts();
+  for (const kind of kinds) {
+    if (!(kind in texts)) continue;
+    savedText[kind] = texts[kind];
+    if (by) savedBy[kind] = by; else delete savedBy[kind];
+  }
+}
+
+/**
+ * Each file's state, by kind: `unchanged` since it was opened, `exported` and not
+ * changed since, `modified` since either, `new` for a file never saved, or
+ * `absent` for one the page does not save.
+ */
+function fileStates() {
+  const texts = currentTexts();
+  const stateOf = (kind) => {
+    if (!(kind in texts)) return "absent";
+    if (!(kind in savedText)) return "new";
+    if (texts[kind] !== savedText[kind]) return "modified";
+    return savedBy[kind] === "export" ? "exported" : "unchanged";
+  };
+  return Object.fromEntries(FILES.map(({ kind }) => [kind, stateOf(kind)]));
+}
+
+const STATE_TEXT = {
+  unchanged: "unchanged",
+  exported: "exported",
+  modified: "modified, not saved",
+  new: "new, not saved",
+  absent: "not in this folder",
+};
+
+/** Whether any file has changes that are not saved. */
+const unsaved = () => Object.values(fileStates()).some((s) => s === "modified" || s === "new");
+
+/** Note a file that the page starts, such as a power system added to a scenario folder. */
+function fileAdded(kind) {
+  if (!sources[kind]) sources[kind] = { how: "new" };
+}
+
+/** A file's name in the folder, by its kind. */
+function fileName(kind) {
+  const file = projectFiles().find((f) => f.kind === kind);
+  return file ? file.path : project.names[kind] || kind;
+}
+
+/** Where a file came from, in words. */
+function sourceText(kind) {
+  const source = sources[kind];
+  if (!source) return "";
+  return {
+    page: `from ${source.folder}/, when the page was written`,
+    folder: `opened from the folder ${source.folder}/`,
+    file: "opened alone: the browser does not tell the page its folder",
+    new: "started on this page",
+  }[source.how];
+}
+
+/** Save one file, as a download, and note it as saved. */
+function exportFile(kind) {
+  const file = projectFiles().find((f) => f.kind === kind);
+  if (!file) return;
+  download(file);
+  markSaved([kind], "export");
+  refreshFiles();
+}
+
+function exportButton(kind) {
+  return el("button", { class: "btn small", text: "Export", title: "Save this file, as a download", "data-export": kind, onclick: () => exportFile(kind) });
+}
+
+/** A tab's bar for one of its files: its name, where it came from, its state, and Open and Export. */
+function fileBar(kind) {
+  return el("div", { class: "file-bar" },
+    el("b", { class: "file-name", text: fileName(kind) }),
+    el("span", { class: "hint", text: sourceText(kind) }),
+    el("span", { class: "file-state", "data-state": kind }),
+    el("span", { class: "spacer" }),
+    OPENERS[kind] ? openButton(kind) : null,
+    exportButton(kind));
+}
+
+/** The page's problems in a file's sections: [errors, notes]. */
+function problemsOf(kind) {
+  const mine = state.problems.filter((p) => SECTIONS[p.section] && SECTIONS[p.section].file === kind);
+  return [mine.filter((p) => p.level === "error").length, mine.filter((p) => p.level === "note").length];
+}
+
+/** What quicksat's loaders said of a file when the page was written, as a cell. */
+function loadersCell(kind) {
+  const name = fileName(kind);
+  const check = DATA.checks.find((c) => c.file.split(" with ").includes(name));
+  if (!check) return el("td", { class: "hint", text: "—" });
+  if (check.ok === null) return el("td", { class: "hint", text: "not run", title: "The file was opened in the browser, so quicksat's loaders have not read it." });
+  return check.ok ? el("td", { class: "ok", text: "reads", title: check.file }) : el("td", { class: "bad", text: "refused", title: check.message });
+}
+
+/**
+ * A table of the folder's files: for each, what it holds, where it came from,
+ * whether it changed, the page's checks, what quicksat's loaders said, and its
+ * buttons. `groups` are the rows, each group under an optional heading:
+ * [{head, rows: [{kind, what, add}]}], where `add` starts a missing file.
+ */
+function filesTable(groups) {
+  const table = el("table", { class: "items files-table" });
+  table.append(el("tr", {}, ["file", "holds", "from", "state", "page checks", "quicksat's loaders", ""].map((h) => el("th", { text: h }))));
+  for (const group of groups) {
+    if (group.head) table.append(el("tr", { class: "group-row" }, el("td", { colspan: 7 }, group.head)));
+    for (const { kind, what, add } of group.rows) {
+      table.append(el("tr", {},
+        el("td", {}, el("b", { text: fileName(kind) })),
+        el("td", { class: "hint", text: what }),
+        el("td", { class: "hint", text: sourceText(kind) }),
+        el("td", { class: "file-state", "data-state": kind }),
+        el("td", { "data-checks": kind }),
+        loadersCell(kind),
+        el("td", { class: "tools" },
+          OPENERS[kind] ? openButton(kind) : null, " ",
+          add ? el("button", { class: "btn small", text: "add", "data-add": kind, title: "Start this file on the page", onclick: add }) : null, " ",
+          exportButton(kind))));
+    }
+  }
+  return el("div", { class: "scroll-x" }, table);
+}
+
+/** Show each file's state, its page checks, and which buttons apply, wherever the page shows them. */
+function refreshFiles() {
+  const states = fileStates();
+  for (const node of document.querySelectorAll("[data-state]")) {
+    const fileState = states[node.dataset.state] || "absent";
+    node.textContent = STATE_TEXT[fileState];
+    node.dataset.value = fileState;
+  }
+  for (const button of document.querySelectorAll("[data-export]")) button.disabled = states[button.dataset.export] === "absent";
+  for (const button of document.querySelectorAll("[data-add]")) button.hidden = states[button.dataset.add] !== "absent";
+  for (const cell of document.querySelectorAll("[data-checks]")) {
+    const [errors, notes] = problemsOf(cell.dataset.checks);
+    // a file with no fields of its own, such as the 3D model, has no checks of its own
+    const absent = states[cell.dataset.checks] === "absent" || !Object.values(SECTIONS).some((section) => section.file === cell.dataset.checks);
+    cell.className = absent ? "hint" : errors ? "bad" : notes ? "warn" : "ok";
+    cell.textContent = absent ? "—" : errors ? `${errors} problem${errors > 1 ? "s" : ""}` : notes ? `${notes} note${notes > 1 ? "s" : ""}` : "pass";
+  }
+}
+
 // ---------------------------------------------------------------- opening files
 
 /**
@@ -464,7 +641,7 @@ function updateBanner() {
 async function openWith(kind) {
   const opener = OPENERS[kind];
   const what = kind === "folder" ? "a folder replaces every file" : `a file replaces ${project.names[kind] || "it"}`;
-  if (state.dirty && !confirm(`Opening ${what} on this page. The changes you have not saved are lost.`)) return;
+  if (unsaved() && !confirm(`Opening ${what} on this page. The changes you have not saved are lost.`)) return;
   const picked = await pickFiles(opener.pick);
   if (!picked.files.length) return;
   const before = Object.fromEntries(Object.entries(DATA.files).map(([k, file]) => [k, file ? file.name : ""]));
@@ -480,7 +657,16 @@ async function openWith(kind) {
   DATA.checks = DATA.checks.filter((check) => !kinds.some((k) => names(k).some((name) => check.file.split(" with ").includes(name))));
   for (const k of kinds) if (DATA.files[k]) DATA.checks.push({ file: DATA.files[k].name, ok: null, message: "" });
   reviewFiles(kinds.filter((k) => YAML_KINDS.includes(k)));
-  state.dirty = false;
+  if (kind === "folder") {
+    for (const k of Object.keys(sources)) delete sources[k];
+    for (const k of Object.keys(savedText)) delete savedText[k];
+    const texts = currentTexts();
+    for (const k of Object.keys(texts)) sources[k] = { how: "folder", folder: picked.folder };
+    markSaved(Object.keys(texts));
+  } else {
+    for (const k of kinds) sources[k] = { how: "file" };
+    markSaved(kinds);
+  }
   state.pendingDelete = null;
   showLabel();
   updateBanner();
@@ -523,6 +709,9 @@ function startPage() {
   });
   document.addEventListener("keydown", (e) => e.key === "Escape" && ($("#popover").hidden = true));
   reviewFiles(YAML_KINDS);
+  const texts = currentTexts();
+  for (const kind of Object.keys(texts)) sources[kind] = { how: "page", folder: DATA.label || DATA.folder };
+  markSaved(Object.keys(texts));
   showLabel();
   showTab("setup");
   showStep(0);

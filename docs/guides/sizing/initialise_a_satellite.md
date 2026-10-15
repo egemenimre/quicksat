@@ -36,6 +36,14 @@ You do not need every budget. The mass budget needs only its own two files. The 
 
 Some fields take a bare percentage, such as `eqpt_margin: 10`. Others take a value with a unit, such as `duty_cycle: 5 %`. Copy the form that the sample file uses for each field.
 
+The Sizing Editor fills in the same files, in a browser page, and writes each field in the form its file needs. Write a page for your folder:
+
+```bash
+python -m quicksat.editor my_satellite my_satellite/editor
+```
+
+Then double-click `my_satellite/editor/editor.html`. Its Setup tab takes you through every file, with an explanation of each field, and saves them as downloads. Put the files back in `my_satellite/`. The sample's own page is `sample/sizing/editor/editor.html`, and its **Open a folder…** button reads any other folder.
+
 ### `mission.yaml`
 
 Holds the altitude, the inclination and the design life. The orbit is circular. A fact that more than one budget can use goes in this file. A fact that only one budget can use stays in that budget's own file.

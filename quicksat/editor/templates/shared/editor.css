@@ -149,7 +149,7 @@ main { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 0; }
 
 /* Theme tabs: a column of section cards */
 .sheet { overflow: auto; padding: 12px 18px 30px; min-height: 0; }
-.sheet-intro { color: var(--muted); margin: 2px 0 12px; max-width: 900px; }
+.sheet-intro { color: var(--muted); margin: 2px 0 10px; max-width: 900px; }
 .card {
   border: 1px solid var(--line); border-radius: 3px; background: #0a1526;
   margin: 0 0 12px; max-width: 1100px;
@@ -309,10 +309,23 @@ input.short { width: 100px; }
 .items input.fill { width: 100%; min-width: 110px; }
 .items td > label.ctl { white-space: nowrap; flex-wrap: nowrap; }
 
-/* Opening a folder, or one file */
-.sheet-head { display: flex; align-items: flex-start; gap: 8px; max-width: 1100px; margin: 2px 0 12px; }
-.sheet-head .sheet-intro { margin: 0; }
+/* The folder's files: opening them, where they came from, whether they changed */
 .open-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+.file-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: 1100px; margin: 0 0 8px;
+  padding: 5px 10px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel);
+}
+.file-bar .file-name { color: var(--text); font-weight: 600; }
+.file-state[data-value="unchanged"] { color: var(--muted); }
+.file-state[data-value="exported"] { color: var(--green); }
+.file-state[data-value="modified"] { color: var(--amber); }
+.file-state[data-value="new"] { color: var(--accent); }
+.file-state[data-value="absent"] { color: var(--dim); }
+.files-table td.ok { color: var(--green); }
+.files-table td.bad { color: var(--red); }
+.files-table td.warn { color: var(--amber); }
+.files-table tr.group-row > td { padding-top: 10px; color: var(--muted); border-bottom-color: var(--line); }
+.files-table td .btn[hidden] { display: none; }
 .review .key { color: var(--muted); }
 .python-checks .opened { color: var(--muted); }
 

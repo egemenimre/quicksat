@@ -324,6 +324,7 @@ async function loadGlbFile(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (await view3d.load(bytes, file.name)) {
     S.model.file = file.name;
+    sources.model = { how: "file" };
     state.selection = null;
     changed(true);
   }

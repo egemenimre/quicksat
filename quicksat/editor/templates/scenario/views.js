@@ -6,6 +6,15 @@ const PAGE_TITLE = "quicksat Scenario Editor";
 /** The kinds of the folder's YAML files, whose `#` comments the page reviews. */
 const YAML_KINDS = ["scenario", "power"];
 
+/** The folder's files, by kind, in the order the Start step lists them. */
+const FILES = [
+  { kind: "scenario", what: "the orbit, the time, the spacecraft, the operations and the activities" },
+  { kind: "model", what: "the 3D model that the scenario names" },
+  { kind: "orbit", what: "the orbit file that the scenario names, if it names one" },
+  { kind: "power", what: "the solar panels, the battery and the power conditioning" },
+  { kind: "consumption", what: "what each equipment draws in each mode" },
+];
+
 const TABS = [
   { id: "setup", title: "Setup" },
   { id: "orbit", title: "Orbit and time", sections: ["orbit", "time"], intro: "Trajectory definition and the scenario duration." },
@@ -81,18 +90,25 @@ const looksLike = {
   consumption: (file) => file.header.includes("equipment_id") && file.header.includes("units_on"),
 };
 
-/** The 3D model and the orbit file that the scenario names, taken from the picked files when they are there. */
+/**
+ * The 3D model and the orbit file that the scenario names, taken from the picked
+ * files when they are there. Returns the kinds of the files it took.
+ */
 async function takeModelAndOrbit(picked) {
+  const taken = [];
   const glb = pickedFile(picked, S.model.file);
   if (glb) {
     const bytes = new Uint8Array(await glb.file.arrayBuffer());
-    if (!(await view3d.load(bytes, S.model.file))) view3d.cube();
+    if (await view3d.load(bytes, S.model.file)) taken.push("model"); else view3d.cube();
   } else if (!(model.bytes && model.fileName === S.model.file)) view3d.cube();
   const key = ORBIT_KEYS[S.orbit.source];
   const orbit = key && pickedFile(picked, S.orbit[key]);
-  if (orbit) orbitFile = { name: S.orbit[key], text: await orbit.file.text() };
-  else if (!(key && orbitFile && orbitFile.name === S.orbit[key])) orbitFile = null;
+  if (orbit) {
+    orbitFile = { name: S.orbit[key], text: await orbit.file.text() };
+    taken.push("orbit");
+  } else if (!(key && orbitFile && orbitFile.name === S.orbit[key])) orbitFile = null;
   state.selection = null;
+  return taken;
 }
 
 /** A picked file of a kind: by its usual name, or else by what it holds. */
@@ -143,8 +159,7 @@ const OPENERS = {
       scenario.modes = collectModes(scenario, consumptionColumns());
       project.scenario = S = scenario;
       project.names.scenario = file.name;
-      await takeModelAndOrbit(picked);
-      return ["scenario"];
+      return ["scenario", ...(await takeModelAndOrbit(picked))];
     },
   },
   power: {

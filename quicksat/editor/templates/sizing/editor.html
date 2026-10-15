@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>quicksat Sizing Editor</title>
+<style>
+/*@css@*/
+
+/* The sizing editor's own parts: the figures worked out from the fields, and
+   the equipment totals */
+#page-setup { grid-template-columns: 230px minmax(0, 1fr); }
+#page-files { grid-template-columns: 280px minmax(0, 1fr); }
+.derived { margin-top: 10px; color: var(--muted); font-size: 11px; }
+.derived b { color: var(--text); font-weight: 400; }
+.derived .k { color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; margin-right: 8px; }
+.items td.total { color: var(--muted); white-space: nowrap; text-align: right; }
+.items th.right { text-align: right; }
+.items tr.hidden-row { display: none; }
+.totals { margin-top: 10px; border-collapse: collapse; font-size: 11px; }
+.totals th { color: var(--dim); font-weight: 400; text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; padding: 2px 14px 2px 0; text-align: right; }
+.totals th:first-child, .totals td:first-child { text-align: left; }
+.totals td { padding: 2px 14px 2px 0; text-align: right; color: var(--text); }
+.totals tr.sum td { border-top: 1px solid var(--line); color: var(--accent); }
+.absent { color: var(--muted); }
+.absent .btn { margin-top: 6px; }
+@media (max-width: 900px) {
+  #page-setup { grid-template-columns: minmax(0, 1fr); }
+  #page-files { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">QUICKSAT<span>SIZING EDITOR</span></div>
+  <div class="folder-name" id="folder" title="The folder of input files this page edits"></div>
+  <nav class="tabs" id="tabs"></nav>
+  <div class="spacer"></div>
+  <button class="chip" id="checks-chip" title="The page's basic checks"></button>
+</header>
+<div class="banner" id="banner" hidden></div>
+<main id="main">
+  <div class="pages" id="pages">
+    <section class="page" id="page-setup">
+      <nav class="steps" id="steps"></nav>
+      <div class="step" id="step"></div>
+    </section>
+    <section class="page" id="page-mission"><div class="sheet" id="sheet-mission"></div></section>
+    <section class="page" id="page-mass"><div class="sheet" id="sheet-mass"></div></section>
+    <section class="page" id="page-equipment"><div class="sheet" id="sheet-equipment"></div></section>
+    <section class="page" id="page-data"><div class="sheet" id="sheet-data"></div></section>
+    <section class="page" id="page-deltav"><div class="sheet" id="sheet-deltav"></div></section>
+    <section class="page" id="page-agility"><div class="sheet" id="sheet-agility"></div></section>
+    <section class="page" id="page-files">
+      <nav class="filelist" id="filelist"></nav>
+      <div class="preview" id="preview"></div>
+    </section>
+  </div>
+</main>
+<div class="popover" id="popover" hidden></div>
+<script id="project" type="application/json">@project@</script>
+<script>/*@yaml@*/</script>
+<script>/*@editor@*/</script>
+</body>
+</html>

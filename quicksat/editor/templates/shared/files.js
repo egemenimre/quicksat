@@ -104,7 +104,8 @@ function download(file) {
 function downloadZip() {
   const folder = (project.name || "quicksat_project").replace(/[^A-Za-z0-9_.-]+/g, "_");
   saveBlob(zipBlob(projectFiles().map((f) => ({ name: `${folder}/${f.path}`, data: fileBytes(f) }))), `${folder}.zip`);
-  state.dirty = false;
+  markSaved(projectFiles().map((file) => file.kind), "export");
+  refreshFiles();
 }
 
 // A zip with no compression: CRC-32, a local header per file, then the central directory

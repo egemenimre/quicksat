@@ -212,17 +212,17 @@ function savePath(name) {
 
 /** Every file the folder saves: the scenario, its model and orbit file, and the power files. */
 function projectFiles() {
-  const files = [{ path: project.names.scenario, text: scenarioYaml() }];
+  const files = [{ kind: "scenario", path: project.names.scenario, text: scenarioYaml() }];
   if (S.model.file && model.bytes) {
     const { path, note } = savePath(S.model.file);
-    files.push({ path, bytes: model.bytes, note: note || "the 3D model" });
+    files.push({ kind: "model", path, bytes: model.bytes, note: note || "the 3D model" });
   }
   const key = ORBIT_KEYS[S.orbit.source];
   if (key && orbitFile && orbitFile.name === S.orbit[key]) {
     const { path, note } = savePath(S.orbit[key]);
-    files.push({ path, text: orbitFile.text, note: note || "the orbit file" });
+    files.push({ kind: "orbit", path, text: orbitFile.text, note: note || "the orbit file" });
   }
-  if (project.hasPower) files.push({ path: project.names.power, text: powerYaml() });
-  if (project.hasConsumption) files.push({ path: project.names.consumption, text: consumptionCsv() });
+  if (project.hasPower) files.push({ kind: "power", path: project.names.power, text: powerYaml() });
+  if (project.hasConsumption) files.push({ kind: "consumption", path: project.names.consumption, text: consumptionCsv() });
   return files;
 }

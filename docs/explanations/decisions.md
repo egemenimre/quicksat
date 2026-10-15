@@ -19,6 +19,10 @@ Each editor page has an **Open a folder** button on its first Setup step, and an
 
 Python still writes the page for a folder, with its loaders' checks: the samples' pages are made that way.
 
+**Extended on 2026-10-15.** The Sizing Editor, which entry 14 planned, is built from the same shared parts: `python -m quicksat.editor` writes it for a folder of sizing files. Each page's first step lists the folder's files, and each tab has a bar for its own. Both say where each file came from, and whether it has changed since it was opened or saved. A file has changed when the text the page would save differs from the text it had then, so a field set back to its value counts as unchanged. **Export** on a tab saves that file alone.
+
+A file opened alone shows no folder: a browser does not tell the page where it came from.
+
 ---
 
 ## 15. An articulation points an axis at any direction
