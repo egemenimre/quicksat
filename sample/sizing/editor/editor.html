@@ -1202,6 +1202,8 @@ const page = {
   isOff: () => false,
   /** The text the Files tab shows for a binary file. */
   describeBinary: (file) => `A binary file of ${(file.bytes.length / 1024).toFixed(1)} kB.`,
+  /** What the Files tab shows under its buttons, such as the scenario editor's viewer, or null. */
+  filesExtra: () => null,
 };
 
 /** What the page shows: the tab, the Setup step, the open explanations, and more. */
@@ -1465,6 +1467,8 @@ function drawFiles() {
   list.append(el("div", { class: "fields", style: "margin-top: 14px" },
     el("label", {}, "Folder name"),
     textInput(project, "name", { cls: "wide" })));
+  const extra = page.filesExtra();
+  if (extra) list.append(extra);
   for (const id of TABS.find((t) => t.id === "files").sections || []) list.append(el("div", { class: "problems", "data-section": id }));
   drawPreview(true);
   // the list is drawn anew, so fill in each file's state and simple check again
@@ -1631,7 +1635,7 @@ function updateBanner() {
 const FILES_HELP = `<span class="k">The table of files</span>
 <p><b>From</b> says where each file came from: the folder the page was written for, a folder you opened, or a file opened alone. A browser does not tell a page which folder a file opened alone came from.</p>
 <p><b>State</b> says whether the file has changed: <i>unchanged</i> since it was opened, <i>modified</i>, <i>downloaded</i> when saved and not changed since, or <i>new</i> for a file started on the page.</p>
-<p><b>Simple check</b> is the page's own: names, units and ranges, run as you type. <b>Full check</b> is quicksat's own loaders, which read the files when Python wrote the page. A file opened since shows <i>not run</i>: write the page again for its full check.</p>
+<p><b>Simple check</b> is the page's own: names, units and ranges, run as you type. <b>Full check</b> is quicksat's own loaders, which read the files when Python wrote the page. A file opened since shows <i>not run</i>: write the page again for its full check. On a page that the Scenario Editor's server sends, a reload, or a run that creates the viewer, gives the full check too.</p>
 <span class="k">Opening and saving</span>
 <p><b>Open a folder</b> reads every file of the folder that the page knows, and fills every step. <b>Open</b>, on a row or on a tab, reads one file in place of that one. <b>download</b> saves one file, and the Files tab saves them all as a zip. Put the files back in the folder yourself: a browser cannot write into it.</p>`;
 

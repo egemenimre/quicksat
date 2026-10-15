@@ -4,6 +4,8 @@ This guide takes you round the loop of the scenario and power work. You edit the
 
 The loop is the same for a scenario folder and for a power folder. A power folder holds its own copy of the scenario, so its editor edits the scenario, the power system and the consumption together.
 
+There are two ways round the loop. The editor's server runs the files from the page: edit, click **Create the viewer**, and look. Or open a page on disk, save the files, put them back in the folder, and run a command. Step 2 starts either one.
+
 You need quicksat installed first. The README has the steps. The sizing files have an editor of their own: see [how to edit and run the sizing files](../sizing/edit_the_sizing_files.md). What each field of the files means is in the other two guides: [how to set up and run a scenario](set_up_a_scenario.md) and [how to set up and run a power budget](../power/set_up_a_power_budget.md).
 
 ## 1. Pick a folder
@@ -18,7 +20,19 @@ cp -r path/to/quicksat/sample/power/data my_project/winter
 
 The steps below use `my_project/winter`.
 
-## 2. Write the editor page
+## 2. Open the editor
+
+### With the editor's server
+
+```bash
+python -m quicksat.editor serve my_project/winter my_project/winter/output
+```
+
+The server opens the editor in your browser, with the folder's files. The second folder is where it writes the viewer. Keep the terminal window open while you work, and press Ctrl+C in it to stop the server.
+
+Only your computer can reach the server. Its address looks like `http://localhost:8780/quicksat/editor?key=k3Xq9vTzR2mA`. The port is 8780, or the next free one if another program has it. The key at the end is a random password, new at each start, which keeps other websites out. So open the address that the server prints. A reload of the page reads the folder's files again, with quicksat's full check. A reload also loses the changes you have not saved.
+
+### As a page on disk
 
 ```bash
 python -m quicksat.editor my_project/winter my_project/winter/editor
@@ -26,7 +40,7 @@ python -m quicksat.editor my_project/winter my_project/winter/editor
 
 This writes `my_project/winter/editor/editor.html`. Python reads the folder's files and puts them inside the page, with the 3D model and any orbit file that the scenario names. It also reads the files with quicksat's own loaders: the full check.
 
-The page needs no Python and no server. Double-click it to open it in a browser.
+This page needs no Python and no server. Double-click it to open it in a browser. It cannot run the files: its **Create the viewer** button is greyed out, and says how to start the server.
 
 A page you have already can open the folder instead: click **Open a folder…** on its first Setup step, and pick `my_project/winter`. The page reads every file it knows there, and fills every step. quicksat's loaders do not read a folder opened this way, so its files have only the page's simple check, and their full check shows *not run*.
 
@@ -63,6 +77,8 @@ Do this before you first save a file that you wrote by hand. The samples' explan
 
 ## 5. Save, and put the files back
 
+With the server, you can skip this step until you want to keep your changes: step 6 runs the files as they are on the page. The server never writes into the folder.
+
 Open the Files tab to see each file as it will be written. Then save, from there or from the last Setup step:
 
 - **download the zip** gives the whole folder in one file;
@@ -74,7 +90,13 @@ The browser puts the downloads in its downloads folder. Copy the files over the 
 
 ## 6. Run
 
-Run the folder from the command line. For a power folder:
+**With the server,** click **Create the viewer**. It is in the Files tab, under the download button, and on the last Setup step, **Save and view**. The run uses the files as they are on the page, saved or not. It writes the viewer into the output folder you gave the server, and does not change the folder's files. The button reads *Running…* until the run ends, a few seconds for the samples.
+
+When it ends, the panel says where the viewer went, and **The run's results** shows what the command line would print. A file that quicksat cannot read stops the run. The panel then shows quicksat's message, and the file's full check reads *refused*. Fix the file, and click again: the button now reads **Update the viewer**.
+
+If the server has stopped, the button is greyed out, with the command that starts it again.
+
+**Without the server,** run the folder from the command line. For a power folder:
 
 ```bash
 python -m quicksat.power my_project/winter my_project/winter/output
@@ -91,13 +113,15 @@ For the tables and the plots, run a notebook instead. For a sample folder, that 
 
 ## 8. Open the viewer
 
-The run writes the viewer's page into the output folder you gave it: `scenario_viewer.html` for a scenario, and `power_viewer.html` for a power budget. Double-click it. It shows the run in 3D, with the ground track, the timeline and the activity table, and the power if there is one. Its Attitude tab shows the roll, pitch and yaw, the turn rate and the acceleration, and the warnings, and offers the attitude files for download.
+The run writes the viewer's page into the output folder: `scenario_viewer.html` for a scenario, and `power_viewer.html` for a power budget. With the server, click **Open the viewer** by the button. It opens the viewer in a browser tab of its own, and each click opens it in the same tab again. Without the server, double-click the page. It shows the run in 3D, with the ground track, the timeline and the activity table, and the power if there is one. Its Attitude tab shows the roll, pitch and yaw, the turn rate and the acceleration, and the warnings, and offers the attitude files for download.
 
 If the page is open already, reload it after each run. It then reads the new run.
 
 ## 9. Go round again
 
-If the page is still open, keep editing: it holds your changes. If you closed it, open it again and click **Open a folder…** to read the folder's files as they are now. Or write the page again, to have quicksat's loaders check the files too:
+With the server, keep editing on the same page, and click **Update the viewer** after each change. Then reload the viewer's tab, or click **Open the viewer** again. Save the files when you want to keep them, as step 5 says. One round is then: edit, update the viewer, read, view.
+
+Without the server, if the page is still open, keep editing: it holds your changes. If you closed it, open it again and click **Open a folder…** to read the folder's files as they are now. Or write the page again, to have quicksat's loaders check the files too:
 
 ```bash
 python -m quicksat.editor my_project/winter my_project/winter/editor

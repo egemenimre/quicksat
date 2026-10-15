@@ -512,7 +512,7 @@ const SECTIONS = {
   },
 
   save: {
-    title: "Save the files", file: "all files",
+    title: "Save and view", file: "all files",
     render(body) {
       const files = projectFiles();
       const table = el("table", { class: "items" });
@@ -530,6 +530,7 @@ const SECTIONS = {
       body.append(el("div", { class: "add-row" },
         el("button", { class: "btn primary", text: `download ${project.name}.zip`, onclick: downloadZip }),
         el("button", { class: "btn", text: "go to the Files tab", onclick: () => showTab("files") })));
+      body.append(el("h3", { class: "viewer-head", text: "The viewer" }), viewerPanel());
     },
   },
 };
@@ -627,5 +628,7 @@ const INFO = {
     <p>With slews on, the mode reads <code>slew</code> while the body turns, so each row needs its power in a slew column too.</p>`,
   save: `<h4>Saving</h4>
     <p>Download one zip, which holds the folder, or the files one by one. Put them back in the folder they came from, then run the notebooks again.</p>
+    <span class="k">The viewer</span>
+    <p><b>Create the viewer</b> runs the files on this page with quicksat, and writes the viewer: the run in 3D, with the ground track, the timeline and the power. It needs the editor's server, which serves this page from your computer: <code>python -m quicksat.editor serve FOLDER OUTPUT</code>. The run uses the files as they are on the page, saved or not, and does not change the folder's files. A file that quicksat cannot read stops the run, and its message shows here.</p>
     <p>The files start with a few lines that say how comments work. Your own comments are in the <code>comments</code> fields. The other <code>#</code> lines are help, which the editor rewrites on each save. Turn the help off for shorter files.</p>`,
 };

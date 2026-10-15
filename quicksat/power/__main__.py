@@ -34,7 +34,12 @@ from quicksat.scenario.config import Scenario
 from quicksat.scenario.run import run_scenario
 
 
-def run_folder(folder: Path) -> BudgetRun:
+def run_folder(
+    folder: Path,
+    scenario_file: str = SCENARIO_FILE,
+    power_file: str = POWER_FILE,
+    consumption_file: str = CONSUMPTION_FILE,
+) -> BudgetRun:
     """
     The power budget of a folder's three files.
 
@@ -45,18 +50,43 @@ def run_folder(folder: Path) -> BudgetRun:
     ----------
     folder : Path
         The folder
+    scenario_file, power_file, consumption_file : str, optional
+        The files' names, if not the usual ones
 
     Returns
     -------
     budget : BudgetRun
         The budget
     """
-    scenario = Scenario.from_yaml_file(folder / SCENARIO_FILE)
-    power_system = PowerSystem.from_yaml_file(folder / POWER_FILE)
-    consumption = PowerConsumption.from_csv(folder / CONSUMPTION_FILE)
+    scenario = Scenario.from_yaml_file(folder / scenario_file)
+    power_system = PowerSystem.from_yaml_file(folder / power_file)
+    consumption = PowerConsumption.from_csv(folder / consumption_file)
     run = run_scenario(scenario)
     generation = run_generation(power_system, run)
     return run_budget(power_system, generation, run_consumption(consumption, run))
+
+
+def summary(budget: BudgetRun) -> str:
+    """
+    The budget's results as the command prints them.
+
+    Parameters
+    ----------
+    budget : BudgetRun
+        The budget
+
+    Returns
+    -------
+    text : str
+        The scenario's report, the notes on the generation and the loads, and
+        the three checks, one a line
+    """
+    lines = [budget.generation.run.report]
+    lines += budget.generation.notes + budget.consumption.notes
+    lines += [
+        f"{check.status:<4} {check.name}: {check.detail}" for check in budget.checks
+    ]
+    return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -83,11 +113,7 @@ def main(argv: list[str] | None = None) -> None:
         budget = run_folder(Path(args.folder))
     except (OSError, ValueError) as error:
         parser.exit(1, f"error: {error}\n")
-    print(budget.generation.run.report)
-    for note in budget.generation.notes + budget.consumption.notes:
-        print(note)
-    for check in budget.checks:
-        print(f"{check.status:<4} {check.name}: {check.detail}")
+    print(summary(budget))
     print(write_power_viewer(budget, args.output))
 
 

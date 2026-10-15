@@ -50,6 +50,8 @@ The power sample flies a 510 km sun-synchronous orbit for three orbits, with ima
 3. **Read the results.** The notebook shows each orbit's energy, the battery's charge, and three checks. The command prints the checks only. In the sample, the lowest charge is 83.6%, above its 70% limit, and every orbit has at least 16.5 W h to spare.
 4. **See the run in the viewer.** Both write [`sample/power/output/power_viewer.html`](sample/power/output/power_viewer.html). Double-click it to see the run in 3D, with the ground track, the timeline, the power and the attitude. Its Attitude tab also gives the attitude as files for other tools.
 
+**Or skip the copy and the run.** `python -m quicksat.editor serve sample/power/data sample/power/output` starts the editor's server, on your computer only, and opens the editor in your browser. Its **Create the viewer** button, in the Files tab, runs the files as they are on the page and writes the viewer. **Open the viewer** then shows it. The server does not change the files in the folder: save them when you want to keep them. See [how to edit, run and view a scenario](docs/guides/scenario/edit_and_view_a_scenario.md).
+
 ![The editor's Articulations step, with the wing +y selected and turned in the 3D panel](docs/images/file_editor.webp)
 
 *The editor's Articulations step. The selected wing shows in the 3D panel, turned with the slider.*

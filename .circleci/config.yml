@@ -75,7 +75,7 @@ jobs:
           command: |
             ruff check quicksat tests sample docs
             ruff format --check quicksat tests
-            vulture quicksat tests --ignore-names model_config --ignore-decorators "@field_validator,@model_validator"
+            vulture quicksat tests --ignore-names model_config,daemon_threads,allow_reuse_address,log_message,do_GET,do_POST --ignore-decorators "@field_validator,@model_validator"
 
   javascript:
 

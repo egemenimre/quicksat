@@ -9,7 +9,9 @@ The editor: a web page that fills in and edits a folder of input files.
 The folder holds a scenario file and, if it is a power folder, a power system
 file and a consumption file, with the 3D model and any orbit file they name.
 `write_editor` writes one page for it. The page opens from disk with a
-double-click, and needs no Python and no server.
+double-click, and needs no Python and no server. `quicksat.editor.server` can
+also serve the page from this computer. Its page then has a button that runs the
+files and writes the viewer.
 
 The page holds the folder's files inside itself. Python reads them here and
 passes them to the page as JSON: each YAML file as YAML reads it, the CSV as rows
@@ -70,6 +72,7 @@ SCRIPTS = (
     "sections.js",
     "checks.js",
     "write.js",
+    "run.js",
     "view3d.js",
     "views.js",
 )
