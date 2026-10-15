@@ -23,12 +23,13 @@ too.
 import argparse
 from pathlib import Path
 
-from quicksat.editor.editor import CONSUMPTION_FILE, POWER_FILE, SCENARIO_FILE
+from quicksat.power import CONSUMPTION_FILE, POWER_FILE
 from quicksat.power.budget import BudgetRun, run_budget
 from quicksat.power.config import PowerSystem
 from quicksat.power.consumption import PowerConsumption, run_consumption
 from quicksat.power.generation import run_generation
 from quicksat.power.viewer import write_power_viewer
+from quicksat.scenario import SCENARIO_FILE
 from quicksat.scenario.config import Scenario
 from quicksat.scenario.run import run_scenario
 

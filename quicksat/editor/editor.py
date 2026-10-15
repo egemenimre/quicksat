@@ -40,6 +40,9 @@ from pathlib import Path
 
 import yaml
 
+from quicksat.power import CONSUMPTION_FILE, POWER_FILE
+from quicksat.scenario import SCENARIO_FILE
+
 FORMAT = "quicksat-editor"
 """The `format` field of the data the page holds."""
 
@@ -49,15 +52,6 @@ changes."""
 
 PAGE_FILE = "editor.html"
 """Name of the page written in the output folder."""
-
-SCENARIO_FILE = "scenario.yaml"
-"""The scenario file's usual name."""
-
-POWER_FILE = "power_system.yaml"
-"""The power system file's usual name."""
-
-CONSUMPTION_FILE = "power_consumption.csv"
-"""The consumption file's usual name."""
 
 _PACKAGE = files("quicksat")
 _TEMPLATES = _PACKAGE / "editor" / "templates"
