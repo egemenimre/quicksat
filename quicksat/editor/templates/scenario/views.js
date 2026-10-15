@@ -7,13 +7,7 @@ const PAGE_TITLE = "quicksat Scenario Editor";
 const YAML_KINDS = ["scenario", "power"];
 
 /** The folder's files, by kind, in the order the Start step lists them. */
-const FILES = [
-  { kind: "scenario", what: "the orbit, the time, the spacecraft, the operations and the activities" },
-  { kind: "model", what: "the 3D model that the scenario names" },
-  { kind: "orbit", what: "the orbit file that the scenario names, if it names one" },
-  { kind: "power", what: "the solar panels, the battery and the power conditioning" },
-  { kind: "consumption", what: "what each equipment draws in each mode" },
-];
+const FILES = ["scenario", "model", "orbit", "power", "consumption"].map((kind) => ({ kind }));
 
 const TABS = [
   { id: "setup", title: "Setup" },

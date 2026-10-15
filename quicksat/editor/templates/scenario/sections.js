@@ -99,10 +99,7 @@ const SECTIONS = {
     title: "Folder", file: "all files",
     render(body) {
       body.append(openFolderButton());
-      body.append(filesTable([{ rows: FILES.map(({ kind, what }) => ({ kind, what, add: { power: addPower, consumption: addConsumption }[kind] })) }]));
-      const g = grid(body);
-      g.style.marginTop = "12px";
-      row(g, "Folder name", textInput(project, "name", { cls: "wide" }), "the zip's folder");
+      body.append(filesTable([{ rows: FILES.map(({ kind }) => ({ kind, add: { power: addPower, consumption: addConsumption }[kind] })) }]));
       body.append(commentsBox(S, "Your comments on the overall scenario", { open: true, note: `They go in the comments field at the top of ${project.names.scenario}. The comments on the overall power subsystem are in the Power steps.` }));
     },
   },

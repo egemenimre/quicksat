@@ -42,7 +42,7 @@ The Sizing Editor fills in the same files, in a browser page, and writes each fi
 python -m quicksat.editor my_satellite my_satellite/editor
 ```
 
-Then double-click `my_satellite/editor/editor.html`. Its Setup tab takes you through every file, with an explanation of each field, and saves them as downloads. Put the files back in `my_satellite/`. The sample's own page is `sample/sizing/editor/editor.html`, and its **Open a folder…** button reads any other folder.
+Then double-click `my_satellite/editor/editor.html`. Its Setup tab takes you through every file, with an explanation of each field, and saves them as downloads. Put the files back in `my_satellite/`. The sample's own page is `sample/sizing/editor/editor.html`, and its **Open a folder…** button reads any other folder. The page always saves every budget's files. A folder that lacks a budget's files gets them started on the page, as new, for you to fill in.
 
 ### `mission.yaml`
 

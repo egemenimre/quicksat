@@ -24,20 +24,20 @@ The steps below use `my_project/winter`.
 python -m quicksat.editor my_project/winter my_project/winter/editor
 ```
 
-This writes `my_project/winter/editor/editor.html`. Python reads the folder's files and puts them inside the page, with the 3D model and any orbit file that the scenario names. It also reads the files with quicksat's own loaders, and the page shows what they said.
+This writes `my_project/winter/editor/editor.html`. Python reads the folder's files and puts them inside the page, with the 3D model and any orbit file that the scenario names. It also reads the files with quicksat's own loaders: the full check.
 
 The page needs no Python and no server. Double-click it to open it in a browser.
 
-A page you have already can open the folder instead: click **Open a folder…** on its first Setup step, and pick `my_project/winter`. The page reads every file it knows there, and fills every step. quicksat's loaders do not read a folder opened this way, so the page shows only its own checks.
+A page you have already can open the folder instead: click **Open a folder…** on its first Setup step, and pick `my_project/winter`. The page reads every file it knows there, and fills every step. quicksat's loaders do not read a folder opened this way, so its files have only the page's simple check, and their full check shows *not run*.
 
 ## 3. Edit
 
 The page has two ways in, and both edit the same data:
 
 - **Setup** takes you through every file, step by step, from the orbit to the consumption. The small **i** by a step's title opens its explanation: why the fields matter, the options and what follows from them. Each card on the other tabs has the same sign, and a section's explanation stays open or closed in both places. Back and Next are at the top.
-- **The other tabs** hold the same fields by theme: orbit and time, spacecraft, operations, activities, power and consumption. Use them to change one thing without going through every step. A bar at the top of each tab names its file, says where it came from and whether you have changed it, and has **Open** and **Export** for that file.
+- **The other tabs** hold the same fields by theme: orbit and time, spacecraft, operations, activities, power and consumption. Use them to change one thing without going through every step. A bar at the top of each tab names its file, says where it came from and whether you have changed it, and has **Open** and **download** for that file.
 
-The first Setup step lists the folder's files: where each came from, whether it has changed, the page's checks, and what quicksat's loaders said when the page was written.
+The first Setup step lists the folder's files: where each came from, whether it has changed, and two checks. The **simple check** is the page's own, on names, units and ranges, as you type. The **full check** is what quicksat's loaders said when Python wrote the page. The Files tab shows both under each file.
 
 Names are chosen from lists. An activity picks its attitude and its mode, and an articulation picks its part of the model. Renaming an attitude, a target or a mode changes every use of it. Deleting one that is in use asks again, and says what uses it.
 
@@ -64,9 +64,9 @@ Do this before you first save a file that you wrote by hand. The samples' explan
 Open the Files tab to see each file as it will be written. Then save, from there or from the last Setup step:
 
 - **download the zip** gives the whole folder in one file;
-- **download** next to a file, or **Export** on a tab's bar, gives that file alone.
+- **download** next to a file, or on a tab's bar, gives that file alone.
 
-A saved file shows as *exported* until you change it again.
+A saved file shows as *downloaded* until you change it again.
 
 The browser puts the downloads in its downloads folder. Copy the files over the ones in `my_project/winter/`. Check their names: a browser can add a number, such as `scenario (1).yaml`, to a file it has downloaded before.
 

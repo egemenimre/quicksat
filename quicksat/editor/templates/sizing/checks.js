@@ -44,7 +44,7 @@ function runChecks() {
   if (km != null && km > 2000) add("mission", `${fmt(km, 0)} km is above low Earth orbit; quicksat's budgets are meant for it`, "note");
 
   // Mass
-  if (project.has.mass) {
+  {
     const L = project.mass.locations.items;
     unique("locations", "location", L.map((l) => l.name));
     for (const l of L) {
@@ -77,7 +77,7 @@ function runChecks() {
   }
 
   // Data
-  if (project.has.data) {
+  {
     const { generation: G, downlink: D, storage: S } = project.data;
     positive("generation", "the raw data rate", G.raw_datarate);
     atLeast("generation", "the compression ratio", G.compression_ratio, 1);
@@ -89,11 +89,10 @@ function runChecks() {
   }
 
   // Delta-V
-  if (project.has.deltav) {
+  {
     const D = project.deltav;
     positive("dvconfig", "the Isp", D.propulsion.isp);
     atLeast("dvconfig", "the margin", D.margin, 0);
-    if (!project.has.mass) add("dvconfig", "without a mass budget, the delta-V notebook must give the dry mass", "note");
     project.manoeuvres.forEach((r, i) => {
       const what = r.id || `row ${i + 1}`;
       noSpace("manoeuvres", `${what}: the id`, r.id);
@@ -110,7 +109,7 @@ function runChecks() {
   }
 
   // Agility
-  if (project.has.agility) {
+  {
     const A = project.agility;
     unique("cases", "case", A.cases.items.map((c) => c.name));
     if (!A.cases.items.length) add("cases", "there must be at least one case");
@@ -119,7 +118,6 @@ function runChecks() {
         for (const axis of ["x", "y", "z"]) positive("cases", `case ${c.name}: the body's ${axis}`, c.body[axis]);
         for (const axis of ["roll", "pitch"]) atLeast("cases", `case ${c.name}: the ${axis} appendage factor`, c.appendage_factor[axis], 1);
         pct("cases", `case ${c.name}: the propellant aboard`, c.propellant);
-        if (!project.has.mass) add("cases", `case ${c.name} needs a mass, and this folder has no mass budget`, "note");
       } else {
         for (const axis of ["roll", "pitch"]) positive("cases", `case ${c.name}: the ${axis} inertia`, c.inertia[axis]);
       }

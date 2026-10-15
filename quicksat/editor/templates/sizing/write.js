@@ -6,7 +6,7 @@ const YAML_HELP = {
   altitude: "Above the Earth's equatorial radius. The orbit is circular.",
   inclination: "No budget reads it yet. It records the orbit the budgets assume.",
   duration: "The design life. It scales the recurring manoeuvres.",
-  locations: "Each location's system margin, harness and harness margin, in percent, and whether it stays in orbit. Launcher needs no entry: it has no margins and no harness, and leaves at separation.",
+  locations: "Each location's system margin, harness and harness margin, in percent, and whether it stays in orbit.",
   generation: "What the payload makes. The raw rate is divided by the compression ratio, and flows for the duty cycle's share of each orbit.",
   downlink: "What the link sends: the achieved throughput, the usable contacts in a day, and their average length.",
   storage: "The memory is sized for this many orbits without a usable contact.",
@@ -130,13 +130,13 @@ function agilityYaml() {
   return finish(lines);
 }
 
-/** Every file the folder saves: the mission, and the files of each budget it holds. */
+/** Every file the folder saves: the mission, and the files of every budget. */
 function projectFiles() {
   const n = project.names;
   const files = [{ kind: "mission", path: n.mission, text: missionYaml(), note: "the reference orbit and the design life" }];
-  if (project.has.mass) files.push({ kind: "mass", path: n.mass, text: massYaml(), note: "margins and harness" }, { kind: "equipment", path: n.equipment, text: equipmentCsv(), note: "the equipment list" });
-  if (project.has.data) files.push({ kind: "data", path: n.data, text: dataYaml(), note: "the payload data flow" });
-  if (project.has.deltav) files.push({ kind: "deltav", path: n.deltav, text: deltavYaml(), note: "the delta-V settings" }, { kind: "manoeuvres", path: n.manoeuvres, text: manoeuvresCsv(), note: "the manoeuvres" });
-  if (project.has.agility) files.push({ kind: "agility", path: n.agility, text: agilityYaml(), note: "the agility settings" });
+  files.push({ kind: "mass", path: n.mass, text: massYaml(), note: "margins and harness" }, { kind: "equipment", path: n.equipment, text: equipmentCsv(), note: "the equipment list" });
+  files.push({ kind: "data", path: n.data, text: dataYaml(), note: "the payload data flow" });
+  files.push({ kind: "deltav", path: n.deltav, text: deltavYaml(), note: "the delta-V settings" }, { kind: "manoeuvres", path: n.manoeuvres, text: manoeuvresCsv(), note: "the manoeuvres" });
+  files.push({ kind: "agility", path: n.agility, text: agilityYaml(), note: "the agility settings" });
   return files;
 }

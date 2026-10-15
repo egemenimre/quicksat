@@ -317,17 +317,16 @@ input.short { width: 100px; }
 }
 .file-bar .file-name { color: var(--text); font-weight: 600; }
 .file-state[data-value="unchanged"] { color: var(--muted); }
-.file-state[data-value="exported"] { color: var(--green); }
+.file-state[data-value="downloaded"] { color: var(--green); }
 .file-state[data-value="modified"] { color: var(--amber); }
 .file-state[data-value="new"] { color: var(--accent); }
 .file-state[data-value="absent"] { color: var(--dim); }
-.files-table td.ok { color: var(--green); }
-.files-table td.bad { color: var(--red); }
-.files-table td.warn { color: var(--amber); }
+.files-table td.ok, .checks .ok { color: var(--green); }
+.files-table td.bad, .checks .bad { color: var(--red); }
+.files-table td.warn, .checks .warn { color: var(--amber); }
 .files-table tr.group-row > td { padding-top: 10px; color: var(--muted); border-bottom-color: var(--line); }
 .files-table td .btn[hidden] { display: none; }
 .review .key { color: var(--muted); }
-.python-checks .opened { color: var(--muted); }
 
 @media (max-width: 900px) {
   #page-setup { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }

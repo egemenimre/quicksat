@@ -28,9 +28,6 @@ const STEPS = [
   { group: "Finish", title: "Save the files", sections: ["save"] },
 ];
 
-/** The budget a step belongs to, if any: its steps are greyed out when the folder does not hold it. */
-const stepBudget = (step) => ({ locations: "mass", equipment: "mass", generation: "data", downlink: "data", dvconfig: "deltav", manoeuvres: "deltav", cases: "agility", wheels: "agility" })[step.sections[0]];
-
 // ---------------------------------------------------------------- the Files tab
 
 /** The file's own comments, for the files that can hold them. */
@@ -83,16 +80,12 @@ const YAML_KINDS = ["mission", "mass", "data", "deltav", "agility"];
 /** The folder's files, by kind, in the order the Start step lists them. */
 const FILES = Object.keys(NAMES).map((kind) => ({ kind }));
 
-/** The budget that each file belongs to. */
-const BUDGET_OF = { mass: "mass", equipment: "mass", data: "data", deltav: "deltav", manoeuvres: "deltav", agility: "agility" };
-
 /** Use an opened file of a kind in place of the page's. */
 function useFile(kind, file) {
   if (/\.csv$/i.test(NAMES[kind]) && !file.header) throw new Error(`${file.name} is not a CSV file.`);
   DATA.files[kind] = file;
   project[kind] = readingFile(kind, () => READERS[kind](file));
   project.names[kind] = file.name;
-  if (BUDGET_OF[kind]) project.has[BUDGET_OF[kind]] = true;
   if (kind === "mission") M = project.mission;
 }
 
@@ -139,10 +132,6 @@ const OPENERS = {
 Object.assign(page, {
   beforeDraw: () => live.clear(),
   afterChange: () => { for (const update of live) update(); },
-  isOff: (item) => {
-    const budget = item.sections && stepBudget(item);
-    return Boolean(budget) && !project.has[budget];
-  },
 });
 
 startPage();

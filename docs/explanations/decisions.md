@@ -14,12 +14,12 @@ Each editor page has an **Open a folder** button on its first Setup step, and an
 
 - **The YAML is read with js-yaml,** a 39 kB library that the page holds. It takes YAML's core types and merge keys, the nearest it comes to PyYAML. The two differ on a few forms, such as `yes`, which PyYAML reads as true. One of them matters to quicksat: PyYAML reads an unquoted `13:30` as the number 810, and the page reads it as the text. The page writes it in quotes, as quicksat needs it.
 - **The `#` comments are found by the page,** with the same rules as Python's. A test runs both on every YAML file of quicksat, and on some awkward layouts, and checks that they agree. It needs Node.js, and is skipped without it.
-- **quicksat's loaders do not run** on a file opened in the browser. The page says so, in place of what they said when the page was written.
+- **quicksat's loaders do not run** on a file opened in the browser. The page shows two checks for each file: the simple check, its own, and the full check, what the loaders said when Python wrote the page. A file opened since has *not run* as its full check.
 - **Saving is still a download.** Writing back into the folder works in Chrome and Edge only, so it is left for later.
 
 Python still writes the page for a folder, with its loaders' checks: the samples' pages are made that way.
 
-**Extended on 2026-10-15.** The Sizing Editor, which entry 14 planned, is built from the same shared parts: `python -m quicksat.editor` writes it for a folder of sizing files. Each page's first step lists the folder's files, and each tab has a bar for its own. Both say where each file came from, and whether it has changed since it was opened or saved. A file has changed when the text the page would save differs from the text it had then, so a field set back to its value counts as unchanged. **Export** on a tab saves that file alone.
+**Extended on 2026-10-15.** The Sizing Editor, which entry 14 planned, is built from the same shared parts: `python -m quicksat.editor` writes it for a folder of sizing files. Each page's first step lists the folder's files, and each tab has a bar for its own. Both say where each file came from, and whether it has changed since it was opened or saved. A file has changed when the text the page would save differs from the text it had then, so a field set back to its value counts as unchanged. **download** on a tab saves that file alone. The Sizing Editor saves every budget's files, as a zip or one by one. It has no switch to leave a budget out: a folder that lacks a budget's files gets them started on the page, as new (2026-10-15).
 
 A file opened alone shows no folder: a browser does not tell the page where it came from.
 

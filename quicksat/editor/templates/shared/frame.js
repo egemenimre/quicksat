@@ -10,7 +10,7 @@
 //   PAGE_TITLE, CHECKS_NOTE       the page's name, and what its checks leave out
 //   TABS, STEPS, SECTIONS, INFO   the tabs, the steps, the sections and their help
 //   YAML_HELP, YAML_KINDS         the help it writes, and its YAML files' kinds
-//   FILES                         the folder's files, by kind: [{kind, what}]
+//   FILES                         the folder's files, by kind: [{kind}]
 //   OPENERS                       how the folder, and each of its files, opens
 //   projectFiles()                the files to save, each with its kind
 //   fileComments(path)            the comments box of a whole file, or null
@@ -43,6 +43,8 @@ const state = {
   file: "",
   pendingDelete: null,
   problems: [],
+  // whether the review box in the Files tab is open: null until the user opens or closes it
+  reviewOpen: null,
 };
 
 // ---------------------------------------------------------------- what reading noticed
@@ -258,19 +260,18 @@ function showChecksPopover() {
       style: p.level === "note" ? "color: var(--amber)" : null,
     }, p.text, el("span", { text: `  ${where(p.section)}` }))),
     state.problems.length ? null : el("p", { text: "Nothing found." }),
-    el("p", { text: `These check names, units and ranges only. ${CHECKS_NOTE}` }),
+    el("p", { text: `This is the simple check: names, units and ranges only. ${CHECKS_NOTE}` }),
     pythonChecks());
   pop.hidden = false;
 }
 
-/** What quicksat's own loaders said of the files when the page was written. */
+/** The files that the full check refused, each with quicksat's message. */
 function pythonChecks() {
+  const refused = DATA.checks.filter((check) => check.ok === false);
+  if (!refused.length) return null;
   return el("div", { class: "python-checks" },
-    el("h4", { text: "quicksat's loaders, when this page was written" }),
-    ...DATA.checks.map((check) => check.ok === null
-      ? el("div", { class: "opened" }, el("b", { text: check.file }), " was opened in the browser, so quicksat's loaders have not read it")
-      : el("div", { class: check.ok ? "ok" : "bad" }, el("b", { text: check.file }), check.ok ? " reads with no problem" : el("pre", { text: check.message }))),
-    DATA.checks.length ? null : el("div", { class: "opened", text: "None: the files were opened in the browser." }));
+    el("h4", { text: "The full check refused" }),
+    ...refused.map((check) => el("div", { class: "bad" }, el("b", { text: check.file }), el("pre", { text: check.message }))));
 }
 
 // ---------------------------------------------------------------- the Files tab
@@ -284,17 +285,19 @@ function drawFiles() {
     list.append(el("button", {
       class: state.file === file.path ? "current" : "",
       onclick: () => { state.file = file.path; drawFiles(); },
-    }, file.path, el("small", {}, file.note ? `${file.note} · ` : "", el("span", { "data-state": file.kind }))));
+    }, file.path, el("small", {}, file.note ? `${file.note} · ` : "", el("span", { "data-state": file.kind })),
+      el("small", { class: "checks" }, "simple ", el("span", { "data-checks": file.kind }), " · full ", fullCheck("span", file.kind))));
   }
   list.append(el("div", { class: "actions" },
     el("label", {}, el("input", { type: "checkbox", checked: state.writeHelp, onchange: (e) => { state.writeHelp = e.target.checked; drawFiles(); } }), "write the # help lines"),
     el("button", { class: "btn primary", text: `download ${project.name}.zip`, onclick: downloadZip })));
   list.append(el("div", { class: "fields", style: "margin-top: 14px" },
-    el("label", {}, "Folder name", el("small", { text: "the zip's folder" })),
+    el("label", {}, "Folder name"),
     textInput(project, "name", { cls: "wide" })));
   for (const id of TABS.find((t) => t.id === "files").sections || []) list.append(el("div", { class: "problems", "data-section": id }));
-  list.append(pythonChecks());
   drawPreview(true);
+  // the list is drawn anew, so fill in each file's state and simple check again
+  refreshFiles();
 }
 
 /**
@@ -393,7 +396,8 @@ function settle(change) {
 /** The review of the comments written by hand, and what the reader could not keep. */
 function reviewPanel() {
   const open = openReview();
-  const panel = el("details", { class: "review", open: open.length > 0 || notices.unknown.length > 0 });
+  const panel = el("details", { class: "review", open: state.reviewOpen ?? (open.length > 0 || notices.unknown.length > 0) });
+  panel.addEventListener("toggle", () => { state.reviewOpen = panel.open; });
   const count = open.length ? `${open.length} comment${open.length > 1 ? "s" : ""} written by hand` : "No comments left to review";
   panel.append(el("summary", {}, el("b", { text: count }), notices.unknown.length ? ` · ${notices.unknown.length} field${notices.unknown.length > 1 ? "s" : ""} the editor cannot keep` : ""));
   if (review.length) {
@@ -455,10 +459,10 @@ function updateBanner() {
 /** The explanation of the table of files and of the buttons, for each page's first step. */
 const FILES_HELP = `<span class="k">The table of files</span>
 <p><b>From</b> says where each file came from: the folder the page was written for, a folder you opened, or a file opened alone. A browser does not tell a page which folder a file opened alone came from.</p>
-<p><b>State</b> says whether the file has changed: <i>unchanged</i> since it was opened, <i>modified</i>, <i>exported</i> when saved and not changed since, or <i>new</i> for a file started on the page.</p>
-<p><b>Page checks</b> are the page's own: names, units and ranges. <b>quicksat's loaders</b> read the files when Python wrote the page. They have not read a file opened since.</p>
+<p><b>State</b> says whether the file has changed: <i>unchanged</i> since it was opened, <i>modified</i>, <i>downloaded</i> when saved and not changed since, or <i>new</i> for a file started on the page.</p>
+<p><b>Simple check</b> is the page's own: names, units and ranges, run as you type. <b>Full check</b> is quicksat's own loaders, which read the files when Python wrote the page. A file opened since shows <i>not run</i>: write the page again for its full check.</p>
 <span class="k">Opening and saving</span>
-<p><b>Open a folder</b> reads every file of the folder that the page knows, and fills every step. <b>Open</b>, on a row or on a tab, reads one file in place of that one. <b>Export</b> saves one file, as a download, and the Files tab saves them all as a zip. Put the files back in the folder yourself: a browser cannot write into it.</p>`;
+<p><b>Open a folder</b> reads every file of the folder that the page knows, and fills every step. <b>Open</b>, on a row or on a tab, reads one file in place of that one. <b>download</b> saves one file, and the Files tab saves them all as a zip. Put the files back in the folder yourself: a browser cannot write into it.</p>`;
 
 /**
  * Where each file came from, by its kind: `{how, folder}`. `how` is `page` for a
@@ -470,7 +474,7 @@ const sources = {};
 /** Each file's text, or bytes, as it was last opened or saved: a file that differs has changed. */
 const savedText = {};
 
-/** How each file was last saved, by kind: `export` once the page has saved it, and otherwise not set. */
+/** How each file was last saved, by kind: `download` once the page has saved it, and otherwise not set. */
 const savedBy = {};
 
 /** Each file's text, or bytes, as saving would write it now, by kind. The help lines are always in. */
@@ -484,7 +488,7 @@ function currentTexts() {
   }
 }
 
-/** Note the files of `kinds` as saved, as they are now: opened, or exported by the page. */
+/** Note the files of `kinds` as saved, as they are now: opened, or downloaded from the page. */
 function markSaved(kinds, by = "") {
   const texts = currentTexts();
   for (const kind of kinds) {
@@ -495,7 +499,7 @@ function markSaved(kinds, by = "") {
 }
 
 /**
- * Each file's state, by kind: `unchanged` since it was opened, `exported` and not
+ * Each file's state, by kind: `unchanged` since it was opened, `downloaded` and not
  * changed since, `modified` since either, `new` for a file never saved, or
  * `absent` for one the page does not save.
  */
@@ -505,14 +509,14 @@ function fileStates() {
     if (!(kind in texts)) return "absent";
     if (!(kind in savedText)) return "new";
     if (texts[kind] !== savedText[kind]) return "modified";
-    return savedBy[kind] === "export" ? "exported" : "unchanged";
+    return savedBy[kind] === "download" ? "downloaded" : "unchanged";
   };
   return Object.fromEntries(FILES.map(({ kind }) => [kind, stateOf(kind)]));
 }
 
 const STATE_TEXT = {
   unchanged: "unchanged",
-  exported: "exported",
+  downloaded: "downloaded",
   modified: "modified, not saved",
   new: "new, not saved",
   absent: "not in this folder",
@@ -520,6 +524,9 @@ const STATE_TEXT = {
 
 /** Whether any file has changes that are not saved. */
 const unsaved = () => Object.values(fileStates()).some((s) => s === "modified" || s === "new");
+
+/** Whether the folder holds a file: one that the page's data lists as missing does not. */
+const isHeld = (kind) => !(kind in DATA.files) || Boolean(DATA.files[kind]);
 
 /** Note a file that the page starts, such as a power system added to a scenario folder. */
 function fileAdded(kind) {
@@ -545,19 +552,19 @@ function sourceText(kind) {
 }
 
 /** Save one file, as a download, and note it as saved. */
-function exportFile(kind) {
+function downloadFile(kind) {
   const file = projectFiles().find((f) => f.kind === kind);
   if (!file) return;
   download(file);
-  markSaved([kind], "export");
+  markSaved([kind], "download");
   refreshFiles();
 }
 
-function exportButton(kind) {
-  return el("button", { class: "btn small", text: "Export", title: "Save this file, as a download", "data-export": kind, onclick: () => exportFile(kind) });
+function downloadButton(kind) {
+  return el("button", { class: "btn small", text: "download", title: "Save this file, as a download", "data-download": kind, onclick: () => downloadFile(kind) });
 }
 
-/** A tab's bar for one of its files: its name, where it came from, its state, and Open and Export. */
+/** A tab's bar for one of its files: its name, where it came from, its state, and Open and download. */
 function fileBar(kind) {
   return el("div", { class: "file-bar" },
     el("b", { class: "file-name", text: fileName(kind) }),
@@ -565,7 +572,7 @@ function fileBar(kind) {
     el("span", { class: "file-state", "data-state": kind }),
     el("span", { class: "spacer" }),
     OPENERS[kind] ? openButton(kind) : null,
-    exportButton(kind));
+    downloadButton(kind));
 }
 
 /** The page's problems in a file's sections: [errors, notes]. */
@@ -574,38 +581,35 @@ function problemsOf(kind) {
   return [mine.filter((p) => p.level === "error").length, mine.filter((p) => p.level === "note").length];
 }
 
-/** What quicksat's loaders said of a file when the page was written, as a cell. */
-function loadersCell(kind) {
+/** The full check of a file: what quicksat's loaders said when Python wrote the page. */
+function fullCheck(tag, kind) {
   const name = fileName(kind);
   const check = DATA.checks.find((c) => c.file.split(" with ").includes(name));
-  if (!check) return el("td", { class: "hint", text: "—" });
-  if (check.ok === null) return el("td", { class: "hint", text: "not run", title: "The file was opened in the browser, so quicksat's loaders have not read it." });
-  return check.ok ? el("td", { class: "ok", text: "reads", title: check.file }) : el("td", { class: "bad", text: "refused", title: check.message });
+  if (!check) return el(tag, { class: "hint", text: "—" });
+  if (check.ok === null) return el(tag, { class: "hint", text: "not run", title: "Opened after Python wrote the page. Write the page again for the full check." });
+  return check.ok ? el(tag, { class: "ok", text: "pass", title: `quicksat reads ${check.file}` }) : el(tag, { class: "bad", text: "refused", title: check.message });
 }
 
 /**
- * A table of the folder's files: for each, what it holds, where it came from,
- * whether it changed, the page's checks, what quicksat's loaders said, and its
- * buttons. `groups` are the rows, each group under an optional heading:
- * [{head, rows: [{kind, what, add}]}], where `add` starts a missing file.
+ * A table of the folder's files, for opening them: for each, where it came
+ * from, whether it changed, its simple and full checks, and its buttons. `groups` are the rows, each group under an optional heading:
+ * [{head, rows: [{kind, add}]}], where `add` starts a missing file.
  */
 function filesTable(groups) {
   const table = el("table", { class: "items files-table" });
-  table.append(el("tr", {}, ["file", "holds", "from", "state", "page checks", "quicksat's loaders", ""].map((h) => el("th", { text: h }))));
+  table.append(el("tr", {}, ["file", "from", "state", "simple check", "full check", ""].map((h) => el("th", { text: h }))));
   for (const group of groups) {
-    if (group.head) table.append(el("tr", { class: "group-row" }, el("td", { colspan: 7 }, group.head)));
-    for (const { kind, what, add } of group.rows) {
+    if (group.head) table.append(el("tr", { class: "group-row" }, el("td", { colspan: 6 }, group.head)));
+    for (const { kind, add } of group.rows) {
       table.append(el("tr", {},
         el("td", {}, el("b", { text: fileName(kind) })),
-        el("td", { class: "hint", text: what }),
         el("td", { class: "hint", text: sourceText(kind) }),
         el("td", { class: "file-state", "data-state": kind }),
         el("td", { "data-checks": kind }),
-        loadersCell(kind),
+        fullCheck("td", kind),
         el("td", { class: "tools" },
           OPENERS[kind] ? openButton(kind) : null, " ",
-          add ? el("button", { class: "btn small", text: "add", "data-add": kind, title: "Start this file on the page", onclick: add }) : null, " ",
-          exportButton(kind))));
+          add ? el("button", { class: "btn small", text: "add", "data-add": kind, title: "Start this file on the page", onclick: add }) : null)));
     }
   }
   return el("div", { class: "scroll-x" }, table);
@@ -619,7 +623,7 @@ function refreshFiles() {
     node.textContent = STATE_TEXT[fileState];
     node.dataset.value = fileState;
   }
-  for (const button of document.querySelectorAll("[data-export]")) button.disabled = states[button.dataset.export] === "absent";
+  for (const button of document.querySelectorAll("[data-download]")) button.disabled = states[button.dataset.download] === "absent";
   for (const button of document.querySelectorAll("[data-add]")) button.hidden = states[button.dataset.add] !== "absent";
   for (const cell of document.querySelectorAll("[data-checks]")) {
     const [errors, notes] = problemsOf(cell.dataset.checks);
@@ -660,9 +664,10 @@ async function openWith(kind) {
   if (kind === "folder") {
     for (const k of Object.keys(sources)) delete sources[k];
     for (const k of Object.keys(savedText)) delete savedText[k];
-    const texts = currentTexts();
-    for (const k of Object.keys(texts)) sources[k] = { how: "folder", folder: picked.folder };
-    markSaved(Object.keys(texts));
+    const held = Object.keys(currentTexts()).filter(isHeld);
+    for (const k of held) sources[k] = { how: "folder", folder: picked.folder };
+    for (const k of Object.keys(currentTexts())) fileAdded(k);
+    markSaved(held);
   } else {
     for (const k of kinds) sources[k] = { how: "file" };
     markSaved(kinds);
@@ -709,9 +714,11 @@ function startPage() {
   });
   document.addEventListener("keydown", (e) => e.key === "Escape" && ($("#popover").hidden = true));
   reviewFiles(YAML_KINDS);
-  const texts = currentTexts();
-  for (const kind of Object.keys(texts)) sources[kind] = { how: "page", folder: DATA.label || DATA.folder };
-  markSaved(Object.keys(texts));
+  // a file the folder does not hold starts on the page, as new
+  const held = Object.keys(currentTexts()).filter(isHeld);
+  for (const kind of held) sources[kind] = { how: "page", folder: DATA.label || DATA.folder };
+  for (const kind of Object.keys(currentTexts())) fileAdded(kind);
+  markSaved(held);
   showLabel();
   showTab("setup");
   showStep(0);

@@ -5,45 +5,18 @@
 // ---------------------------------------------------------------- the sections
 
 const BUDGETS = {
-  mass: { title: "Mass", files: ["mass", "equipment"], reads: "", label: "the overall mass budget" },
-  data: { title: "Data", files: ["data"], reads: "mission.yaml", label: "the overall payload data flow" },
-  deltav: { title: "Delta-V", files: ["deltav", "manoeuvres"], reads: "mission.yaml, and the mass budget for the dry mass", label: "the overall delta-V budget" },
-  agility: { title: "Agility", files: ["agility"], reads: "mission.yaml, and the mass budget for an envelope case's mass", label: "the overall agility budget" },
+  mass: { title: "Mass", files: ["mass", "equipment"], label: "the overall mass budget" },
+  data: { title: "Data", files: ["data"], label: "the overall payload data flow" },
+  deltav: { title: "Delta-V", files: ["deltav", "manoeuvres"], label: "the overall delta-V budget" },
+  agility: { title: "Agility", files: ["agility"], label: "the overall agility budget" },
 };
 
 /** The comments on a whole file, which head its first step and its tab. */
 function overallBox(key) {
-  if (!project.has[key]) return null;
   return el("div", { class: "overall" }, commentsBox(project[key], `Your comments on ${BUDGETS[key].label}`, {
     open: true, note: `They go in the comments field at the top of ${project.names[key]}.`,
   }));
 }
-
-/** What a section shows when the folder does not hold its budget. */
-function absent(body, key) {
-  const budget = BUDGETS[key];
-  body.append(el("div", { class: "absent" },
-    el("p", { text: `This folder holds no ${budget.title.toLowerCase()} budget, so it has no ${budget.files.map((f) => project.names[f]).join(" or ")}.` }),
-    el("button", { class: "btn", text: `add the ${budget.title.toLowerCase()} budget`, onclick: () => setBudget(key, true) })));
-}
-
-/** Turn a budget on or off. Its files, started on the page, are new until saved. */
-function setBudget(key, on) {
-  project.has[key] = on;
-  if (on) BUDGETS[key].files.forEach(fileAdded);
-  changed(true);
-}
-
-/** What each file holds, for the Start step's table. */
-const HOLDS = {
-  mission: "the reference orbit and the design life",
-  mass: "each location's margins and harness",
-  equipment: "every item, with its mass and its margin",
-  data: "what the payload makes, the downlink and the storage",
-  deltav: "the propulsion, the margin and collision avoidance",
-  manoeuvres: "every manoeuvre, with its value and its count",
-  agility: "the inertia cases, the wheels and the settling time",
-};
 
 const qField = (g, label, obj, key, units, hint) => row(g, label, quantityInput(obj, key, units), hint);
 const pctField = (g, label, obj, key, hint) => row(g, label, quantityInput(obj, key, ["%"]), hint);
@@ -59,23 +32,16 @@ function suggest(input, id, values) {
 
 const SECTIONS = {
   folder: {
-    title: "Folder and budgets", file: "all files",
+    title: "Folder", file: "all files",
     render(body) {
       body.append(openFolderButton());
-      const rows = (kinds) => kinds.map((kind) => ({ kind, what: HOLDS[kind] }));
-      const head = (key) => el("span", { class: "ctl" },
-        el("label", { class: "ctl" },
-          el("input", { type: "checkbox", checked: project.has[key], onchange: (e) => setBudget(key, e.target.checked) }),
-          el("b", { text: `${BUDGETS[key].title} budget` })),
-        BUDGETS[key].reads ? el("span", { class: "hint", text: `also reads ${BUDGETS[key].reads}` }) : null);
+      const rows = (kinds) => kinds.map((kind) => ({ kind }));
+      const head = (key) => el("b", { text: `${BUDGETS[key].title} budget` });
       body.append(filesTable([
         { head: el("b", { text: "Mission, which every budget but the mass reads" }), rows: rows(["mission"]) },
         ...Object.keys(BUDGETS).map((key) => ({ head: head(key), rows: rows(BUDGETS[key].files) })),
       ]));
-      body.append(el("p", { class: "hint", text: "Untick a budget that this folder does not hold: its files are then not saved. The notebooks in sample/sizing/ read these files: mass_budget, data_budget, delta_v_budget, and agility_roll and agility_pitch." }));
-      const g = grid(body);
-      g.style.marginTop = "12px";
-      row(g, "Folder name", textInput(project, "name", { cls: "wide" }), "the zip's folder");
+      body.append(el("p", { class: "hint", text: "The notebooks in sample/sizing/ read these files: mass_budget, data_budget, delta_v_budget, and agility_roll and agility_pitch." }));
     },
   },
 
@@ -94,7 +60,6 @@ const SECTIONS = {
   locations: {
     title: "Locations: margins and harness", file: "mass",
     render(body) {
-      if (!project.has.mass) { absent(body, "mass"); return; }
       const L = project.mass.locations;
       const table = el("table", { class: "items" });
       table.append(el("tr", {}, ["location", "system margin", "harness", "harness margin", "", "used by", "", ""].map((h) => el("th", { text: h }))));
@@ -119,8 +84,7 @@ const SECTIONS = {
           for (let n = 2; locationNames().includes(name); n++) name = `Location ${n}`;
           L.items.push({ name, system_margin: 20, harness_fraction: 5, harness_margin: 25, retained_in_orbit: true, comments: "" });
           changed(true);
-        } }),
-        el("span", { class: "hint", text: `${LAUNCHER} needs no entry: it has no margins and no harness, and leaves at separation.` })));
+        } })));
       body.append(commentsBox(L, "Your comments on the locations"));
     },
   },
@@ -128,7 +92,6 @@ const SECTIONS = {
   equipment: {
     title: "Equipment", file: "equipment", wide: true,
     render(body) {
-      if (!project.has.mass) { absent(body, "mass"); return; }
       const rows = project.equipment;
       const locations = [...new Set([...locationNames(), LAUNCHER])];
       const table = el("table", { class: "items" });
@@ -181,7 +144,6 @@ const SECTIONS = {
   generation: {
     title: "Payload data generation", file: "data",
     render(body) {
-      if (!project.has.data) { absent(body, "data"); return; }
       const G = project.data.generation;
       const g = grid(body);
       qField(g, "Raw data rate", G, "raw_datarate", ["Mbit/s", "Gbit/s", "kbit/s"], "before compression");
@@ -202,7 +164,6 @@ const SECTIONS = {
   downlink: {
     title: "Downlink", file: "data",
     render(body) {
-      if (!project.has.data) { absent(body, "data"); return; }
       const D = project.data.downlink;
       const g = grid(body);
       qField(g, "Rate", D, "rate", ["Mbit/s", "Gbit/s", "kbit/s"], "achieved throughput");
@@ -215,7 +176,6 @@ const SECTIONS = {
   storage: {
     title: "Storage", file: "data",
     render(body) {
-      if (!project.has.data) { absent(body, "data"); return; }
       const S = project.data.storage;
       const g = grid(body);
       row(g, "Orbits without contact", numberInput(S, "orbits_without_contact", { min: 0 }), "the memory's sizing case");
@@ -226,7 +186,6 @@ const SECTIONS = {
   dvconfig: {
     title: "Propulsion and margin", file: "deltav",
     render(body) {
-      if (!project.has.deltav) { absent(body, "deltav"); return; }
       const D = project.deltav;
       const g = grid(body);
       qField(g, "Isp", D.propulsion, "isp", ["s"], "specific impulse");
@@ -240,7 +199,6 @@ const SECTIONS = {
   manoeuvres: {
     title: "Manoeuvres", file: "manoeuvres", wide: true,
     render(body) {
-      if (!project.has.deltav) { absent(body, "deltav"); return; }
       const rows = project.manoeuvres;
       const table = el("table", { class: "items" });
       table.append(el("tr", {}, ["id", "name", "phase", "type", "value", "count", "", "loss factor", "comments", ""].map((h) => el("th", { text: h }))));
@@ -268,14 +226,12 @@ const SECTIONS = {
         class: "btn", text: "+ manoeuvre",
         onclick: () => { rows.push({ id: "", name: "", phase: "Operations", type: "given", value: q("", "m/s"), count: 1, recurring: false, loss_factor: 1, comments: "" }); changed(true); },
       })));
-      body.append(el("p", { class: "hint", text: "The value's unit follows the type: a length, an angle or a speed. The comments column is the CSV's own place for comments, and is kept as written." }));
     },
   },
 
   cases: {
     title: "Inertia cases", file: "agility",
     render(body) {
-      if (!project.has.agility) { absent(body, "agility"); return; }
       const C = project.agility.cases;
       const table = el("table", { class: "items" });
       C.items.forEach((item, index) => {
@@ -313,7 +269,6 @@ const SECTIONS = {
   wheels: {
     title: "Reaction wheels and settling", file: "agility",
     render(body) {
-      if (!project.has.agility) { absent(body, "agility"); return; }
       const A = project.agility;
       const W = A.wheels;
       const g = grid(body);

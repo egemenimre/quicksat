@@ -260,7 +260,6 @@ function readProject(data) {
   return {
     name: data.folder,
     names: Object.fromEntries(Object.entries(NAMES).map(([key, name]) => [key, (f[key] && f[key].name) || name])),
-    has: { mass: Boolean(f.mass || f.equipment), data: Boolean(f.data), deltav: Boolean(f.deltav || f.manoeuvres), agility: Boolean(f.agility) },
     ...Object.fromEntries(Object.entries(READERS).map(([kind, read]) => [kind, readingFile(kind, () => read(f[kind]))])),
   };
 }
