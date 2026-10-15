@@ -4,41 +4,31 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Tests that the page finds the same keys and comments as editor.py.
+The cases for the Node test of the page's comment finder, and Python's answers.
 
 A page that opens files in the browser finds their `#` comments with its own
 code, in `open.js`. It must give the same result as `comment_blocks`, which
 reads PyYAML's nodes, or a comment would land in a different block depending on
-how the folder was opened. These tests run `open.js` in Node.js, so they are
-skipped where Node.js is not installed.
+how the folder was opened.
+
+Node cannot call Python, so the answers are kept in `js/open_cases.json`: some
+awkward layouts and a copy of quicksat's own YAML files, each with its keys and
+comment blocks from Python. `js/open.test.js` checks `open.js` against them, in
+the CI's Node job. The test here checks that the answers are still Python's.
+After a change to `editor.py`'s readers, or to add the newest YAML files, write
+the cases again with:
+
+    python -m tests.editor.test_open_js
 """
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
-
-import pytest
 
 from quicksat.editor.editor import _key_lines, comment_blocks
 
-NODE = shutil.which("node")
-
 ROOT = Path(__file__).parent.parent.parent
-OPEN_JS = ROOT / "quicksat" / "editor" / "templates" / "shared" / "open.js"
+CASES = Path(__file__).parent / "js" / "open_cases.json"
 
-RUN = """
-const fs = require("fs");
-const vm = require("vm");
-const context = vm.createContext({});
-vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), context);
-const texts = JSON.parse(fs.readFileSync(0, "utf8"));
-const out = texts.map((text) => {
-  context.text = text;
-  return vm.runInContext("[keyLines(text), commentBlocks(text)]", context);
-});
-process.stdout.write(JSON.stringify(out));
-"""
 
 AWKWARD = {
     "block scalars": (
@@ -98,24 +88,43 @@ def yaml_files() -> dict[str, str]:
     return texts
 
 
-def run_page(texts: list[str]) -> list:
-    """The page's keys and comments for each text, from `open.js` in Node.js."""
-    assert NODE is not None
-    result = subprocess.run(
-        [NODE, "-e", RUN, str(OPEN_JS)],
-        input=json.dumps(texts),
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return json.loads(result.stdout)
+def answers(text: str) -> dict:
+    """Python's keys and comment blocks for a text, as the cases hold them."""
+    return {
+        "keys": [list(key) for key in _key_lines(text)],
+        "blocks": comment_blocks(text),
+    }
 
 
-@pytest.mark.skipif(NODE is None, reason="needs Node.js")
-@pytest.mark.parametrize("texts", [yaml_files(), AWKWARD], ids=["files", "awkward"])
-def test_the_page_finds_the_same_keys_and_comments(texts):
-    names = list(texts)
-    for name, (keys, blocks) in zip(names, run_page(list(texts.values())), strict=True):
-        text = texts[name]
-        assert keys == [list(key) for key in _key_lines(text)], name
-        assert blocks == comment_blocks(text), name
+def write_cases() -> None:
+    """Write the cases: the awkward layouts, then quicksat's own YAML files."""
+    texts = {f"awkward: {name}": text for name, text in AWKWARD.items()} | yaml_files()
+    cases = [
+        {"name": name, "text": text, **answers(text)} for name, text in texts.items()
+    ]
+    # one case a line, so that a change shows as the cases it touches
+    lines = ",\n".join(json.dumps(case, ensure_ascii=False) for case in cases)
+    CASES.write_text(f"[\n{lines}\n]\n", encoding="utf-8")
+
+
+def read_cases() -> list[dict]:
+    """The cases, as the Node test reads them."""
+    return json.loads(CASES.read_text(encoding="utf-8"))
+
+
+def test_the_cases_hold_python_s_answers():
+    for case in read_cases():
+        assert {"keys": case["keys"], "blocks": case["blocks"]} == answers(
+            case["text"]
+        ), (
+            f"{case['name']}: write the cases again with python -m tests.editor.test_open_js"
+        )
+
+
+def test_the_cases_hold_each_awkward_layout():
+    names = {case["name"] for case in read_cases()}
+    assert {f"awkward: {name}" for name in AWKWARD} <= names
+
+
+if __name__ == "__main__":
+    write_cases()

@@ -87,7 +87,7 @@ jobs:
       # Node's own test runner, so there is nothing to install. Node expands the
       # quoted pattern itself.
       - run:
-          name: Test the viewer's logic
+          name: Test the viewer's and the editor's logic
           command: node --test "tests/**/*.test.js"
 
 

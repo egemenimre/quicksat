@@ -39,7 +39,7 @@ The sizing sample is a small Earth observation satellite on a 500 km sun-synchro
 | Agility | Slew times about roll and pitch, from the wheels and the inertia, with a wheel failed or not | [roll](sample/sizing/agility_roll.ipynb), [pitch](sample/sizing/agility_pitch.ipynb) | [agility](docs/sizing/agility_ref.ipynb) |
 | Radiator | Not yet specified | | |
 
-The sample works one satellite through each budget. The reference explains each input field, how each figure is worked out, and where the budget stops. For your own satellite, see [how to initialise a satellite](docs/guides/sizing/initialise_a_satellite.md).
+The sample works one satellite through each budget. The reference explains each input field, how each figure is worked out, and where the budget stops. For your own satellite, see [how to initialise a satellite](docs/guides/sizing/initialise_a_satellite.md). [How to edit and run the sizing files](docs/guides/sizing/edit_the_sizing_files.md) goes round the loop in the Sizing Editor.
 
 ## Scenario and power, with the viewer
 

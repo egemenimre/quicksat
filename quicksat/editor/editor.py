@@ -40,6 +40,9 @@ from pathlib import Path
 
 import yaml
 
+from quicksat.power import CONSUMPTION_FILE, POWER_FILE
+from quicksat.scenario import SCENARIO_FILE
+
 FORMAT = "quicksat-editor"
 """The `format` field of the data the page holds."""
 
@@ -49,15 +52,6 @@ changes."""
 
 PAGE_FILE = "editor.html"
 """Name of the page written in the output folder."""
-
-SCENARIO_FILE = "scenario.yaml"
-"""The scenario file's usual name."""
-
-POWER_FILE = "power_system.yaml"
-"""The power system file's usual name."""
-
-CONSUMPTION_FILE = "power_consumption.csv"
-"""The consumption file's usual name."""
 
 _PACKAGE = files("quicksat")
 _TEMPLATES = _PACKAGE / "editor" / "templates"
@@ -521,7 +515,7 @@ def build_page(page: str, scripts: tuple[str, ...], data: dict, **parts: str) ->
         The folder's files, which go in the page as JSON
     **parts : str
         Any other placeholder of the template and its text, such as
-        `{"@places@": ...}`
+        `{"/*@three@*/": ...}`
 
     Returns
     -------
@@ -558,7 +552,7 @@ def build_page(page: str, scripts: tuple[str, ...], data: dict, **parts: str) ->
 
 def editor_page(data: dict) -> str:
     """
-    The scenario editor's page, with three.js, the places and the folder's files.
+    The scenario editor's page, with three.js and the folder's files.
 
     Parameters
     ----------
@@ -570,12 +564,8 @@ def editor_page(data: dict) -> str:
     page : str
         The page, as HTML text
     """
-    places = (_PACKAGE / "data" / "places.json").read_text(encoding="utf-8")
     return build_page(
-        "scenario",
-        SCRIPTS,
-        data,
-        **{"/*@three@*/": _vendor("three.min.js"), "@places@": places},
+        "scenario", SCRIPTS, data, **{"/*@three@*/": _vendor("three.min.js")}
     )
 
 

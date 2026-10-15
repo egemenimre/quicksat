@@ -17,8 +17,9 @@ files, such as `mission.yaml`, gets the Sizing Editor.
 import argparse
 from pathlib import Path
 
-from quicksat.editor.editor import SCENARIO_FILE, write_editor
+from quicksat.editor.editor import write_editor
 from quicksat.editor.sizing import NAMES, write_sizing_editor
+from quicksat.scenario import SCENARIO_FILE
 
 
 def main(argv: list[str] | None = None) -> None:

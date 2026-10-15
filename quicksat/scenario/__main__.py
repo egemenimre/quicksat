@@ -19,7 +19,7 @@ written.
 import argparse
 from pathlib import Path
 
-from quicksat.editor.editor import SCENARIO_FILE
+from quicksat.scenario import SCENARIO_FILE
 from quicksat.scenario.config import Scenario
 from quicksat.scenario.run import run_scenario
 from quicksat.scenario.viewer import write_scenario_viewer

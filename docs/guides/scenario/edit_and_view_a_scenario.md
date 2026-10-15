@@ -4,7 +4,7 @@ This guide takes you round the loop of the scenario and power work. You edit the
 
 The loop is the same for a scenario folder and for a power folder. A power folder holds its own copy of the scenario, so its editor edits the scenario, the power system and the consumption together.
 
-You need quicksat installed first. The README has the steps. What each field of the files means is in the other two guides: [how to set up and run a scenario](set_up_a_scenario.md) and [how to set up and run a power budget](../power/set_up_a_power_budget.md).
+You need quicksat installed first. The README has the steps. The sizing files have an editor of their own: see [how to edit and run the sizing files](../sizing/edit_the_sizing_files.md). What each field of the files means is in the other two guides: [how to set up and run a scenario](set_up_a_scenario.md) and [how to set up and run a power budget](../power/set_up_a_power_budget.md).
 
 ## 1. Pick a folder
 
@@ -38,6 +38,8 @@ The page has two ways in, and both edit the same data:
 - **The other tabs** hold the same fields by theme: orbit and time, spacecraft, operations, activities, power and consumption. Use them to change one thing without going through every step. A bar at the top of each tab names its file, says where it came from and whether you have changed it, and has **Open** and **download** for that file.
 
 The first Setup step lists the folder's files: where each came from, whether it has changed, and two checks. The **simple check** is the page's own, on names, units and ranges, as you type. The **full check** is what quicksat's loaders said when Python wrote the page. The Files tab shows both under each file.
+
+**Ground targets** has a search box. It asks OpenStreetMap's Nominatim, so it needs a connection, and it sends the text you search for to openstreetmap.org. It finds towns, addresses and many ground stations, such as SvalSat. Press Enter or **search**, then click a result to add it. Nominatim gives no altitude, so set it yourself, or it is 0 m. Without a connection, type the position in.
 
 Names are chosen from lists. An activity picks its attitude and its mode, and an articulation picks its part of the model. Renaming an attitude, a target or a mode changes every use of it. Deleting one that is in use asks again, and says what uses it.
 

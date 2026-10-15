@@ -6,6 +6,18 @@ Newest first. When a decision replaces an earlier one, the earlier one is kept i
 
 ---
 
+## 17. The editor finds places with Nominatim
+
+**2026-10-15. Implemented. Replaces a list of places held in the page.**
+
+The Ground targets step has a search box that asks OpenStreetMap's Nominatim. It finds any address, and many ground stations by their own names, such as SvalSat. The page sends the search text to openstreetmap.org, and needs a connection for it. Without one, the user types the position in, as before.
+
+Nominatim's usage policy sets how the page asks. It allows at most one request a second, and no search as the user types. So a search runs on Enter or its button, waits a second after the last one, and keeps its answers for the session. The page credits OpenStreetMap beside the box.
+
+The page first held Natural Earth's 1:10m populated places: 7,342 towns and cities, 514 kB, offline. A town's position is its centre, and a station can lie far from it: Kiruna town is about 30 km from ESA's station. The list made each scenario page half a megabyte larger, and found no station by name. So it was deleted.
+
+---
+
 ## 16. The editor also opens files in the browser
 
 **2026-10-14. Settled.**
@@ -13,7 +25,7 @@ Newest first. When a decision replaces an earlier one, the earlier one is kept i
 Each editor page has an **Open a folder** button on its first Setup step, and an **Open** button on each tab for that tab's file. The page reads the files itself. So one page can edit any folder, and it need not be written again after the files change. Entry 14 left this for later.
 
 - **The YAML is read with js-yaml,** a 39 kB library that the page holds. It takes YAML's core types and merge keys, the nearest it comes to PyYAML. The two differ on a few forms, such as `yes`, which PyYAML reads as true. One of them matters to quicksat: PyYAML reads an unquoted `13:30` as the number 810, and the page reads it as the text. The page writes it in quotes, as quicksat needs it.
-- **The `#` comments are found by the page,** with the same rules as Python's. A test runs both on every YAML file of quicksat, and on some awkward layouts, and checks that they agree. It needs Node.js, and is skipped without it.
+- **The `#` comments are found by the page,** with the same rules as Python's. A test checks that they agree, on some awkward layouts and a copy of quicksat's own YAML files. Python's answers are kept in a file, so the test runs in CI's Node job (2026-10-15).
 - **quicksat's loaders do not run** on a file opened in the browser. The page shows two checks for each file: the simple check, its own, and the full check, what the loaders said when Python wrote the page. A file opened since has *not run* as its full check.
 - **Saving is still a download.** Writing back into the folder works in Chrome and Edge only, so it is left for later.
 

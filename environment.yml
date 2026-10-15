@@ -23,7 +23,7 @@ dependencies:
   - pytest
   - pytest-xdist
   - coverage
-  # runs the tests of the viewer's logic, in tests/scenario/js/
+  # runs the tests of the pages' logic, in tests/scenario/js/ and tests/editor/js/
   - nodejs
   # packages needed for the sample notebooks
   - jupyterlab
