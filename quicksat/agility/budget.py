@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Annotated, cast
 import numpy as np
 import pandas as pd
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BeforeValidator, ConfigDict, Field, model_validator
 
 from quicksat import Q_, u
 from quicksat.agility.report import tabulate
@@ -36,12 +36,14 @@ if TYPE_CHECKING:  # a type annotation only, so quicksat.mass stays unimported
 from quicksat.utils.mission import Mission
 from quicksat.utils.parser_helpers import (
     AngleQty,
+    Commented,
     FractionQty,
     InertiaQty,
     LengthQty,
     MomentumQty,
     TimeQty,
     TorqueQty,
+    without_comments,
 )
 
 DEFAULT_SLEW_ANGLES = (5, 10, 15, 20, 40, 45, 60, 90)
@@ -68,7 +70,7 @@ class Profile(str, Enum):
     """Momentum limited: the wheels saturate and the slew coasts at max rate."""
 
 
-class Body(BaseModel):
+class Body(Commented):
     """
     A bus envelope, as a uniform rectangular box.
 
@@ -80,16 +82,18 @@ class Body(BaseModel):
         Cross-track dimension
     z : Quantity
         Nadir dimension
+    comments : str, optional
+        The user's notes on the block. quicksat does not read them
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     x: LengthQty
     y: LengthQty
     z: LengthQty
 
 
-class PerAxis(BaseModel):
+class PerAxis(Commented):
     """
     A value for each slew axis.
 
@@ -99,15 +103,17 @@ class PerAxis(BaseModel):
         The roll figure
     pitch : Quantity or float
         The pitch figure
+    comments : str, optional
+        The user's notes on the block. quicksat does not read them
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     roll: InertiaQty | Annotated[float, Field(ge=1.0)]
     pitch: InertiaQty | Annotated[float, Field(ge=1.0)]
 
 
-class InertiaCase(BaseModel):
+class InertiaCase(Commented):
     """
     One spacecraft, with one set of mass properties.
 
@@ -132,9 +138,11 @@ class InertiaCase(BaseModel):
         which the mass budget is read. Envelope cases only
     inertia : PerAxis, optional
         Stated moment of inertia per axis. Makes this a stated case
+    comments : str, optional
+        The user's notes on the block. quicksat does not read them
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     body: Body | None = None
     appendage_factor: PerAxis | None = None
@@ -176,7 +184,7 @@ class InertiaCase(BaseModel):
         return self
 
 
-class WheelAssembly(BaseModel):
+class WheelAssembly(Commented):
     """
     A pyramid of reaction wheels, symmetry axis along yaw.
 
@@ -199,9 +207,11 @@ class WheelAssembly(BaseModel):
         Fraction of nameplate momentum available for slewing
     torque_derating : Quantity
         Fraction of nameplate torque available for slewing
+    comments : str, optional
+        The user's notes on the block. quicksat does not read them
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     count: Annotated[int, Field(ge=1)]
     elevation: AngleQty
@@ -211,7 +221,7 @@ class WheelAssembly(BaseModel):
     torque_derating: FractionQty
 
 
-class AgilityConfig(BaseModel):
+class AgilityConfig(Commented):
     """
     The agility inputs: what is slewed, what slews it, and the time allowed.
 
@@ -227,11 +237,13 @@ class AgilityConfig(BaseModel):
         The wheel pyramid and its use policy
     settling_time : Quantity
         What the platform needs after a slew before the payload can work
+    comments : str, optional
+        The user's notes on the block. quicksat does not read them
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
-    inertia_cases: dict[str, InertiaCase]
+    inertia_cases: Annotated[dict[str, InertiaCase], BeforeValidator(without_comments)]
     wheels: WheelAssembly
     settling_time: TimeQty
 

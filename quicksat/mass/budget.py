@@ -10,16 +10,17 @@ Mass budget assembly and reporting.
 
 import os
 from pathlib import Path
-from typing import cast
+from typing import Annotated, cast
 
 import pandas as pd
 import yaml
 from pandas.io.formats.style import Styler
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BeforeValidator, ConfigDict, Field, ValidationError
 
 from quicksat import Q_
 from quicksat.mass.equipment import Equipment, MassClass
 from quicksat.mass.report import tabulate
+from quicksat.utils.parser_helpers import Commented, without_comments
 
 LAUNCHER_LOCATION = "Launcher"
 """Reserved location name for hardware that stays with the launch vehicle."""
@@ -60,8 +61,10 @@ _FRAME_COLUMNS = (
 )
 
 
-class LocationConfig(BaseModel):
+class LocationConfig(Commented):
     """Margin and harness settings for a single location."""
+
+    model_config = ConfigDict(extra="forbid")
 
     system_margin: float = Field(default=0.0, ge=0)
     """System margin for this location, as a percentage, applied to its subtotal."""
@@ -79,7 +82,7 @@ class LocationConfig(BaseModel):
 _LAUNCHER_DEFAULT = LocationConfig(retained_in_orbit=False)
 
 
-class MassBudgetConfig(BaseModel):
+class MassBudgetConfig(Commented):
     """
     Budget settings, keyed on location.
 
@@ -88,7 +91,11 @@ class MassBudgetConfig(BaseModel):
     row.
     """
 
-    locations: dict[str, LocationConfig] = Field(default_factory=dict)
+    model_config = ConfigDict(extra="forbid")
+
+    locations: Annotated[
+        dict[str, LocationConfig], BeforeValidator(without_comments)
+    ] = Field(default_factory=dict)
 
     @classmethod
     def from_yaml_file(cls, file_path: str | Path) -> "MassBudgetConfig":
