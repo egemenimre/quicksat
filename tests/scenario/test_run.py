@@ -378,6 +378,16 @@ def test_the_summary_counts_each_status(problem_run):
     )
 
 
+def test_the_report_lists_only_the_occurrences_with_a_problem(problem_run):
+    summary, header, *rows = problem_run.report.splitlines()
+    assert summary == problem_run.activity_summary
+    assert header.split()[:3] == ["repeat", "activity", "title"]
+    statuses = [OUTSIDE_CONSTRAINT, NEGATIVE_DURATION, EVENT_NEVER_CAME]
+    assert len(rows) == len(statuses)
+    for row, status in zip(rows, statuses, strict=True):
+        assert row.endswith(status)
+
+
 def test_the_activity_table_has_a_row_per_occurrence(run):
     table = run.activity_table
     assert len(table) == len(run.occurrences)

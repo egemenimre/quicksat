@@ -791,6 +791,25 @@ class ScenarioRun:
         """
         return activity_summary(self.occurrences)
 
+    @property
+    def report(self) -> str:
+        """
+        The run's results as text, as the command line prints them.
+
+        Returns
+        -------
+        report : str
+            The summary line, a table of the occurrences whose status is not
+            `ok`, if any, and the warnings, one line each
+        """
+        table = self.activity_table
+        problems = table[table["status"] != STATUS_OK]
+        lines = [self.activity_summary]
+        if not problems.empty:
+            columns = ["repeat", "activity", "title", "start [UTC]", "status"]
+            lines.append(problems.loc[:, columns].to_string(index=False))
+        return "\n".join(lines + self.warnings)
+
 
 def _event_finders(
     scenario: Scenario,

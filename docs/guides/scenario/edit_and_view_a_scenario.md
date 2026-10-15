@@ -66,9 +66,15 @@ The browser puts the downloads in its downloads folder. Copy the files over the 
 
 ## 6. Run
 
-For a sample folder, run its notebook: [`sample/scenario/scenario.ipynb`](../../../sample/scenario/scenario.ipynb), or [`sample/power/power_budget.ipynb`](../../../sample/power/power_budget.ipynb) for the power.
+Run the folder from the command line. For a power folder:
 
-For your own folder, run the code in step 8 of the [scenario guide](set_up_a_scenario.md#8-run-the-scenario), or in step 6 of the [power guide](../power/set_up_a_power_budget.md#6-run-the-budget), with your folder's path. A file that quicksat cannot read stops the run with an error that names the problem. Fix it in the editor, and save again.
+```bash
+python -m quicksat.power my_project/winter my_project/winter/output
+```
+
+For a scenario folder, with no power files, use `python -m quicksat.scenario` in the same way. Either prints the results, writes the viewer into the output folder, and prints the page's path. A file that quicksat cannot read stops the run with an error that names the problem, and nothing is written. Fix it in the editor, and save again.
+
+For the tables and the plots, run a notebook instead. For a sample folder, that is [`sample/scenario/scenario.ipynb`](../../../sample/scenario/scenario.ipynb), or [`sample/power/power_budget.ipynb`](../../../sample/power/power_budget.ipynb) for the power. For your own folder, run the code in step 8 of the [scenario guide](set_up_a_scenario.md#8-run-the-scenario), or in step 6 of the [power guide](../power/set_up_a_power_budget.md#6-run-the-budget), with your folder's path.
 
 ## 7. Read the results
 

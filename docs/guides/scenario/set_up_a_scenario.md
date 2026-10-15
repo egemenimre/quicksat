@@ -145,6 +145,16 @@ Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), section "The
 
 ## 8. Run the scenario
 
+The quickest way is the command line, with the folder that holds `scenario.yaml`:
+
+```bash
+python -m quicksat.scenario my_scenario my_scenario/output
+```
+
+It prints the summary line, a table of the occurrences whose status is not `ok`, and the warnings. Then it writes the viewer into `my_scenario/output/`, and prints the page's path.
+
+For the activity table and the plots, run it in Python or in a notebook instead:
+
 ```python
 import matplotlib.pyplot as plt
 

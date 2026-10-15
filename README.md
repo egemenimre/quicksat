@@ -46,9 +46,9 @@ The sample works one satellite through each budget. The reference explains each 
 The power sample flies a 510 km sun-synchronous orbit for three orbits, with imaging, a downlink to Svalbard, and wings that turn to the sun. Its files are in `sample/power/data/`: the scenario, the 3D model, the power system and the consumption table. The workflow:
 
 1. **Edit the files.** Double-click [`sample/power/editor/editor.html`](sample/power/editor/editor.html) to open the editor in your browser. Its Setup tab takes you through every file, step by step, with an explanation of each choice. The other tabs edit the same data by theme, and a side panel shows the 3D model. Change something, such as the battery's capacity or an activity's trigger. Then save the files, as a zip or one by one, and put them back in `sample/power/data/`.
-2. **Run the notebooks.** Run [`sample/power/power_budget.ipynb`](sample/power/power_budget.ipynb) in Jupyter. It flies the scenario, works out the generation, the loads and the battery, and checks the budget.
-3. **Read the results.** The notebook shows each orbit's energy, the battery's charge, and three checks. In the sample, the lowest charge is 83.6%, above its 70% limit, and every orbit has at least 16.5 W h to spare.
-4. **See the run in the viewer.** The notebook writes [`sample/power/output/power_viewer.html`](sample/power/output/power_viewer.html). Double-click it to see the run in 3D, with the ground track, the timeline and the power.
+2. **Run the budget.** Run [`sample/power/power_budget.ipynb`](sample/power/power_budget.ipynb) in Jupyter, or `python -m quicksat.power sample/power/data sample/power/output` from the command line. Either flies the scenario, works out the generation, the loads and the battery, and checks the budget.
+3. **Read the results.** The notebook shows each orbit's energy, the battery's charge, and three checks. The command prints the checks only. In the sample, the lowest charge is 83.6%, above its 70% limit, and every orbit has at least 16.5 W h to spare.
+4. **See the run in the viewer.** Both write [`sample/power/output/power_viewer.html`](sample/power/output/power_viewer.html). Double-click it to see the run in 3D, with the ground track, the timeline and the power.
 
 ![The editor's Articulations step, with the wing +y selected and turned in the 3D panel](docs/images/file_editor.webp)
 
@@ -58,7 +58,7 @@ The power sample flies a 510 km sun-synchronous orbit for three orbits, with ima
 
 *The viewer's Power tab. The power and the battery's charge follow the timeline, with the power setup beside them.*
 
-The scenario sample works the same way, for the timeline alone: [`sample/scenario/editor/editor.html`](sample/scenario/editor/editor.html), then [`sample/scenario/scenario.ipynb`](sample/scenario/scenario.ipynb), then `sample/scenario/output/scenario_viewer.html`.
+The scenario sample works the same way, for the timeline alone: [`sample/scenario/editor/editor.html`](sample/scenario/editor/editor.html), then [`sample/scenario/scenario.ipynb`](sample/scenario/scenario.ipynb) or `python -m quicksat.scenario sample/scenario/data sample/scenario/output`, then `sample/scenario/output/scenario_viewer.html`.
 
 | Part | What it gives | Sample | Reference |
 |---|---|---|---|

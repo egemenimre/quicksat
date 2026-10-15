@@ -110,6 +110,16 @@ Details: [`power_budget_ref.ipynb`](../../power/power_budget_ref.ipynb), section
 
 ## 6. Run the budget
 
+The quickest way is the command line:
+
+```bash
+python -m quicksat.power winter winter/output
+```
+
+It reads the folder's three files and runs the budget. It prints the scenario's summary, any occurrence with a problem, the warnings, the notes on the panels and the loads, and the three checks. Then it writes the viewer into `winter/output/`, and prints the page's path. A check that fails does not stop it, so you can see the failing run in the viewer.
+
+For the tables and the plots, run it in Python or in a notebook instead:
+
 ```python
 import matplotlib.pyplot as plt
 
