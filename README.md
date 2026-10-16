@@ -26,7 +26,14 @@ Then copy the samples into a folder of your own. They come from GitHub, for the 
 python -m quicksat init my_satellite
 ```
 
-The folder holds `sizing/`, `scenario/` and `power/`. Where this page says `sample/`, read `my_satellite/`. The notebooks need Jupyter, such as `pip install jupyterlab`.
+The command prints where everything went, and how to start the editor's server. The folder holds `sizing/`, `scenario/` and `power/`, and each of them holds:
+
+- `data/`: the input files, the ones you edit;
+- `editor/`: the editor page, written for `data/`;
+- `output/`: the viewer, written by a run, for the scenario and the power;
+- the notebooks: the worked examples, for Jupyter, such as `pip install jupyterlab`.
+
+Where this page says `sample/`, read `my_satellite/`.
 
 To work on quicksat itself, clone the repository, and install it from there:
 
@@ -57,14 +64,35 @@ The sample works one satellite through each budget. The reference explains each 
 
 ## Scenario and power, with the viewer
 
-The power sample flies a 510 km sun-synchronous orbit for three orbits, with imaging, a downlink to Svalbard, and wings that turn to the sun. Its files are in `sample/power/data/`: the scenario, the 3D model, the power system and the consumption table. The workflow:
+The power sample flies a 510 km sun-synchronous orbit for three orbits, with imaging, a downlink to Svalbard, and wings that turn to the sun. Its files are in `sample/power/data/`: the scenario, the 3D model, the power system and the consumption table.
+
+### With the editor's server
+
+The editor's server runs on your computer only. It serves the Scenario Editor, and runs quicksat on the files when you ask for the viewer.
+
+1. **Start the server,** in a terminal where quicksat is installed:
+
+   ```bash
+   python -m quicksat.editor serve sample/power/data sample/power/output
+   ```
+
+   The first folder holds the input files, and the second is where the viewer goes. Keep the terminal open while you work.
+2. **The editor opens in your browser** by itself. If it does not, open the address that the server prints, such as `http://localhost:8780/quicksat/editor?key=...`.
+3. **Edit the files.** The Setup tab takes you through every file, step by step, with an explanation of each choice. The other tabs edit the same data by theme, and a side panel shows the 3D model.
+4. **Create the viewer.** Click **Create the viewer**, on the Files tab or on the last Setup step, "Save and view". quicksat runs the files as they are on the page, saved or not, in a few seconds. It writes `sample/power/output/power_viewer.html`, and the page shows the results and any problem.
+5. **Open the viewer.** Click **Open the viewer**. The viewer opens in a tab of its own: the editor does not open it by itself. It shows the run in 3D, with the ground track, the timeline, the power and the attitude.
+6. **Go round again.** Change something, click **Update the viewer**, then **Open the viewer** again, or reload the viewer's tab.
+7. **Keep your changes.** The server never changes the files in `sample/power/data/`. Download them from the page, as a zip or one by one, and put them back there.
+8. **Stop the server** with Ctrl+C in its terminal.
+
+For the scenario sample, start it with `sample/scenario/data sample/scenario/output`. The Sizing Editor needs no server.
+
+### By hand, with a notebook or a command
 
 1. **Edit the files.** Double-click [`sample/power/editor/editor.html`](https://github.com/egemenimre/quicksat/blob/master/sample/power/editor/editor.html) to open the editor in your browser. Its Setup tab takes you through every file, step by step, with an explanation of each choice. The other tabs edit the same data by theme, and a side panel shows the 3D model. Change something, such as the battery's capacity or an activity's trigger. Then save the files, as a zip or one by one, and put them back in `sample/power/data/`.
 2. **Run the budget.** Run [`sample/power/power_budget.ipynb`](https://github.com/egemenimre/quicksat/blob/master/sample/power/power_budget.ipynb) in Jupyter, or `python -m quicksat.power sample/power/data sample/power/output` from the command line. Either flies the scenario, works out the generation, the loads and the battery, and checks the budget.
 3. **Read the results.** The notebook shows each orbit's energy, the battery's charge, and three checks. The command prints the checks only. In the sample, the lowest charge is 83.6%, above its 70% limit, and every orbit has at least 16.5 W h to spare.
 4. **See the run in the viewer.** Both write [`sample/power/output/power_viewer.html`](https://github.com/egemenimre/quicksat/blob/master/sample/power/output/power_viewer.html). Double-click it to see the run in 3D, with the ground track, the timeline, the power and the attitude. Its Attitude tab also gives the attitude as files for other tools.
-
-**Or skip the copy and the run.** `python -m quicksat.editor serve sample/power/data sample/power/output` starts the editor's server, on your computer only, and opens the editor in your browser. Its **Create the viewer** button, in the Files tab, runs the files as they are on the page and writes the viewer. **Open the viewer** then shows it. The server does not change the files in the folder: save them when you want to keep them. See [how to edit, run and view a scenario](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/edit_and_view_a_scenario.md).
 
 ![The editor's Articulations step, with the wing +y selected and turned in the 3D panel](https://raw.githubusercontent.com/egemenimre/quicksat/master/docs/images/file_editor.webp)
 
