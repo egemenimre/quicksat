@@ -106,7 +106,7 @@ NAMED = """
 orbit: {tle_file: sso_510km.tle}
 start: 2026-10-01T00:00:00
 duration: 90 min
-targets:
+gnd_targets:
   Toulouse: {latitude: 43.6 deg, longitude: 1.44 deg, altitude: 150 m}
 attitudes:
   roll 30: {point: [+z, nadir], constrain: [-y, orbit normal], offset: [x 30 deg]}
@@ -151,7 +151,7 @@ def test_a_roll_offset_turns_the_nadir_attitude_about_x(named_run):
 
 def test_a_target_attitude_points_its_axis_through_the_target(named_run):
     rotations, position, _, rows = steps_of(named_run, "track Toulouse")
-    target = named_run.scenario.targets["Toulouse"]
+    target = named_run.scenario.gnd_targets["Toulouse"]
     point = ground_point(target.latitude, target.longitude, target.altitude)
     toward = unit(earth_rotations(named_run.times[rows]) @ point - position)
     assert np.allclose(axis_in_gcrs(rotations, "+z"), toward, atol=1e-12)

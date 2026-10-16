@@ -7,9 +7,17 @@
 Running a scenario: the orbit, the eclipses and the repeated activities.
 
 `run_scenario` evaluates the orbit on the time grid and finds the umbra and the
-penumbra, and the latitude crossings that the triggers name. It repeats the list of activities
-until the duration ends and checks each constraint. All the results come back in
-one `ScenarioRun`.
+penumbra, and the latitude crossings that the triggers name. It finds when each
+target is in view: a ground target above its minimum elevation, and a satellite
+target with the line between the two above its minimum clearance. It repeats the
+list of activities until the duration ends and checks each constraint. All the
+results come back in one `ScenarioRun`.
+
+Each orbit is checked against the run before it is used. An element set more
+than 7 days from either end of the run gets a warning, and so does a trajectory
+whose ends come close to the run's. A trajectory that does not cover the run
+stops it. The warnings come back in `ScenarioRun.warnings`, as well as through
+Python's warnings.
 
 Every time interval is closed at its start and open at its end. Every bound goes
 through `round_time`. So the pieces of a run fit together with no gaps and no
@@ -18,8 +26,9 @@ overlaps.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import cached_property
+from pathlib import Path
 from typing import cast
 
 import numpy as np
@@ -34,13 +43,20 @@ from quicksat.orbit.geometry import (
     elevations,
     geodetic,
     light_fraction,
+    line_of_sight_clear,
     shadow_cones,
     shadow_intervals,
     sun_positions,
 )
-from quicksat.orbit.omm import read_omm_file
+from quicksat.orbit.omm import read_omm_file, read_omm_sets
 from quicksat.orbit.sso import sso_tle
-from quicksat.orbit.tle import Tle, read_tle_file, warn_if_far_from_epoch
+from quicksat.orbit.tle import (
+    Tle,
+    pick_element_set,
+    read_tle_file,
+    read_tle_sets,
+    warn_if_far_from_epoch,
+)
 from quicksat.orbit.trajectory import Trajectory
 from quicksat.orbit.trajectory_files import read_trajectory_file
 from quicksat.scenario.articulation import articulation_angles
@@ -250,6 +266,112 @@ def scenario_orbit(scenario: Scenario) -> OrbitSource:
     return read_tle_file(orbit.tle_file)
 
 
+def target_orbits(scenario: Scenario) -> dict[str, OrbitSource]:
+    """
+    Where each satellite target's states come from, read from its file.
+
+    A TLE or OMM file gives the element set that the target's `object` names.
+    Without `object`, a file of one element set gives that one, and a file of
+    several gives the one named as the target. A file that several targets share
+    is read once.
+
+    Parameters
+    ----------
+    scenario : Scenario
+        The scenario
+
+    Returns
+    -------
+    orbits : dict of str to Tle or Trajectory
+        Each satellite target's element set or trajectory, by its name
+
+    Raises
+    ------
+    FileNotFoundError
+        If a target's file does not exist
+    ValueError
+        If a target's file cannot be read, or does not hold the element set asked
+        for. The message names the target.
+    """
+    read: dict[Path, list[Tle]] = {}
+    orbits: dict[str, OrbitSource] = {}
+    for name, target in scenario.sat_targets.items():
+        try:
+            if target.trajectory_file is not None:
+                orbits[name] = read_trajectory_file(target.trajectory_file)
+                continue
+            path = target.file
+            if path not in read:
+                reader = read_tle_sets if target.tle_file is not None else read_omm_sets
+                read[path] = reader(path)
+            wanted = target.satellite
+            if wanted is None and len(read[path]) > 1:
+                wanted = name
+            orbits[name] = pick_element_set(read[path], wanted, path)
+        except (OSError, ValueError) as error:
+            raise type(error)(f"satellite target '{name}': {error}") from error
+    return orbits
+
+
+def orbit_warnings(
+    scenario: Scenario,
+    orbit: OrbitSource,
+    sat_orbits: dict[str, OrbitSource],
+    start: TimeArray,
+    end: TimeArray,
+) -> list[str]:
+    """
+    Check each orbit against the run: an element set's epoch, and a trajectory's
+    span.
+
+    An element set gets a warning when either end of the run is more than 7
+    days from its epoch. The sun-synchronous orbit is left out: quicksat builds
+    its element set, with the epoch at the start, so it defines the orbit rather
+    than tracking one. A trajectory must cover the run, and gets a warning when
+    the run comes close to one of its ends.
+
+    Parameters
+    ----------
+    scenario : Scenario
+        The scenario
+    orbit : Tle or Trajectory
+        Where the scenario's own states come from
+    sat_orbits : dict of str to Tle or Trajectory
+        The satellite targets' orbits, by name
+    start, end : Time
+        The start and the end of the run
+
+    Returns
+    -------
+    warnings : list of str
+        The text of each warning, which Python's warnings also give
+
+    Raises
+    ------
+    ValueError
+        If a trajectory does not cover the run, or crosses a gap in it
+    """
+    labels: dict[str, OrbitSource] = {}
+    if isinstance(orbit, Trajectory):
+        labels["the trajectory"] = orbit
+    elif scenario.orbit.sso is None:
+        labels["the orbit's element set"] = orbit
+    for name, source in sat_orbits.items():
+        if isinstance(source, Trajectory):
+            labels[f"the trajectory of satellite target '{name}'"] = source
+        else:
+            labels[f"satellite target '{name}'"] = source
+    found = []
+    for label, source in labels.items():
+        if isinstance(source, Trajectory):
+            text = source.check_covers(start, end, label)
+        else:
+            text = warn_if_far_from_epoch(source, start, end, label)
+        if text is not None:
+            found.append(text)
+    return found
+
+
 def run_length(scenario: Scenario, orbit: OrbitSource) -> Quantity:
     """
     The length of the run, as a time.
@@ -334,8 +456,8 @@ def find_events(
     the start of the time outside it. A northward crossing of a latitude is the
     start of the time above it, and a southward crossing is the start of the time
     below it. The time above each latitude is found once, whichever directions the
-    triggers name. A target's rise is the start of the time it can see the
-    satellite, and its set the start of the time it cannot.
+    triggers name. A target's rise is the start of the time it is in view, and
+    its set the start of the time it is not.
 
     Parameters
     ----------
@@ -348,9 +470,8 @@ def find_events(
     time_above : callable
         Gives the time at or above a geodetic latitude, as intervals over the run
     time_visible : callable, optional
-        Gives the time a ground target, by name, sees the satellite at or above
-        its minimum elevation, as intervals over the run. Needed only for the
-        `rise` and `set` triggers.
+        Gives the time a target, by name, is in view, as intervals over the run.
+        Needed only for the `rise` and `set` triggers.
 
     Returns
     -------
@@ -652,6 +773,58 @@ def gantt_rows(
     return row, attitude, mode
 
 
+def _km(state: SkyCoord) -> np.ndarray:
+    """A state's positions in km, one row each."""
+    cartesian = cast(CartesianRepresentation, state.cartesian)
+    return np.atleast_2d(cartesian.xyz.to_value(u.km).T)
+
+
+def pass_table(run: "ScenarioRun") -> pd.DataFrame:
+    """
+    Tabulate every target's passes: each time it is in view, one row each.
+
+    A pass under way when the run starts begins at the start, and one under way
+    when it ends ends at the end. So it is cut, as the run is.
+
+    Parameters
+    ----------
+    run : ScenarioRun
+        The run
+
+    Returns
+    -------
+    table : pd.DataFrame
+        The columns are the target, the start and the end of the pass as UTC
+        text, its duration in minutes, and, for a satellite target, the closest
+        range in km at the grid's times in the pass. The range is NaN for a
+        ground target, and for a pass between two grid times. The rows are in
+        the order of their starts.
+    """
+    columns = ["target", "from [UTC]", "to [UTC]", "duration [min]", "closest [km]"]
+    here = _km(run.state)
+    rows = []
+    for name, seen in run.in_view.items():
+        ranges = None
+        if name in run.sat_states:
+            ranges = np.linalg.norm(_km(run.sat_states[name]) - here, axis=1)
+        for piece in seen:
+            inside = (run.times >= piece.lower) & (run.times <= piece.upper)
+            closest = np.nan
+            if ranges is not None and inside.any():
+                closest = round(float(ranges[inside].min()), 3)
+            rows.append(
+                {
+                    "target": name,
+                    "from [UTC]": piece.lower.utc.isot,
+                    "to [UTC]": piece.upper.utc.isot,
+                    "duration [min]": duration(piece).to_value(u.min),
+                    "closest [km]": closest,
+                }
+            )
+    table = pd.DataFrame(rows, columns=columns)
+    return table.sort_values(["from [UTC]", "target"], ignore_index=True)
+
+
 @dataclass(frozen=True)
 class ScenarioRun:
     """
@@ -695,6 +868,15 @@ class ScenarioRun:
         no slews.
     activity_table : pd.DataFrame
         The occurrences as a table, from `activity_table`
+    sat_orbits : dict of str to Tle or Trajectory
+        Where each satellite target's states come from, by its name
+    sat_states : dict of str to SkyCoord
+        Each satellite target's positions on the grid, in GCRS, by its name
+    in_view : dict of str to portion.Interval
+        When each target is in view, ground and satellite, by its name
+    orbit_warnings : list of str
+        The warnings on the orbits, from `orbit_warnings`: an element set far
+        from the run, or a trajectory whose ends come close to it
     """
 
     scenario: Scenario
@@ -717,6 +899,10 @@ class ScenarioRun:
     occurrences: list[Occurrence]
     slews: list[SlewWindow]
     activity_table: pd.DataFrame
+    sat_orbits: dict[str, OrbitSource] = field(default_factory=dict)
+    sat_states: dict[str, SkyCoord] = field(default_factory=dict)
+    in_view: dict[str, P.Interval] = field(default_factory=dict)
+    orbit_warnings: list[str] = field(default_factory=list)
 
     @cached_property
     def articulations(self) -> dict[str, Quantity]:
@@ -752,15 +938,28 @@ class ScenarioRun:
     @property
     def warnings(self) -> list[str]:
         """
-        Warnings for the reader, as text: each occurrence past the slew capacity.
+        Warnings for the reader, as text: the orbits' warnings, then each
+        occurrence past the slew capacity.
 
         Returns
         -------
         warnings : list of str
-            One sentence or two for each, in time order. Empty when there are
-            none.
+            One sentence or two for each, the occurrences in time order. Empty
+            when there are none.
         """
-        return [excess.text for excess in self.rate_excesses]
+        return self.orbit_warnings + [excess.text for excess in self.rate_excesses]
+
+    @cached_property
+    def passes(self) -> pd.DataFrame:
+        """
+        Every target's passes, from `pass_table`.
+
+        Returns
+        -------
+        table : pd.DataFrame
+            One row for each time a target is in view
+        """
+        return pass_table(self)
 
     @cached_property
     def sun_body(self) -> np.ndarray:
@@ -802,7 +1001,8 @@ class ScenarioRun:
         -------
         report : str
             The summary line, a table of the occurrences whose status is not
-            `ok`, if any, and the warnings, one line each
+            `ok`, if any, a line for each target with its passes and its time in
+            view, and the warnings, one line each
         """
         table = self.activity_table
         problems = table[table["status"] != STATUS_OK]
@@ -810,27 +1010,28 @@ class ScenarioRun:
         if not problems.empty:
             columns = ["repeat", "activity", "title", "start [UTC]", "status"]
             lines.append(problems.loc[:, columns].to_string(index=False))
+        for name, seen in self.in_view.items():
+            count = len(seen) if not seen.empty else 0
+            minutes = duration(seen).to_value(u.min)
+            lines.append(
+                f"Target {name}: {count} pass{'' if count == 1 else 'es'}, "
+                f"{minutes:.1f} min in view."
+            )
         return "\n".join(lines + self.warnings)
 
 
-def _event_finders(
-    scenario: Scenario,
+def _time_above(
     times: TimeArray,
-    state: SkyCoord,
     latitude: Quantity,
     positions_at: Callable[[TimeArray], SkyCoord],
-) -> tuple[Callable[[Quantity], P.Interval], Callable[[str], P.Interval]]:
+) -> Callable[[Quantity], P.Interval]:
     """
-    The two finders that `find_events` takes, over a run's grid.
+    The latitude finder that `find_events` takes, over a run's grid.
 
     Parameters
     ----------
-    scenario : Scenario
-        The scenario, for its ground targets
     times : Time
         The run's grid
-    state : SkyCoord
-        The satellite's state on the grid
     latitude : Quantity
         The geodetic latitude on the grid
     positions_at : callable
@@ -840,9 +1041,6 @@ def _event_finders(
     -------
     time_above : callable
         Gives the time at or above a geodetic latitude
-    time_visible : callable
-        Gives the time a ground target, by name, sees the satellite at or above
-        its minimum elevation
     """
 
     def time_above(limit: Quantity) -> P.Interval:
@@ -851,17 +1049,65 @@ def _event_finders(
 
         return intervals_where(times, np.asarray(latitude >= limit), above_at)
 
-    def time_visible(name: str) -> P.Interval:
-        target = scenario.targets[name]
-        place = (target.latitude, target.longitude, target.altitude)
-        lowest = target.min_elevation.to_value(u.deg)
+    return time_above
 
-        def visible_at(at: TimeArray) -> np.ndarray:
+
+def target_visibility(
+    scenario: Scenario,
+    times: TimeArray,
+    state: SkyCoord,
+    positions_at: Callable[[TimeArray], SkyCoord],
+    sat_orbits: dict[str, OrbitSource],
+    sat_states: dict[str, SkyCoord],
+) -> dict[str, P.Interval]:
+    """
+    When each target is in view, ground and satellite, over a run's grid.
+
+    A ground target is in view while it sees the satellite at or above its
+    minimum elevation. A satellite target is in view while the line between the
+    two keeps its minimum clearance above the WGS84 ellipsoid. The edges are found
+    between the grid steps, to 1 ms.
+
+    Parameters
+    ----------
+    scenario : Scenario
+        The scenario, for its targets
+    times : Time
+        The run's grid
+    state : SkyCoord
+        The satellite's state on the grid
+    positions_at : callable
+        Gives the satellite's positions for any `Time` array
+    sat_orbits : dict of str to Tle or Trajectory
+        The satellite targets' orbits, by name
+    sat_states : dict of str to SkyCoord
+        The satellite targets' positions on the grid, by name
+
+    Returns
+    -------
+    in_view : dict of str to portion.Interval
+        For each target, by its name, the time it is in view
+    """
+    found = {}
+    for name, ground in scenario.gnd_targets.items():
+        place = (ground.latitude, ground.longitude, ground.altitude)
+        lowest = ground.min_elevation.to_value(u.deg)
+
+        def visible_at(at: TimeArray, place=place, lowest=lowest) -> np.ndarray:
             return elevations(positions_at(at), *place) >= lowest
 
-        return intervals_where(times, elevations(state, *place) >= lowest, visible_at)
+        flags = elevations(state, *place) >= lowest
+        found[name] = intervals_where(times, flags, visible_at)
+    for name, target in scenario.sat_targets.items():
+        orbit, clearance = sat_orbits[name], target.min_clearance
 
-    return time_above, time_visible
+        def clear_at(at: TimeArray, orbit=orbit, clearance=clearance) -> np.ndarray:
+            other = orbit.states(at, with_velocity=False)
+            return line_of_sight_clear(positions_at(at), other, clearance)
+
+        flags = line_of_sight_clear(state, sat_states[name], clearance)
+        found[name] = intervals_where(times, flags, clear_at)
+    return found
 
 
 def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
@@ -870,11 +1116,12 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
 
     The orbit comes from the TLE file, from a TLE built for the sun-synchronous
     orbit, or from the trajectory file. It is evaluated on the time grid, with
-    SGP4 or by interpolation. The edges of the umbra and the penumbra are then
-    located between the grid steps, and so are the latitude crossings and the
-    ground targets' rises and sets that the triggers name. The activities are then repeated over the run and checked
-    against the eclipses. The run gets a warning if it starts more than 7 days
-    from the epoch of the TLE, or comes close to an end of the trajectory.
+    SGP4 or by interpolation, and so is each satellite target's orbit. The edges
+    of the umbra and the penumbra are then located between the grid steps, and
+    so are the latitude crossings that the triggers name, and the edges of each
+    target's time in view. The activities are then repeated over the run and
+    checked against the eclipses. Each orbit is checked against the run first:
+    see `orbit_warnings`.
 
     Parameters
     ----------
@@ -889,13 +1136,14 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
     Raises
     ------
     ValueError
-        If no activity in the list ends after it starts, or if the run does not
-        lie inside the trajectory
+        If no activity in the list ends after it starts, if a satellite target's
+        file does not give its orbit, if the run does not lie inside a
+        trajectory, or if SGP4 fails for a satellite target. A message about a
+        satellite target names it.
     """
     orbit = scenario_orbit(scenario)
+    sat_orbits = target_orbits(scenario)
     start = round_time(scenario.start)
-    if isinstance(orbit, Tle):
-        warn_if_far_from_epoch(orbit, start)
 
     duration_s = run_length(scenario, orbit).to(u.s).value
     step_s = scenario.step.to(u.s).value
@@ -903,8 +1151,7 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
     offsets = np.unique(np.minimum(np.arange(steps + 1) * step_s, duration_s))
     times = round_time(start + Q_(offsets, "s"))
     interval = P.closedopen(times[0], times[-1])
-    if isinstance(orbit, Trajectory):
-        orbit.check_covers(times[0], times[-1])
+    warnings = orbit_warnings(scenario, orbit, sat_orbits, times[0], times[-1])
 
     def positions_at(at: TimeArray) -> SkyCoord:
         return orbit.states(at, with_velocity=False)
@@ -920,11 +1167,21 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
     }
     latitude, longitude = geodetic(state)
 
-    time_above, time_visible = _event_finders(
-        scenario, times, state, latitude, positions_at
+    sat_states = {}
+    for name, source in sat_orbits.items():
+        try:
+            sat_states[name] = source.states(times, with_velocity=False)
+        except ValueError as error:
+            raise ValueError(f"satellite target '{name}': {error}") from error
+    in_view = target_visibility(
+        scenario, times, state, positions_at, sat_orbits, sat_states
     )
     events = find_events(
-        scenario.activities, interval, illumination, time_above, time_visible
+        scenario.activities,
+        interval,
+        illumination,
+        _time_above(times, latitude, positions_at),
+        in_view.__getitem__,
     )
     occurrences = resolve_activities(
         scenario.activities, interval, events, illumination
@@ -942,6 +1199,7 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
             interval,
             states_at,
             sun_positions,
+            sat_orbits,
         )
         for window in slews:
             occurrences[window.into] = replace(
@@ -972,4 +1230,8 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
         occurrences=occurrences,
         slews=slews,
         activity_table=activity_table(occurrences),
+        sat_orbits=sat_orbits,
+        sat_states=sat_states,
+        in_view=in_view,
+        orbit_warnings=warnings,
     )

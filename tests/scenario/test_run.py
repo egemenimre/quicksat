@@ -37,6 +37,7 @@ from quicksat.scenario.run import (
     run_scenario,
     scenario_orbit,
 )
+from quicksat.scenario.viewer import scenario_data
 from quicksat.utils.intervals import labels_at, round_time
 
 T0 = round_time(Time("2026-10-01T00:00:00", scale="utc"))
@@ -456,7 +457,7 @@ PASSES = """
 orbit: {tle_file: sso_510km.tle}
 start: 2026-10-01T00:00:00
 duration: 3 orbits
-targets:
+gnd_targets:
   Svalbard: {latitude: 78.229 deg, longitude: 15.408 deg, altitude: 500 m}
   Overhead: {latitude: 0 deg, longitude: 0 deg, min_elevation: 89.9 deg}
 attitudes:
@@ -476,7 +477,7 @@ def pass_run(data_dir):
 
 
 def test_a_pass_runs_from_the_rise_to_the_set_at_the_minimum_elevation(pass_run):
-    target = pass_run.scenario.targets["Svalbard"]
+    target = pass_run.scenario.gnd_targets["Svalbard"]
     place = (target.latitude, target.longitude, target.altitude)
     passes = [
         o
@@ -499,3 +500,24 @@ def test_a_target_that_never_rises_never_ends_the_activity(data_dir):
     run = run_scenario(Scenario.from_yaml_text(text, data_dir))
     assert len(run.occurrences) == 1
     assert run.occurrences[0].statuses == [EVENT_NEVER_CAME]
+
+
+def test_the_viewer_data_gives_each_ground_target_and_its_passes(pass_run):
+    data = scenario_data(pass_run)
+    svalbard, overhead = data["targets"]
+    assert svalbard["name"] == "Svalbard"
+    assert svalbard["kind"] == "ground"
+    assert (svalbard["latitude_deg"], svalbard["longitude_deg"]) == (78.229, 15.408)
+    assert (svalbard["altitude_km"], svalbard["min_elevation_deg"]) == (0.5, 5.0)
+    start = pass_run.times[0]
+    assert [(p["start_s"], p["end_s"]) for p in svalbard["passes"]] == [
+        (
+            round(float((piece.lower - start).to_value(u.s)), 3),
+            round(float((piece.upper - start).to_value(u.s)), 3),
+        )
+        for piece in pass_run.in_view["Svalbard"]
+    ]
+    assert all(p["closest_km"] is None for p in svalbard["passes"])
+    assert overhead["passes"] == []
+    assert data["target_files"] == []
+    assert data["pointing"]["attitudes"] == {"track Svalbard": ["Svalbard"]}

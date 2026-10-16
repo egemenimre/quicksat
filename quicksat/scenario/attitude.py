@@ -16,8 +16,10 @@ as close as it can get to another direction. The directions, at each step:
 - `ground velocity`: the velocity relative to the turning Earth, v - w x r. An
   attitude with `+z` at nadir and `+x` toward it steers in yaw, so that a
   detector's lines stay across the motion of the ground below.
-- a ground point from the scenario's `targets`: from the satellite to the point,
+- a ground point from the scenario's `gnd_targets`: from the satellite to the point,
   which turns with the Earth.
+- another satellite from the scenario's `sat_targets`: from the satellite to the
+  other, whose orbit the run reads from its file.
 
 Where the second direction is parallel to the first, it no longer fixes the turn
 about the first axis. The attitude's fallback direction then takes its place. An
@@ -35,7 +37,7 @@ activity starts.
 
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -58,6 +60,8 @@ from quicksat.orbit.attitude import (
     turn_between,
 )
 from quicksat.orbit.geometry import EARTH_ROTATION_RATE, earth_rotations, ground_point
+from quicksat.orbit.tle import Tle
+from quicksat.orbit.trajectory import Trajectory
 from quicksat.scenario.config import (
     GROUND_VELOCITY,
     NADIR,
@@ -79,9 +83,16 @@ _TURN_TIME_TOLERANCE = Q_(1, "ms")
 _MAX_ROUNDS = 10
 """Most rounds of the search for a turn time."""
 
+TargetOrbits = Mapping[str, Tle | Trajectory]
+"""The orbits of the satellite targets, by name, as the run reads them."""
+
 
 def directions(
-    scenario: Scenario, names: set[str], state: SkyCoord, sun: CartesianRepresentation
+    scenario: Scenario,
+    names: set[str],
+    state: SkyCoord,
+    sun: CartesianRepresentation,
+    sat_orbits: TargetOrbits | None = None,
 ) -> dict[str, np.ndarray]:
     """
     The directions an attitude can use, in GCRS, at each time of a state.
@@ -89,18 +100,26 @@ def directions(
     Parameters
     ----------
     scenario : Scenario
-        The scenario, for its ground targets
+        The scenario, for its targets
     names : set of str
         The directions to work out: built-in ones and target names
     state : SkyCoord
         The satellite's state in GCRS, with its velocities
     sun : CartesianRepresentation
         Positions of the sun relative to the centre of the Earth, in GCRS
+    sat_orbits : mapping of str to Tle or Trajectory, optional
+        The satellite targets' orbits, by name. Needed only for a satellite
+        target.
 
     Returns
     -------
     directions : dict of str to ndarray
         Each direction asked for, shape (n, 3), not of unit length
+
+    Raises
+    ------
+    ValueError
+        If a satellite target is asked for without its orbit
     """
     cartesian = cast(CartesianRepresentation, state.cartesian)
     velocity = cast(CartesianDifferential, cartesian.differentials["s"])
@@ -113,7 +132,13 @@ def directions(
         VELOCITY: lambda: speed,
     }
     out = {name: found[name]() for name in names if name in found}
-    earthly = [name for name in names if name not in found]
+    for name in names & set(scenario.sat_targets):
+        if sat_orbits is None or name not in sat_orbits:
+            raise ValueError(f"satellite target '{name}' needs its orbit, from the run")
+        other = sat_orbits[name].states(state.obstime, with_velocity=False)
+        others = cast(CartesianRepresentation, other.cartesian)
+        out[name] = np.atleast_2d(others.xyz.to_value(u.km).T) - position
+    earthly = [name for name in names if name not in out]
     if earthly:
         # the Earth's orientation, only where a direction turns with the Earth
         earth = earth_rotations(state.obstime)
@@ -122,14 +147,18 @@ def directions(
                 spin = EARTH_ROTATION_RATE.to_value(u.rad / u.s) * earth[:, :, 2]
                 out[name] = speed - np.cross(spin, position)
             else:
-                target = scenario.targets[name]
+                target = scenario.gnd_targets[name]
                 point = ground_point(target.latitude, target.longitude, target.altitude)
                 out[name] = earth @ point - position
     return out
 
 
 def attitude_rotations(
-    scenario: Scenario, name: str, state: SkyCoord, sun: CartesianRepresentation
+    scenario: Scenario,
+    name: str,
+    state: SkyCoord,
+    sun: CartesianRepresentation,
+    sat_orbits: TargetOrbits | None = None,
 ) -> np.ndarray:
     """
     The orientation one attitude gives, at each time of a state.
@@ -137,13 +166,16 @@ def attitude_rotations(
     Parameters
     ----------
     scenario : Scenario
-        The scenario, which defines the attitude and any ground targets
+        The scenario, which defines the attitude and any targets
     name : str
         The attitude's name
     state : SkyCoord
         The satellite's state in GCRS, with its velocities
     sun : CartesianRepresentation
         Positions of the sun relative to the centre of the Earth, in GCRS
+    sat_orbits : mapping of str to Tle or Trajectory, optional
+        The satellite targets' orbits, by name. Needed only if the attitude
+        uses a satellite target.
 
     Returns
     -------
@@ -165,7 +197,9 @@ def attitude_rotations(
         attitude.constrain,
     )
     fallback = attitude.fallback_direction
-    vectors = directions(scenario, {pointed, constrained, fallback}, state, sun)
+    vectors = directions(
+        scenario, {pointed, constrained, fallback}, state, sun, sat_orbits
+    )
     try:
         rotations = align(
             axis_vector(point_axis),
@@ -275,6 +309,7 @@ def plan_slews(
     interval: P.Interval,
     state_at: Callable[[TimeArray], SkyCoord],
     sun_at: Callable[[TimeArray], CartesianRepresentation],
+    sat_orbits: TargetOrbits | None = None,
 ) -> list[SlewWindow]:
     """
     Plan the slew into each activity whose attitude differs from the one before.
@@ -300,6 +335,8 @@ def plan_slews(
         Gives the satellite's state in GCRS, with velocities, for a `Time` array
     sun_at : callable
         Gives the position of the sun in GCRS for a `Time` array
+    sat_orbits : mapping of str to Tle or Trajectory, optional
+        The satellite targets' orbits, by name, for an attitude that uses one
 
     Returns
     -------
@@ -312,7 +349,9 @@ def plan_slews(
 
     def rotation_of(name: str, time: TimeArray) -> np.ndarray:
         times = time + Q_(np.zeros(1), "s")
-        return attitude_rotations(scenario, name, state_at(times), sun_at(times))[0]
+        return attitude_rotations(
+            scenario, name, state_at(times), sun_at(times), sat_orbits
+        )[0]
 
     def orientation_at(time: TimeArray) -> np.ndarray:
         # the latest slew under way wins, as it starts from the one before
@@ -518,7 +557,9 @@ def body_rotations(run: "ScenarioRun") -> np.ndarray:
     rotations = np.full((len(run.times), 3, 3), np.nan)
     for name in set(attitude):
         rows = attitude == name
-        rotations[rows] = attitude_rotations(run.scenario, name, *state_at(rows))
+        rotations[rows] = attitude_rotations(
+            run.scenario, name, *state_at(rows), run.sat_orbits
+        )
     slew = run.scenario.slew
     if slew is not None:
         # in time order, so a slew that starts partway through another wins
@@ -526,7 +567,7 @@ def body_rotations(run: "ScenarioRun") -> np.ndarray:
             rows = (run.times >= window.start) & (run.times < window.end)
             if rows.any():
                 targets = attitude_rotations(
-                    run.scenario, window.target, *state_at(rows)
+                    run.scenario, window.target, *state_at(rows), run.sat_orbits
                 )
                 rotations[rows] = _slew_rotations(
                     window, slew, run.times[rows], targets

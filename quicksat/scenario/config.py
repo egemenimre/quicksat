@@ -127,7 +127,8 @@ GROUND_VELOCITY = "ground velocity"
 imaging."""
 
 DIRECTIONS = (NADIR, SUN, ORBIT_NORMAL, VELOCITY, GROUND_VELOCITY)
-"""The built-in directions. A ground point named in `targets` is a direction too."""
+"""The built-in directions. A target named in `gnd_targets` or `sat_targets` is a
+direction too."""
 
 FALLBACKS = (ORBIT_NORMAL, NADIR, VELOCITY)
 """The default fallback is the first of these that the attitude does not use."""
@@ -249,8 +250,8 @@ class Attitude(Commented):
     An attitude: one body axis fixed on a direction, and a second body axis
     turned as close as it can get to another direction.
 
-    A direction is one of `DIRECTIONS`, or a ground point that the scenario names
-    in `targets`.
+    A direction is one of `DIRECTIONS`, or a target that the scenario names in
+    `gnd_targets` or `sat_targets`.
 
     Parameters
     ----------
@@ -564,6 +565,33 @@ class SsoOrbit(Commented):
         return f"LTDN {self.ltdn:.4g}"
 
 
+ORBIT_FILES = ("tle_file", "omm_file", "trajectory_file")
+"""The keys that name an orbit's file, in the `orbit` block and for a satellite
+target."""
+
+
+def _from_the_scenario_folder(path: Path | None, info: ValidationInfo) -> Path | None:
+    """
+    A file's path, with a relative one taken from the folder of the scenario file.
+
+    Parameters
+    ----------
+    path : Path or None
+        The path as the file gives it
+    info : ValidationInfo
+        Pydantic's validation info, whose context may hold `base_dir`
+
+    Returns
+    -------
+    path : Path or None
+        The path, from the scenario file's folder if it was relative
+    """
+    base_dir = (info.context or {}).get("base_dir")
+    if path is not None and base_dir is not None and not path.is_absolute():
+        return Path(base_dir) / path
+    return path
+
+
 class Orbit(Commented):
     """
     Where the orbit comes from: a TLE file, an OMM file, a sun-synchronous
@@ -615,16 +643,117 @@ class Orbit(Commented):
             )
         return data
 
-    @field_validator("tle_file", "omm_file", "trajectory_file")
+    @field_validator(*ORBIT_FILES)
     @classmethod
     def _relative_to_the_file(
         cls, path: Path | None, info: ValidationInfo
     ) -> Path | None:
         """Takes a relative path from the folder of the scenario file."""
-        base_dir = (info.context or {}).get("base_dir")
-        if path is not None and base_dir is not None and not path.is_absolute():
-            return Path(base_dir) / path
-        return path
+        return _from_the_scenario_folder(path, info)
+
+
+DEFAULT_CLEARANCE = Q_(100, "km")
+"""A satellite target's `min_clearance`, when it gives none: the line of sight
+then keeps above the atmosphere."""
+
+
+class SatelliteTarget(Commented):
+    """
+    Another satellite, which an attitude or an articulation can point at.
+
+    Its orbit comes from a file, read as the `orbit` block reads one: a TLE file,
+    an OMM file, or a trajectory file. Exactly one of the three is given.
+
+    Parameters
+    ----------
+    tle_file : Path, optional
+        A file with one TLE or several, as CelesTrak gives a group of
+        satellites. A relative path is taken from the folder of the scenario
+        file.
+    omm_file : Path, optional
+        A file with one OMM element set or several, in KVN, XML, JSON or CSV. A
+        relative path is taken from the folder of the scenario file.
+    trajectory_file : Path, optional
+        A file of positions and velocities, ECSV or CCSDS OEM, which the run
+        interpolates. It must cover the whole run. A relative path is taken from
+        the folder of the scenario file.
+    satellite : str or int, optional
+        Written `object` in the file. The element set to take from a TLE or OMM
+        file that holds several: a satellite's name, or its catalogue number.
+        Without it, the target's own name is looked for. It must match a file
+        of one element set too. Not for a trajectory file, which holds one
+        satellite.
+    min_clearance : Quantity, optional
+        The least height of the line between the two satellites above the WGS84
+        ellipsoid, for the target to be in view. It sets the `rise` and `set`
+        triggers. 0 or more, and `DEFAULT_CLEARANCE` by default.
+    comments : str, optional
+        Your own notes on this block. quicksat keeps them and does not read them.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+    tle_file: Path | None = None
+    omm_file: Path | None = None
+    trajectory_file: Path | None = None
+    satellite: str | int | None = Field(None, alias="object")
+    min_clearance: LengthQty = DEFAULT_CLEARANCE
+
+    @model_validator(mode="before")
+    @classmethod
+    def _one_file(cls, data):
+        """Checks that the target names exactly one orbit file, and no `sso`."""
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"a satellite target needs exactly one of: {list(ORBIT_FILES)}"
+            )
+        if "sso" in data:
+            raise ValueError(
+                "a satellite target takes its orbit from a file: tle_file, omm_file "
+                "or trajectory_file. sso builds an orbit for the scenario's own "
+                "satellite."
+            )
+        files = [key for key in ORBIT_FILES if data.get(key) is not None]
+        if len(files) != 1:
+            raise ValueError(
+                f"a satellite target needs exactly one of: {list(ORBIT_FILES)}. "
+                f"Got: {files}"
+            )
+        return data
+
+    @field_validator(*ORBIT_FILES)
+    @classmethod
+    def _relative_to_the_file(
+        cls, path: Path | None, info: ValidationInfo
+    ) -> Path | None:
+        """Takes a relative path from the folder of the scenario file."""
+        return _from_the_scenario_folder(path, info)
+
+    @model_validator(mode="after")
+    def _check(self):
+        """Checks that `object` names a satellite, and only in an element set file."""
+        if self.satellite is None:
+            return self
+        if self.trajectory_file is not None:
+            raise ValueError(
+                "object picks an element set from a TLE or OMM file. A trajectory "
+                "file holds one satellite, so it takes no object."
+            )
+        if not str(self.satellite).strip():
+            raise ValueError("object must give a satellite's name or catalogue number")
+        return self
+
+    @property
+    def file(self) -> Path:
+        """
+        The file the orbit comes from, whichever kind it is.
+
+        Returns
+        -------
+        path : Path
+            The TLE, OMM or trajectory file
+        """
+        return cast(Path, self.tle_file or self.omm_file or self.trajectory_file)
 
 
 class Trigger(BaseModel):
@@ -651,8 +780,8 @@ class Trigger(BaseModel):
         `ascending` for a northward crossing, `descending` for a southward one,
         or None for either. Only for a latitude crossing.
     target : str, optional
-        The ground target that rises or sets, by its name in `targets`. Only for
-        a `rise` or a `set`.
+        The target that rises or sets, by its name in `gnd_targets` or
+        `sat_targets`. Only for a `rise` or a `set`.
     offset : Quantity, optional
         Time added to the event, negative to end the activity before it. Only for
         an event trigger.
@@ -886,9 +1015,11 @@ def parse_trigger(text: str) -> Trigger:
     - a latitude crossing, such as `latitude 30 deg ascending`, `latitude -30 deg
       descending`, or `latitude 45 deg` for either direction;
     - `ascending node` and `descending node`, the crossings of 0 degrees;
-    - a ground target's rise or set, such as `Svalbard rise` or `Svalbard set`:
-      the satellite passing above or below the target's minimum elevation. The
-      target must be one that the scenario names in `targets`.
+    - a target's rise or set, such as `Svalbard rise` or `Svalbard set`. For a
+      ground target, the satellite passes above or below the target's minimum
+      elevation. For a satellite target, the line between the two satellites
+      comes to or leaves its minimum clearance above the Earth. The target must
+      be one that the scenario names in `gnd_targets` or `sat_targets`.
     - any of these events with an offset, such as `eclipse entry + 2 min` or
       `descending node - 30 s`.
 
@@ -1285,7 +1416,8 @@ class Articulation(Commented):
     point : tuple of str
         The part's axis, as the model draws the part, and the direction to turn
         it toward, written `[-z, sun]`. The direction is one an attitude can
-        use: a built-in direction, or a ground point named in `targets`. The
+        use: a built-in direction, or a target named in `gnd_targets` or
+        `sat_targets`. The
         axis must use a different body axis from `axis`.
     range : tuple of Quantity, optional
         The lowest and the highest angle, from -180 to 180 degrees. All the way
@@ -1384,8 +1516,11 @@ class Scenario(Commented):
     step : Quantity
         Time step of the grid that the orbit is evaluated on. Positive, shorter
         than the duration, and 10 s by default.
-    targets : dict of str to GroundTarget, optional
+    gnd_targets : dict of str to GroundTarget, optional
         Ground points, by name, that an attitude can point at
+    sat_targets : dict of str to SatelliteTarget, optional
+        Other satellites, by name, that an attitude can point at. No name may be
+        in both blocks.
     attitudes : dict of str to Attitude
         The attitudes the activities can name, by a name of your choice. At
         least one, and none named `slew`.
@@ -1410,9 +1545,12 @@ class Scenario(Commented):
     start: Annotated[Time, BeforeValidator(_parse_start)]
     duration: Annotated[Quantity | OrbitCount, BeforeValidator(_parse_duration)]
     step: TimeQty = DEFAULT_STEP
-    targets: Annotated[dict[str, GroundTarget], BeforeValidator(without_comments)] = (
-        Field(default_factory=dict)
-    )
+    gnd_targets: Annotated[
+        dict[str, GroundTarget], BeforeValidator(without_comments)
+    ] = Field(default_factory=dict)
+    sat_targets: Annotated[
+        dict[str, SatelliteTarget], BeforeValidator(without_comments)
+    ] = Field(default_factory=dict)
     attitudes: Annotated[dict[str, Attitude], BeforeValidator(without_comments)]
     activities: list[Activity]
     slew: Slew | None = None
@@ -1582,23 +1720,30 @@ class Scenario(Commented):
 
     def _direction_problems(self) -> list[str]:
         """
-        Problems with the names: a target named as a built-in direction, an
-        attitude or an articulation with a direction that is neither, an
-        activity's attitude that is not defined, and a rise or set of a target
-        that is not defined.
+        Problems with the names: a target named as a built-in direction, a name
+        in both target blocks, an attitude or an articulation with a direction
+        that is neither, an activity's attitude that is not defined, and a rise
+        or set of a target that is not defined.
 
         Returns
         -------
         problems : list of str
             One message for each problem
         """
+        targets = [*self.gnd_targets, *self.sat_targets]
         problems = [
             f"target '{name}' takes the name of a built-in direction. The built-in "
             f"directions are: {list(DIRECTIONS)}"
-            for name in self.targets
+            for name in targets
             if name in DIRECTIONS
         ]
-        known = [*DIRECTIONS, *self.targets]
+        problems += [
+            f"target '{name}' is in both gnd_targets and sat_targets. A target's "
+            "name must be its own."
+            for name in self.gnd_targets
+            if name in self.sat_targets
+        ]
+        known = [*DIRECTIONS, *dict.fromkeys(targets)]
         for name, attitude in self.attitudes.items():
             problems += [
                 f"attitude '{name}': '{direction}' is not a direction. The "
@@ -1622,10 +1767,11 @@ class Scenario(Commented):
         ]
         problems += [
             f"activity {number}: trigger '{activity.trigger.text}' names the target "
-            f"'{activity.trigger.target}', which targets does not define"
+            f"'{activity.trigger.target}', which neither gnd_targets nor "
+            "sat_targets defines"
             for number, activity in enumerate(self.activities, start=1)
             if activity.trigger.target is not None
-            and activity.trigger.target not in self.targets
+            and activity.trigger.target not in targets
         ]
         return problems
 
