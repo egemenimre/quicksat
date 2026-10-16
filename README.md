@@ -85,7 +85,7 @@ The scenario sample works the same way, for the timeline alone: [`sample/scenari
 
 [How to edit, run and view a scenario](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/edit_and_view_a_scenario.md) goes round this loop in full, for the samples or a folder of your own. For what each field means, see [how to set up and run a scenario](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/set_up_a_scenario.md) and [how to set up and run a power budget](https://github.com/egemenimre/quicksat/blob/master/docs/guides/power/set_up_a_power_budget.md).
 
-**The editors** open with the files of the folder that their page was written for. **Open a folder…**, on the first Setup step, reads any other folder, and **Open** on a tab reads one file. Or write a page for a folder of your own. A folder with a `scenario.yaml` gets the Scenario Editor, and a folder of sizing files gets the Sizing Editor:
+**The editors** open with the files of the folder that their page was written for. **Open a folder…**, on the first Setup step, reads any other folder, and **Open** on a tab reads one file. Or drop a folder, or its files, onto the page, and a file onto its tab's bar. Or write a page for a folder of your own. A folder with a `scenario.yaml` gets the Scenario Editor, and a folder of sizing files gets the Sizing Editor:
 
 ```bash
 python -m quicksat.editor sample/power/data sample/power/editor

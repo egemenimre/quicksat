@@ -42,7 +42,7 @@ This writes `my_project/winter/editor/editor.html`. Python reads the folder's fi
 
 This page needs no Python and no server. Double-click it to open it in a browser. It cannot run the files: its **Create the viewer** button is greyed out, and says how to start the server.
 
-A page you have already can open the folder instead: click **Open a folder…** on its first Setup step, and pick `my_project/winter`. The page reads every file it knows there, and fills every step. quicksat's loaders do not read a folder opened this way, so its files have only the page's simple check, and their full check shows *not run*.
+A page you have already can open the folder instead: click **Open a folder…** on its first Setup step, and pick `my_project/winter`. Or drop the folder, or its files, onto the page. A single file dropped on a tab's bar replaces that tab's file. The page reads every file it knows there, and fills every step. quicksat's loaders do not read a folder opened this way, so its files have only the page's simple check, and their full check shows *not run*.
 
 ## 3. Edit
 

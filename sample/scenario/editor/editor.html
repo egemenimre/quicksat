@@ -318,6 +318,9 @@ input.short { width: 100px; }
 
 /* The folder's files: opening them, where they came from, whether they changed */
 .open-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+/* Where a folder or a file can be dropped */
+.drop-area { border: 1px dashed var(--line); border-radius: 4px; padding: 12px 14px; }
+.drop-area.drag-over, .file-bar.drag-over { border-color: var(--accent); background: var(--accent-soft); }
 .file-bar {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: 1100px; margin: 0 0 8px;
   padding: 5px 10px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel);
@@ -5881,6 +5884,38 @@ function pickFiles({ folder = false, multiple = false, accept = "" } = {}) {
   });
 }
 
+/**
+ * The files of a drop, as `pickFiles` gives them: one folder, with each file's
+ * path inside it, or loose files, with no folder. `folder` is true for a folder.
+ * The browser lets go of the drop's items once the event ends, so they are taken
+ * before anything waits.
+ */
+async function droppedFiles(transfer) {
+  const entries = [...transfer.items].filter((item) => item.kind === "file").map((item) => item.webkitGetAsEntry && item.webkitGetAsEntry());
+  const loose = [...transfer.files];
+  const folders = entries.filter((entry) => entry && entry.isDirectory);
+  if (!folders.length) return { folder: "", files: loose.map((file) => ({ path: file.name, file })), isFolder: false };
+  if (folders.length > 1 || entries.length > 1) throw new Error("Drop one folder, or files, but not both or several folders.");
+  const files = [];
+  await readFolderEntry(folders[0], "", files);
+  return { folder: folders[0].name, files, isFolder: true };
+}
+
+/** Each file under a dropped folder, with its path inside the folder. */
+async function readFolderEntry(entry, prefix, files) {
+  const reader = entry.createReader();
+  for (;;) {
+    // a reader gives a folder's entries in batches, until one comes back empty
+    const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+    if (!batch.length) return;
+    for (const child of batch) {
+      const path = prefix + child.name;
+      if (child.isDirectory) await readFolderEntry(child, `${path}/`, files);
+      else files.push({ path, file: await new Promise((resolve, reject) => child.file(resolve, reject)) });
+    }
+  }
+}
+
 /** A picked file by its path in the folder, such as `spacecraft.glb` or `./orbits/sso.tle`. */
 function pickedFile(picked, path) {
   if (typeof path !== "string" || !path.trim()) return null;
@@ -6363,7 +6398,7 @@ const FILES_HELP = `<span class="k">The table of files</span>
 <p><b>State</b> says whether the file has changed: <i>unchanged</i> since it was opened, <i>modified</i>, <i>downloaded</i> when saved and not changed since, or <i>new</i> for a file started on the page.</p>
 <p><b>Simple check</b> is the page's own: names, units and ranges, run as you type. <b>Full check</b> is quicksat's own loaders, which read the files when Python wrote the page. A file opened since shows <i>not run</i>: write the page again for its full check. On a page that the Scenario Editor's server sends, a reload, or a run that creates the viewer, gives the full check too.</p>
 <span class="k">Opening and saving</span>
-<p><b>Open a folder</b> reads every file of the folder that the page knows, and fills every step. <b>Open</b>, on a row or on a tab, reads one file in place of that one. <b>download</b> saves one file, and the Files tab saves them all as a zip. Put the files back in the folder yourself: a browser cannot write into it.</p>`;
+<p><b>Open a folder</b> reads every file of the folder that the page knows, and fills every step. <b>Open</b>, on a row or on a tab, reads one file in place of that one. You can also drop a folder, or its files, on the first Setup step or anywhere on the page, and a file on its tab's bar. <b>download</b> saves one file, and the Files tab saves them all as a zip. Put the files back in the folder yourself: a browser cannot write into it.</p>`;
 
 // ---------------------------------------------------------------- the help
 
@@ -6480,13 +6515,14 @@ function downloadButton(kind) {
 
 /** A tab's bar for one of its files: its name, where it came from, its state, and Open and download. */
 function fileBar(kind) {
-  return el("div", { class: "file-bar" },
+  const bar = el("div", { class: "file-bar", title: OPENERS[kind] ? `Drop a file here, in place of ${project.names[kind]}` : null },
     el("b", { class: "file-name", text: fileName(kind) }),
     el("span", { class: "hint", text: sourceText(kind) }),
     el("span", { class: "file-state", "data-state": kind }),
     el("span", { class: "spacer" }),
     OPENERS[kind] ? openButton(kind) : null,
     downloadButton(kind));
+  return OPENERS[kind] ? dropTarget(bar, kind) : bar;
 }
 
 /** The page's problems in a file's sections: [errors, notes]. */
@@ -6556,11 +6592,11 @@ function refreshFiles() {
  * the files it replaced. quicksat's loaders have not read them, so their checks
  * are marked as not run.
  */
-async function openWith(kind) {
+async function openWith(kind, dropped = null) {
   const opener = OPENERS[kind];
   const what = kind === "folder" ? "a folder replaces every file" : `a file replaces ${project.names[kind] || "it"}`;
   if (unsaved() && !confirm(`Opening ${what} on this page. The changes you have not saved are lost.`)) return;
-  const picked = await pickFiles(opener.pick);
+  const picked = dropped || (await pickFiles(opener.pick));
   if (!picked.files.length) return;
   const before = Object.fromEntries(Object.entries(DATA.files).map(([k, file]) => [k, file ? file.name : ""]));
   let kinds;
@@ -6579,7 +6615,8 @@ async function openWith(kind) {
     for (const k of Object.keys(sources)) delete sources[k];
     for (const k of Object.keys(savedText)) delete savedText[k];
     const held = Object.keys(currentTexts()).filter(isHeld);
-    for (const k of held) sources[k] = { how: "folder", folder: picked.folder };
+    // a folder's files dropped loose come without their folder's name
+    for (const k of held) sources[k] = picked.folder ? { how: "folder", folder: picked.folder } : { how: "file" };
     for (const k of Object.keys(currentTexts())) fileAdded(k);
     markSaved(held);
   } else {
@@ -6594,12 +6631,73 @@ async function openWith(kind) {
   page.afterChange();
 }
 
-/** The button that opens a folder in place of the page's files. */
+/** The area that opens a folder in place of the page's files: its button, or a drop. */
 function openFolderButton() {
-  return el("div", { class: "open-row" },
+  return dropTarget(el("div", { class: "open-row drop-area" },
     el("button", { class: "btn primary", text: "Open a folder…", onclick: () => openWith("folder") }),
-    el("span", { class: "hint", text: OPENERS.folder.hint }));
+    el("span", { class: "hint" }, OPENERS.folder.hint, el("br"), "Or drop the folder here, or its files.")), null);
 }
+
+// ---------------------------------------------------------------- dropping files
+
+/** The kind of file a name belongs to, if exactly one of the page's files has it. */
+function kindOfName(name) {
+  const kinds = Object.keys(project.names).filter((kind) => OPENERS[kind] && project.names[kind] === name);
+  return kinds.length === 1 ? kinds[0] : null;
+}
+
+/**
+ * Open what was dropped. A folder, or several files, open as a folder. One file
+ * opens as the kind it was dropped on, or as the page's file of the same name.
+ */
+async function openDropped(transfer, kind) {
+  let dropped;
+  try {
+    dropped = await droppedFiles(transfer);
+  } catch (error) {
+    alert(error.message);
+    return;
+  }
+  if (!dropped.files.length) return;
+  if (kind && dropped.isFolder) {
+    alert(`Drop a file here, in place of ${project.names[kind]}. A folder goes on the first Setup step.`);
+    return;
+  }
+  const single = dropped.files.length === 1 ? kindOfName(dropped.files[0].path) : null;
+  const target = kind || (dropped.isFolder || dropped.files.length > 1 ? "folder" : single);
+  if (!target) {
+    alert(`${dropped.files[0].path} is not one of this page's files by its name. Drop it on its tab's bar, or drop the whole folder.`);
+    return;
+  }
+  await openWith(target, dropped);
+}
+
+/** Let an element take drops, for a kind of file, or for the folder when kind is null. */
+function dropTarget(node, kind) {
+  node.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    node.classList.add("drag-over");
+  });
+  node.addEventListener("dragleave", (event) => {
+    if (!node.contains(event.relatedTarget)) node.classList.remove("drag-over");
+  });
+  node.addEventListener("drop", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    node.classList.remove("drag-over");
+    openDropped(event.dataTransfer, kind);
+  });
+  return node;
+}
+
+// A drop anywhere else on the page is read as a drop on the first Setup step, so
+// that the browser never leaves the page to show the dropped file
+document.addEventListener("dragover", (event) => event.preventDefault());
+document.addEventListener("drop", (event) => {
+  event.preventDefault();
+  openDropped(event.dataTransfer, null);
+});
 
 /** The button that opens one file, of a kind, in place of the page's. */
 function openButton(kind) {

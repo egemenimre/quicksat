@@ -361,6 +361,38 @@ function pickFiles({ folder = false, multiple = false, accept = "" } = {}) {
   });
 }
 
+/**
+ * The files of a drop, as `pickFiles` gives them: one folder, with each file's
+ * path inside it, or loose files, with no folder. `folder` is true for a folder.
+ * The browser lets go of the drop's items once the event ends, so they are taken
+ * before anything waits.
+ */
+async function droppedFiles(transfer) {
+  const entries = [...transfer.items].filter((item) => item.kind === "file").map((item) => item.webkitGetAsEntry && item.webkitGetAsEntry());
+  const loose = [...transfer.files];
+  const folders = entries.filter((entry) => entry && entry.isDirectory);
+  if (!folders.length) return { folder: "", files: loose.map((file) => ({ path: file.name, file })), isFolder: false };
+  if (folders.length > 1 || entries.length > 1) throw new Error("Drop one folder, or files, but not both or several folders.");
+  const files = [];
+  await readFolderEntry(folders[0], "", files);
+  return { folder: folders[0].name, files, isFolder: true };
+}
+
+/** Each file under a dropped folder, with its path inside the folder. */
+async function readFolderEntry(entry, prefix, files) {
+  const reader = entry.createReader();
+  for (;;) {
+    // a reader gives a folder's entries in batches, until one comes back empty
+    const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+    if (!batch.length) return;
+    for (const child of batch) {
+      const path = prefix + child.name;
+      if (child.isDirectory) await readFolderEntry(child, `${path}/`, files);
+      else files.push({ path, file: await new Promise((resolve, reject) => child.file(resolve, reject)) });
+    }
+  }
+}
+
 /** A picked file by its path in the folder, such as `spacecraft.glb` or `./orbits/sso.tle`. */
 function pickedFile(picked, path) {
   if (typeof path !== "string" || !path.trim()) return null;

@@ -311,6 +311,9 @@ input.short { width: 100px; }
 
 /* The folder's files: opening them, where they came from, whether they changed */
 .open-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+/* Where a folder or a file can be dropped */
+.drop-area { border: 1px dashed var(--line); border-radius: 4px; padding: 12px 14px; }
+.drop-area.drag-over, .file-bar.drag-over { border-color: var(--accent); background: var(--accent-soft); }
 .file-bar {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: 1100px; margin: 0 0 8px;
   padding: 5px 10px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel);
