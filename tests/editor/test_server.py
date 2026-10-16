@@ -90,7 +90,7 @@ def test_run_with_satellite_targets(tmp_path):
     """A satellite target's file goes by its name, as the page sends it."""
     files = page_files(SCENARIO, ("scenario",))
     files[0]["text"] += "sat_targets:\n  RELAY-01: {tle_file: relays.tle}\n"
-    relays = TESTS.parent / "docs" / "scenario" / "data" / "relays.tle"
+    relays = SCENARIO / "relays.tle"
     files.append(
         {"kind": "target:relays.tle", "name": "relays.tle", "text": relays.read_text()}
     )

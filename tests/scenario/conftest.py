@@ -8,6 +8,8 @@ change only with the tests that read them:
   the last activity's, which is cut at the end.
 - `problems.yaml` makes each problem happen once: an activity outside its
   constraint, a negative duration, and an event that never comes.
+- `relays.tle` is a copy of `docs/scenario/data/relays.tle`, ten relays in
+  one file. The editor tests read it as a satellite target's file.
 
 `slew_run` is `scenario.yaml` again, with slews at the sizing sample's rate and
 acceleration.
