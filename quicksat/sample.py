@@ -81,6 +81,8 @@ def download_archive(version: str = __version__) -> tuple[bytes, list[str]]:
     except urllib.error.HTTPError as error:
         if error.code != 404:
             raise
+        # the error holds GitHub's response, which is not read again
+        error.close()
     warning = (
         f"GitHub has no tag {tag} for this version of quicksat, so the sample is "
         "taken from master. It may not match the installed code."
