@@ -27,7 +27,7 @@ The scenario does not read the sizing domain's `mission.yaml`. It needs a real o
 `orbit` takes exactly one of four keys:
 
 - **`sso`** builds a sun-synchronous orbit from an altitude and the local time of one node. Give the ascending node, `ltan`, as in `sso: {altitude: 510 km, ltan: "13:30"}`. Or give the descending node, `ltdn`, where the satellite crosses the equator going south. The two are 12 hours apart, so `ltdn: "01:30"` is the same orbit as `ltan: "13:30"`. Give one of them, not both. Write the time in quotes, because YAML reads an unquoted `13:30` as a number. The orbit's epoch is the start of the run.
-- **`tle_file`** names a file that holds exactly one TLE. A relative path is taken from the folder of `scenario.yaml`. Use a TLE whose epoch is close to the start. A run more than 7 days from the epoch gets a warning, because SGP4 loses accuracy away from it.
+- **`tle_file`** names a file that holds exactly one TLE. A relative path is taken from the folder of `scenario.yaml`. Use a TLE whose epoch is close to the start. A run that starts or ends more than 7 days from the epoch gets a warning, because SGP4 loses accuracy away from it.
 - **`omm_file`** names a file that holds exactly one OMM element set: the same elements as a TLE, at full precision. It may be KVN, XML, JSON or CSV, as CelesTrak and Space-Track give them.
 - **`trajectory_file`** names a file of positions and velocities, such as from a propagator: ECSV, or a CCSDS OEM in KVN. quicksat tells them apart by their first line. The frame must be centred on the Earth, such as ITRS or EME2000. Space the samples 60 s apart in low orbit, and let the file reach a few samples past the run at each end. If the orbit has a manoeuvre, give it as an OEM with a new segment from the manoeuvre on.
 
@@ -45,7 +45,7 @@ The events are located between the steps, to 1 ms. A shadow shorter than one ste
 
 Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), section "The period of the run".
 
-## 4. Define the attitudes
+## 4. Define the attitudes and their targets
 
 Define the attitudes your activities use, each under a name of your choice. Every attitude fixes one body axis on a direction, and turns a second body axis as close as it can get to another direction. An axis is written with its sign, such as `+z` or `-y`.
 
@@ -57,26 +57,39 @@ attitudes:
 
 - **`point`** gives the axis and the direction it is fixed on.
 - **`constrain`** gives the second axis, and the direction it turns toward. It must use a different axis, and a different direction.
-- **The directions** are `nadir`, `sun`, `orbit normal`, `velocity`, `ground velocity`, and the names of ground points that you list under `targets`.
+- **The directions** are `nadir`, `sun`, `orbit normal`, `velocity`, `ground velocity`, and the names of the targets that you list under `gnd_targets` and `sat_targets`.
 - **`offset`**, optional, adds turns about body axes, in order, such as `offset: [x 30 deg]` for a 30° roll off nadir.
 - **`fallback`**, optional, names the direction that takes the constraint's place where it is parallel to the pointed one. The default is usually right.
 
 A ground point is written with its latitude and longitude, and an optional altitude and minimum elevation. The minimum elevation, 5° by default, is where the target sees the satellite rise and set:
 
 ```yaml
-targets:
+gnd_targets:
   Toulouse: {latitude: 43.60 deg, longitude: 1.44 deg, altitude: 150 m}
   Svalbard: {latitude: 78.229 deg, longitude: 15.408 deg, min_elevation: 10 deg}
 ```
+
+A satellite target is another satellite, such as a data relay. It takes its orbit from one file, as `orbit` does: `tle_file`, `omm_file` or `trajectory_file`. A TLE or OMM file from CelesTrak or Space-Track can hold a whole group. A target then takes the satellite of its own name, or the one that `object` names, by its name or its catalogue number:
+
+```yaml
+sat_targets:
+  RELAY-01: {tle_file: relays.tle}
+  relay: {tle_file: relays.tle, object: 90006, min_clearance: 150 km}
+```
+
+- **In view** means that the line between the two satellites keeps `min_clearance` above the Earth, 100 km by default, so that a link does not cross the atmosphere. That sets the target's rise and set.
+- **The names** of the two blocks share one list: no name may be in both.
+- **The run checks each orbit.** An element set more than 7 days from either end of the run gets a warning. A trajectory must cover the run.
 
 Two more examples:
 
 - `{point: [+z, nadir], constrain: [+x, ground velocity]}` steers in yaw, so that x follows the ground's motion below.
 - `{point: [+z, Toulouse], constrain: [-y, orbit normal]}` tracks the ground point.
+- `{point: [-z, RELAY-01], constrain: [+x, velocity]}` tracks the relay.
 
 Constraining an axis to the orbit normal keeps a sun-pointing body still over an orbit. Constraining it to nadir keeps it facing the Earth. But the body then spins fast when the sun is close to the nadir line.
 
-Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), sections "The attitudes" and "Offsets, ground targets and yaw steering".
+Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), sections "The attitudes", "Offsets, ground targets and yaw steering" and "Satellite targets".
 
 ## 5. Add the slews, if you want them
 
@@ -135,7 +148,7 @@ activities:
 
 - **The list is one repeat.** The first activity starts at the start of the run. Each later one starts where the one before it ends. The run repeats the list until the duration ends.
 - **The title** is any text that names what the activity is for, such as `imaging 45 deg lat`. The activity table, the Gantt chart, the warnings and the viewer name the activity by it.
-- **The trigger** is a time, such as `20 min`, or the next event after the activity starts. The events are the shadow edges, the nodes, latitude crossings, and a ground target's rise and set, such as `Svalbard rise`. An event can take an offset, such as `eclipse entry - 1 min`.
+- **The trigger** is a time, such as `20 min`, or the next event after the activity starts. The events are the shadow edges, the nodes, latitude crossings, and a target's rise and set, such as `Svalbard rise` or `RELAY-01 set`. An event can take an offset, such as `eclipse entry - 1 min`.
 - **The mode** is any name except `slew`. During each slew, the run sets the mode to `slew`, because the payload is not at its task while the body turns. Power's consumption gives each mode its power, `slew` included.
 - **The constraint** is the illumination the activity expects: `sunlit`, `penumbra`, `umbra`, or `eclipse` for either of the last two.
 
@@ -171,6 +184,7 @@ run = run_scenario(scenario)
 
 print(run.activity_summary)
 run.activity_table  # one row for each occurrence of an activity
+run.passes  # each target's passes: when it is in view
 gantt_chart(run)  # the illumination, the attitude and the mode against time
 ground_track_map(run, run.mode, "Ground track by mode")
 write_scenario_viewer(run, "my_scenario/output")
@@ -194,7 +208,9 @@ The Gantt chart marks two of the problems in red. A box goes around an activity 
 
 Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), section "The statuses".
 
-Then read `run.warnings`. With a `slew` block, the run measures how fast each attitude turns the body, outside the slews. Where the rate or the acceleration goes past the block's limits, the satellite cannot follow that attitude, and a warning names the attitude, when it starts, and its peak rate and acceleration. Tracking a ground station is the usual cause: over a station near the zenith of a pass, the line of sight turns at about 0.85°/s from 510 km. Raise the slew limits if the satellite can turn that fast, or end the tracking before the zenith. The viewer shows the same warnings under its activity table.
+Then read `run.warnings`. With a `slew` block, the run measures how fast each attitude turns the body, outside the slews. Where the rate or the acceleration goes past the block's limits, the satellite cannot follow that attitude, and a warning names the attitude, when it starts, and its peak rate and acceleration. Tracking a ground station is the usual cause: over a station near the zenith of a pass, the line of sight turns at about 0.85°/s from 510 km. Raise the slew limits if the satellite can turn that fast, or end the tracking before the zenith.
+
+The run warns about the orbits too, and those warnings come first: an element set more than 7 days from either end of the run, and a trajectory whose ends come close to it. The viewer's Attitude tab shows every warning, and its Results tab has a check of the orbits.
 
 ## 10. Open and share the viewer
 
@@ -203,7 +219,7 @@ Then read `run.warnings`. With a `slew` block, the run measures how fast each at
 - `scenario_viewer.html` is the page. Double-click it to open it in a browser.
 - `scenario.js` holds the data of the run.
 
-The page shows the run in 3D, with the ground track, the timeline and the activity table. Its Attitude tab shows the body's roll, pitch and yaw against LVLH, its turn rate and its acceleration against the slew limits, and the warnings. Amber bands mark where an attitude turns the body faster than the slews may. The tab also offers the attitude files of step 11 for download. The page needs no Python, no server and no network. Keep the two files together, because the page reads `scenario.js` from its own folder.
+The page shows the run in 3D, with the ground track, the timeline and the activity table. With targets, it draws them on the globe, in the body view and on the map, and its Targets tab shows when each one is in view. Its Attitude tab shows the body's roll, pitch and yaw against LVLH, its turn rate and its acceleration against the slew limits, and the warnings. Amber bands mark where an attitude turns the body faster than the slews may. The tab also offers the attitude files of step 11 for download. The page needs no Python, no server and no network. Keep the two files together, because the page reads `scenario.js` from its own folder.
 
 After you change the scenario, run it again and reload the page. The page then reads the new `scenario.js`.
 

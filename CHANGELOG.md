@@ -6,13 +6,23 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ### Added
 
+- A sun-synchronous orbit takes the local time of the descending node, `ltdn`, in place of `ltan`. The two are 12 h apart. The Scenario Editor's Orbit step has a choice of node, and switching it keeps the orbit.
 - Both editors open a folder, or its files, dropped onto the page, and a file dropped onto its tab's bar. The buttons still open the file picker.
 - `python -m quicksat init` prints where the input files and everything else went, and the steps to start the editor's server. The README walks through the server step by step.
 - The viewer holds every input file of its run. Its Inputs tab now shows the orbit's file, for a TLE, an OMM or a trajectory file, and the power consumption file. `scenario.js` is version 6, and `power.js` version 2.
+- Other satellites as targets, in the scenario file's new `sat_targets` block, such as the relays of a constellation. Each takes its orbit from a TLE, OMM or trajectory file. Attitudes and articulations can point at one, and `RELAY-01 rise` and `RELAY-01 set` end activities when it comes into view and goes out of it. A satellite is in view while the line between the two keeps `min_clearance` above the Earth, 100 km by default.
+- A TLE or OMM file may hold a group of satellites, as CelesTrak and Space-Track give them. A satellite target takes the one of its own name, or the one that `object` names. `read_tle_sets` and `read_omm_sets` read every element set in a file, and `read_tle_file` and `read_omm_file` take a `satellite`.
+- `run.in_view` gives when each target, ground or satellite, is in view, and `run.passes` lists the passes. The run's report gives each target's passes and its time in view.
+- The viewer draws the targets on the globe, in the body view and on the map, with lines to the targets in view and to the ones the spacecraft points at. Its new Targets tab shows each target's passes, its range now and where its orbit came from. `scenario.js` is version 7.
+- The Scenario Editor has a Targets tab, and a Satellite targets step. It adds targets from a file, and lists a group's satellites to choose from. The page holds each file, and saves and runs it with the scenario.
+- The scenario reference notebook has a section on satellite targets, with ten made-up relays at 1200 km in `docs/scenario/data/relays.tle`. The sample scenario tracks one of them after each eclipse.
 
 ### Changed
 
 - The editors' help sits in one file per domain, in `quicksat/editor/help/`: each step's information box, and the `#` help lines that the editor writes into saved files. The text itself is unchanged.
+- The scenario file's `targets` block is now `gnd_targets`, for the ground points, beside `sat_targets` for the satellites. A file with `targets` is refused, so rename the key in older files.
+- An element set's epoch is checked against both ends of the run, not only its start. Its warning, and a trajectory's near its ends, are now among the run's own warnings, so the viewer and the editor show them.
+- The viewer reads `scenario.js` version 7 only. An older one asks for the notebook to be run again.
 
 ## [0.1.0] - 2026-10-15
 

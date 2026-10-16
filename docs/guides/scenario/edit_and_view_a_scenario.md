@@ -49,11 +49,13 @@ A page you have already can open the folder instead: click **Open a folder…** 
 The page has two ways in, and both edit the same data:
 
 - **Setup** takes you through every file, step by step, from the orbit to the consumption. The small **i** by a step's title opens its explanation: why the fields matter, the options and what follows from them. Each card on the other tabs has the same sign, and a section's explanation stays open or closed in both places. Back and Next are at the top.
-- **The other tabs** hold the same fields by theme: orbit and time, spacecraft, operations, activities, power and consumption. Use them to change one thing without going through every step. A bar at the top of each tab names its file, says where it came from and whether you have changed it, and has **Open** and **download** for that file.
+- **The other tabs** hold the same fields by theme: orbit and time, spacecraft, targets, operations, activities, power and consumption. Use them to change one thing without going through every step. A bar at the top of each tab names its file, says where it came from and whether you have changed it, and has **Open** and **download** for that file.
 
 The first Setup step lists the folder's files: where each came from, whether it has changed, and two checks. The **simple check** is the page's own, on names, units and ranges, as you type. The **full check** is what quicksat's loaders said when Python wrote the page. The Files tab shows both under each file.
 
 **Ground targets** has a search box. It asks OpenStreetMap's Nominatim, so it needs a connection, and it sends the text you search for to openstreetmap.org. It finds towns, addresses and many ground stations, such as SvalSat. Press Enter or **search**, then click a result to add it. Nominatim gives no altitude, so set it yourself, or it is 0 m. Without a connection, type the position in.
+
+**Satellite targets** adds them from a file, with **Add from a file…** or a drop: a TLE or OMM file of one satellite or of a group, or a trajectory file. A group lists its satellites, with their epochs, for you to choose from. The page holds each file, and saves and runs it with the scenario. Each target's epoch shows against the start, in amber when it is more than 7 days away.
 
 Names are chosen from lists. An activity picks its attitude and its mode, and an articulation picks its part of the model. Renaming an attitude, a target or a mode changes every use of it. Deleting one that is in use asks again, and says what uses it.
 
