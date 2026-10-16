@@ -51,13 +51,14 @@ step: 10 s
 # above the WGS84 ellipsoid, and 0 m if left out. The triggers Svalbard rise and
 # Svalbard set find when it sees the satellite above min_elevation, 5 deg if left
 # out.
-targets:
+gnd_targets:
   Svalbard: {latitude: 78.229 deg, longitude: 15.408 deg, altitude: 500 m}
 
 # The attitudes, each under a name of your choice, which the activities use. An
 # attitude fixes one body axis on a direction (point), and turns a second body
-# axis as close as it can get to another direction (constrain). The directions are
-# nadir, sun, orbit normal, velocity, ground velocity, and the names in targets.
+# axis as close as it can get to another direction (constrain). The directions
+# are nadir, sun, orbit normal, velocity, ground velocity, and the names in
+# gnd_targets.
 attitudes:
   # +z points at the Earth and -y runs along the orbit normal. The body axes then
   # match LVLH: x along the track, y minus the orbit normal and z nadir.
