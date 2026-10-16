@@ -148,7 +148,7 @@ def sizing_page(data: dict) -> str:
     page : str
         The page, as HTML text
     """
-    return build_page("sizing", SCRIPTS, data)
+    return build_page("sizing", SCRIPTS, data, ("sizing",))
 
 
 def write_sizing_editor(folder: str | Path, output: str | Path) -> Path:

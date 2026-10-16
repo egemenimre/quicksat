@@ -8,8 +8,8 @@
 //
 //   DATA, project                 the files as read, and the project made of them
 //   PAGE_TITLE, CHECKS_NOTE       the page's name, and what its checks leave out
-//   TABS, STEPS, SECTIONS, INFO   the tabs, the steps, the sections and their help
-//   YAML_HELP, YAML_KINDS         the help it writes, and its YAML files' kinds
+//   TABS, STEPS, SECTIONS         the tabs, the steps and the sections
+//   YAML_KINDS                    its YAML files' kinds
 //   FILES                         the folder's files, by kind: [{kind}]
 //   OPENERS                       how the folder, and each of its files, opens
 //   projectFiles()                the files to save, each with its kind
@@ -17,7 +17,8 @@
 //   commentTarget(kind, path)     the block of a comment: [block, label, depth]
 //   runChecks()                   its checks, which end with showProblems()
 //
-// and, if it needs them, the hooks in `page`.
+// and, if it needs them, the hooks in `page`. The help comes from the page's
+// #help script, which Python fills from quicksat/editor/help/.
 
 /** What a page may add to the frame's work. */
 const page = {
@@ -467,6 +468,19 @@ const FILES_HELP = `<span class="k">The table of files</span>
 <p><b>Simple check</b> is the page's own: names, units and ranges, run as you type. <b>Full check</b> is quicksat's own loaders, which read the files when Python wrote the page. A file opened since shows <i>not run</i>: write the page again for its full check. On a page that the Scenario Editor's server sends, a reload, or a run that creates the viewer, gives the full check too.</p>
 <span class="k">Opening and saving</span>
 <p><b>Open a folder</b> reads every file of the folder that the page knows, and fills every step. <b>Open</b>, on a row or on a tab, reads one file in place of that one. <b>download</b> saves one file, and the Files tab saves them all as a zip. Put the files back in the folder yourself: a browser cannot write into it.</p>`;
+
+// ---------------------------------------------------------------- the help
+
+// The help of the page's domains, by key, from quicksat/editor/help/: a step's
+// title and information box, and the help written above a key of a saved file.
+const HELP = JSON.parse($("#help").textContent);
+
+/** Each step's information box, as HTML. */
+const INFO = Object.fromEntries(Object.entries(HELP).filter(([, h]) => h.info)
+  .map(([key, h]) => [key, `<h4>${h.title}</h4>\n${h.info.replace("{{files}}", FILES_HELP)}`]));
+
+/** The help written as `#` lines above each key, when the user wants it. */
+const YAML_HELP = Object.fromEntries(Object.entries(HELP).filter(([, h]) => h.file).map(([key, h]) => [key, h.file]));
 
 /**
  * Where each file came from, by its kind: `{how, folder}`. `how` is `page` for a

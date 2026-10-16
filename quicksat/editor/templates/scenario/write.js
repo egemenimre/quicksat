@@ -1,26 +1,5 @@
 // quicksat scenario editor: writing the folder's files from the project.
 
-const YAML_HELP = {
-  orbit: "The orbit, given one of four ways: sso, tle_file, omm_file or trajectory_file. A relative path is taken from the folder of this file.",
-  sso: "For a sun-synchronous orbit, quicksat builds the TLE, with its epoch at the start time. The altitude is averaged over one orbit. The LTAN is in quotes, because YAML reads an unquoted 13:30 as the number 810.",
-  start: "UTC.",
-  duration: "A time, or a number of orbits. One orbit is the nodal period: from one ascending node to the next. It is counted from the start time.",
-  step: "The orbit and the eclipses are worked out on this grid. Events are refined to 1 ms between the steps.",
-  model: "The spacecraft's 3D model: a GLB file in body axes and metres, with its origin at the point the body turns about.",
-  articulations: "Parts of the model that turn about one axis until the axis in point is as close to its direction as the turn allows. park holds the part still in a mode.",
-  targets: "Ground points that an attitude can point at. Each gives the triggers name rise and name set. The altitude is above the WGS84 ellipsoid.",
-  attitudes: "Each attitude points one body axis at a direction, and turns a second as close as it can get to another. The directions are nadir, sun, orbit normal, velocity, ground velocity, and the targets.",
-  slew: "How the body turns between attitudes: rest to rest about one axis, then it settles. Leave the block out for instant changes.",
-  activities: "One repeat of the list. Each activity starts where the one before ends, and ends at its trigger: [title, trigger, attitude, mode, expected illumination]. An activity with comments is written as a map, with the same fields named.",
-  cell_efficiency: "The cells' efficiency at their rated temperature.",
-  loss_factor: "Every loss up to the array's output, as the share of the power left, for the year being sized.",
-  panels: "Each panel names a flat part of the 3D model, or gives a normal and an area. fill_ratio is the share of the part that the cells cover.",
-  self_shadowing: "Whether the rest of the model shades the panels. points is about how many sample points each panel gets.",
-  battery: "capacity is what it holds when new and full. capacity_factor is the share left after fade. max_depth_of_discharge is the deepest it may go in each orbit.",
-  conditioning: "The efficiency of each path the energy takes. Energy through the battery pays both of its paths.",
-  system_margin: "The margin on all the loads together, on top of each equipment's margin.",
-};
-
 const ORBIT_KEYS = { tle: "tle_file", omm: "omm_file", trajectory: "trajectory_file" };
 
 function scenarioYaml() {

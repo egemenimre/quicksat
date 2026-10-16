@@ -1,6 +1,7 @@
-// quicksat scenario editor: the sections, each one block of a file, and their explanations.
+// quicksat scenario editor: the sections, each one block of a file.
 //
 // The Setup steps and the theme tabs both draw these, so each field is built once.
+// Their explanations are in quicksat/editor/help/scenario.yaml and power.yaml.
 
 function partOptions() {
   return model.parts.map((p) => [p.name, p.name + (p.count > 1 ? ` (${p.count} nodes)` : "")]);
@@ -533,102 +534,4 @@ const SECTIONS = {
       body.append(el("h3", { class: "viewer-head", text: "The viewer" }), viewerPanel());
     },
   },
-};
-
-// ---------------------------------------------------------------- information boxes
-
-const INFO = {
-  project: `<h4>The folder</h4>
-    <p>The editor works on one folder of input files. A scenario folder holds the scenario file, with the 3D model and any orbit file it names. A power folder also holds the power system file and the consumption file, with its own copy of the scenario, as quicksat's domains keep their own files.</p>
-    ${FILES_HELP}
-    <span class="k">Comments</span>
-    <p>Every block of a file has a <code>comments</code> field for your own comments. The editor keeps them through every edit and save. The lines that start with <code>#</code> are help that the editor writes. It rewrites them on each save, so do not keep your own comments there.</p>`,
-  orbit: `<h4>Trajectory definition</h4>
-    <p>The orbit sets where the satellite is at each step: when it is in sunlight, what it flies over, and which ground stations see it.</p>
-    <span class="k">Options</span>
-    <p><b>Sun-synchronous:</b> quicksat builds a TLE from the altitude and the LTAN, with its epoch at the start time. The quickest way to begin.</p>
-    <p><b>TLE or OMM file:</b> a real element set, such as one from CelesTrak. The file must hold exactly one.</p>
-    <p><b>Trajectory file:</b> positions and velocities at times, in ECSV or CCSDS OEM. Use it for an orbit from another tool, such as GMAT.</p>
-    <span class="k">Consequences</span>
-    <p>The LTAN sets the beta angle, and so the eclipse length and the power. A 13:30 LTAN and a 10:30 LTAN give about the same eclipses, but the sun is on the other side of the orbit plane.</p>`,
-  time: `<h4>Start, duration and step</h4>
-    <p><b>Start</b> is in UTC. It fixes the sun's position, and with it the eclipses and the season.</p>
-    <p><b>Duration</b> is a time, such as <code>6 h</code>, or a number of orbits, such as <code>3 orbits</code>.</p>
-    <span class="k">What one orbit is</span>
-    <p>One orbit is the <b>nodal period</b>: the time from one ascending node to the next, where the satellite crosses the equator going north. It is a little shorter than the time to come back to the same point in space, because the orbit plane turns.</p>
-    <p>A duration in orbits counts whole periods <b>from the start time</b>. The run does not have to start at a node. Power counts its orbits the same way.</p>
-    <span class="k">The time step</span>
-    <p>The orbit and the eclipses are worked out at each step. Event times are refined between the steps to 1 ms, so a coarser step does not move them. But an event shorter than one step can be missed, and the plots get coarser.</p>
-    <span class="k">Consequences</span>
-    <p>Runs are meant to be short: an orbit to a day or two. Three orbits at 10 s take about 4 s.</p>`,
-  model: `<h4>The 3D model</h4>
-    <p>A GLB file, in body axes and metres, with its origin at the point the body turns about. The viewer draws it, and the power panels take their area and direction from its parts.</p>
-    <span class="k">Options</span>
-    <p>With no model, quicksat draws a plain 1 m cube, and every panel must be typed in.</p>
-    <span class="k">Consequences</span>
-    <p>Name the parts in the model: the panels and the articulations refer to them by name. A part that turns, such as a wing, must be one node, with its origin on its drive axis.</p>`,
-  articulations: `<h4>Articulations</h4>
-    <p>A part of the model that turns about one axis, such as a solar wing. At each step it turns until one of its own axes points as close to a direction as the turn allows. A solar wing turns its cells, here <code>-z</code>, toward the sun.</p>
-    <span class="k">What it can point at</span>
-    <p>The same directions as the attitudes: the sun, nadir, the orbit normal, the velocity, the ground velocity, and the ground targets. So an antenna on a one-axis drive can follow a ground station. A second spacecraft would need an orbit of its own, which quicksat does not have.</p>
-    <span class="k">Options</span>
-    <p><b>Park angles</b> hold it still in a mode, such as during imaging, or while the body slews. A <b>range</b> limits the turn.</p>
-    <span class="k">Consequences</span>
-    <p>No drive is simulated: the angle is set from the geometry at each step. When the direction lies along the axis, the part keeps its last angle.</p>`,
-  targets: `<h4>Ground targets</h4>
-    <p>Points on the ground that an attitude can point at, such as a ground station. Each gives two triggers: <code>name rise</code> and <code>name set</code>, when it starts and stops seeing the satellite.</p>
-    <p>The search asks OpenStreetMap's Nominatim, so it needs a connection. It finds towns, addresses, and many ground stations by name, such as SvalSat. Check a station's position: a town's is its centre, which can lie some way from the station. The text you search for is sent to openstreetmap.org.</p>
-    <span class="k">Options</span>
-    <p>The altitude is above the WGS84 ellipsoid. The minimum elevation sets when the target sees the satellite: 5 deg if left out.</p>`,
-  attitudes: `<h4>Attitudes</h4>
-    <p>Each attitude points one body axis at a direction, and turns a second body axis as close as it can get to another direction. Select one to see its axes in the 3D panel.</p>
-    <span class="k">Options</span>
-    <p>The directions are nadir, sun, orbit normal, velocity, ground velocity, and the targets. The <b>fallback</b> takes the second direction's place where it is parallel to the first. By default it is the first of orbit normal, nadir and velocity that the attitude does not use. An <b>offset</b> turns the result, such as <code>x 30 deg</code> for a roll. Several turns are separated by commas.</p>
-    <span class="k">Consequences</span>
-    <p>The two directions must differ. Constraining an axis to nadir while pointing at the sun makes the body spin fast when the sun is near the nadir line.</p>`,
-  slew: `<h4>Attitude slew performance</h4>
-    <p>How the body turns from one attitude to the next: from rest to rest, about one axis, then it settles.</p>
-    <span class="k">Options</span>
-    <p>Give the fastest rate, the acceleration, or both. With the rate alone, the turn starts and stops at full rate at once. With the acceleration alone, the turn speeds up until the midpoint.</p>
-    <span class="k">Consequences</span>
-    <p>The turn takes time from the end of the activity before, so each activity starts in its own attitude. Bigger turns take longer. With slews off, attitude changes are instant. With slews on, the mode reads <code>slew</code> while the body turns, so the consumption table needs a slew column.</p>`,
-  modes: `<h4>Modes</h4>
-    <p>What the spacecraft is doing, such as idle, imaging or downlink. Each activity names one. Any name will do, except <code>slew</code>, which the run gives the time spent turning.</p>
-    <span class="k">Consequences</span>
-    <p>The consumption table has one column per mode. Renaming a mode here renames it in the activities, the park angles and that table.</p>`,
-  activities: `<h4>Activities</h4>
-    <p>One repeat of what the spacecraft does. Each activity starts where the one before ends, and ends at its trigger. The run repeats the list until the duration ends.</p>
-    <p>The <b>title</b> says what the activity is for. The tables, the Gantt chart and the viewer show it. Two activities may share a title.</p>
-    <span class="k">Triggers</span>
-    <p>A duration, or the next event after the activity starts: a shadow edge, a node, a latitude crossing, or a target's rise or set. An event can take an offset, such as <code>eclipse entry + 2 min</code>.</p>
-    <span class="k">Consequences</span>
-    <p>The <b>expects</b> column is the illumination the activity needs. The run reports any time spent outside it. Only the run can tell whether a trigger ever comes, so this page cannot check that.</p>`,
-  panels: `<h4>Solar panels</h4>
-    <p>A panel names a flat part of the 3D model, which gives its area and the direction its cells face. A panel on a wing turns with it. Select one to see its normal.</p>
-    <span class="k">Options</span>
-    <p><b>Typed in:</b> a direction and an area, for a model without panel parts. The direction is a body axis, such as <code>+x</code>, or three numbers, such as <code>0, 1, -1</code>. It stays fixed in body axes, is never shaded, and shades nothing.</p>
-    <span class="k">Consequences</span>
-    <p>The fill ratio is the share of the part that the cells cover.</p>`,
-  cells: `<h4>Cells, losses and shading</h4>
-    <p><b>Cell efficiency</b> is at the cells' rated temperature, such as 30% for triple-junction GaAs.</p>
-    <p><b>Loss factor</b> is every loss up to the array's output, as the share of power left: temperature, ageing, mismatch, UV and the array's wiring. Set it for the year being sized, such as the end of life.</p>
-    <span class="k">Self-shadowing</span>
-    <p>Whether the rest of the model shades the panels, such as a housing shading the deck cells. More points give a finer result, and take longer.</p>`,
-  battery: `<h4>Battery</h4>
-    <p><b>Capacity</b> is what it holds when new and full. The <b>capacity factor</b> is the share left in the year being sized, after fade.</p>
-    <span class="k">Consequences</span>
-    <p>The deepest discharge is a limit on each orbit: 30% is usual in low orbit, where the battery cycles some 5500 times a year. The generation needs no battery: only the power budget does.</p>`,
-  conditioning: `<h4>Power conditioning</h4>
-    <p>An efficiency for each path the energy takes. Energy that goes through the battery pays both of its paths.</p>
-    <span class="k">Margin</span>
-    <p>The system margin is on all the loads together, on top of each equipment's own margin.</p>`,
-  consumption: `<h4>Consumption</h4>
-    <p>One row for each powered equipment: the power of one unit in each mode, how many units are on, and its margin in percent.</p>
-    <span class="k">Slews</span>
-    <p>With slews on, the mode reads <code>slew</code> while the body turns, so each row needs its power in a slew column too.</p>`,
-  save: `<h4>Saving</h4>
-    <p>Download one zip, which holds the folder, or the files one by one. Put them back in the folder they came from, then run the notebooks again.</p>
-    <span class="k">The viewer</span>
-    <p><b>Create the viewer</b> runs the files on this page with quicksat, and writes the viewer: the run in 3D, with the ground track, the timeline and the power. It needs the editor's server, which serves this page from your computer: <code>python -m quicksat.editor serve FOLDER OUTPUT</code>. The run uses the files as they are on the page, saved or not, and does not change the folder's files. A file that quicksat cannot read stops the run, and its message shows here.</p>
-    <p>The files start with a few lines that say how comments work. Your own comments are in the <code>comments</code> fields. The other <code>#</code> lines are help, which the editor rewrites on each save. Turn the help off for shorter files.</p>`,
 };

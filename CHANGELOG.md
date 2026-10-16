@@ -4,6 +4,10 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+
+- The editors' help sits in one file per domain, in `quicksat/editor/help/`: each step's information box, and the `#` help lines that the editor writes into saved files. The text itself is unchanged.
+
 ## [0.1.0] - 2026-10-15
 
 Initial release.

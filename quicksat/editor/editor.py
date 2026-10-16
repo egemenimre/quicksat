@@ -57,6 +57,7 @@ PAGE_FILE = "editor.html"
 
 _PACKAGE = files("quicksat")
 _TEMPLATES = _PACKAGE / "editor" / "templates"
+_HELP = _PACKAGE / "editor" / "help"
 _VENDOR = _PACKAGE / "scenario" / "templates" / "vendor"
 
 _ORBIT_FILES = ("tle_file", "omm_file", "trajectory_file")
@@ -484,6 +485,40 @@ def _script_json(value) -> str:
     return text.replace("</", "<\\/")
 
 
+def help_text(domains: tuple[str, ...]) -> dict:
+    """
+    The help of some domains, from their files in `help/`, for a page to hold.
+
+    Each key is a step of the editor, a key of the files, or both. It holds the
+    step's `title` and `info`, the information box, and the `file` help that the
+    editor writes above the key when it saves. So the page and the files it saves
+    read the same text.
+
+    Parameters
+    ----------
+    domains : tuple of str
+        The help files' names, such as `("scenario", "power")`
+
+    Returns
+    -------
+    help : dict
+        Each key's help, from all the domains
+
+    Raises
+    ------
+    ValueError
+        If two domains hold the same key
+    """
+    text = {}
+    for domain in domains:
+        found = yaml.safe_load((_HELP / f"{domain}.yaml").read_text(encoding="utf-8"))
+        twice = text.keys() & found.keys()
+        if twice:
+            raise ValueError(f"the help of {domain} repeats {', '.join(sorted(twice))}")
+        text |= found
+    return text
+
+
 def _vendor(name: str) -> str:
     """
     A library from the viewer's vendor folder, with its licence in front.
@@ -503,7 +538,13 @@ def _vendor(name: str) -> str:
     return f"/*!\n{notice}*/\n" + (_VENDOR / name).read_text(encoding="utf-8")
 
 
-def build_page(page: str, scripts: tuple[str, ...], data: dict, **parts: str) -> str:
+def build_page(
+    page: str,
+    scripts: tuple[str, ...],
+    data: dict,
+    domains: tuple[str, ...],
+    **parts: str,
+) -> str:
     """
     An editor page, from its template, the shared parts and its own scripts.
 
@@ -516,6 +557,8 @@ def build_page(page: str, scripts: tuple[str, ...], data: dict, **parts: str) ->
         The page's own scripts, in the order they run, after the shared ones
     data : dict
         The folder's files, which go in the page as JSON
+    domains : tuple of str
+        The domains whose help the page holds, from `help_text`
     **parts : str
         Any other placeholder of the template and its text, such as
         `{"/*@three@*/": ...}`
@@ -540,8 +583,10 @@ def build_page(page: str, scripts: tuple[str, ...], data: dict, **parts: str) ->
         "/*@css@*/": (shared / "editor.css").read_text(encoding="utf-8"),
         "/*@yaml@*/": _vendor("js-yaml.min.js"),
         "/*@editor@*/": "\n".join(path.read_text(encoding="utf-8") for path in code),
-        "@project@": _script_json(data),
+        "@help@": _script_json(help_text(domains)),
         **parts,
+        # last, so that no text of the user's can look like a later placeholder
+        "@project@": _script_json(data),
     }
     html = (folder / "editor.html").read_text(encoding="utf-8")
     for placeholder, text in parts.items():
@@ -568,7 +613,11 @@ def editor_page(data: dict) -> str:
         The page, as HTML text
     """
     return build_page(
-        "scenario", SCRIPTS, data, **{"/*@three@*/": _vendor("three.min.js")}
+        "scenario",
+        SCRIPTS,
+        data,
+        ("scenario", "power"),
+        **{"/*@three@*/": _vendor("three.min.js")},
     )
 
 
