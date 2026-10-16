@@ -66,14 +66,16 @@ from quicksat.utils.intervals import TimeArray
 FORMAT = "quicksat-scenario"
 """The `format` field of the scenario data."""
 
-VERSION = 5
+VERSION = 6
 """The `version` field of the scenario data. It goes up when a field changes.
 Version 2 added `light` to the grid, and `penumbra` and `umbra` to the
 illumination track, in place of `eclipse`. Version 3 added `model`, the
 spacecraft's 3D model. Version 4 added `orbit.trajectory` for an orbit from a
 trajectory file, ECSV or OEM, where `orbit.tle` is null, and renamed
 `orbit.nodal_period_s` to `orbit.period_s`. Version 5 added
-`model.articulations`, the parts of the model that turn, with their angles."""
+`model.articulations`, the parts of the model that turn, with their angles.
+Version 6 added `orbit_file` and `orbit_text`, the name and text of the file
+the orbit was read from: a TLE, an OMM or a trajectory file."""
 
 DATA_FILE = "scenario.js"
 """Name of the file the scenario data is written to."""
@@ -285,6 +287,28 @@ def _model_data(run: ScenarioRun) -> dict | None:
     }
 
 
+def _orbit_file(run: ScenarioRun) -> dict:
+    """
+    The file the orbit was read from, so that the viewer holds every input.
+
+    Parameters
+    ----------
+    run : ScenarioRun
+        The run
+
+    Returns
+    -------
+    file : dict
+        `orbit_file` and `orbit_text`, the file's name and text. Both are None
+        for a sun-synchronous orbit, which has no file.
+    """
+    source = run.scenario.orbit
+    path = source.tle_file or source.omm_file or source.trajectory_file
+    if path is None:
+        return {"orbit_file": None, "orbit_text": None}
+    return {"orbit_file": path.name, "orbit_text": path.read_text(encoding="utf-8")}
+
+
 def _orbit_data(run: ScenarioRun) -> dict:
     """
     Where the run's orbit comes from, as the page shows it.
@@ -418,6 +442,7 @@ def scenario_data(run: ScenarioRun) -> dict:
     content = {
         "scenario_file": None if source is None else source.name,
         "scenario_text": run.scenario.source_text,
+        **_orbit_file(run),
         "start": start.utc.isot,
         "earth_radius_km": R_EARTH.to_value(u.km),
         "orbit": _orbit_data(run),

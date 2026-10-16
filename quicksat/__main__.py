@@ -59,18 +59,46 @@ def main(argv: list[str] | None = None) -> None:
 
 
 def _next_steps(folder: Path) -> str:
-    """What to do with the copied sample, with its own paths."""
-    power = folder / "power"
-    sizing = folder / "sizing"
+    """Where everything went, and how to start, with the copy's own paths."""
+    sizing, scenario, power = folder / "sizing", folder / "scenario", folder / "power"
+    width = len(f"{scenario}/") + 2
+    places = {
+        sizing: "the sizing budgets: mass, data, delta-V and agility",
+        scenario: "a timeline on an orbit: eclipses, attitudes and passes",
+        power: "the same with the power budget",
+    }
+    where = "\n".join(f"  {f'{path}/':<{width}}{what}" for path, what in places.items())
     return f"""
-Next:
-  Open the power sample in the Scenario Editor, served from this computer:
-    python -m quicksat.editor serve {power / "data"} {power / "output"}
-  Or double-click a page written already, such as
-    {power / "output" / "power_viewer.html"}
-    {sizing / "editor" / "editor.html"}
-  The notebooks in {sizing}, {folder / "scenario"} and {power} are the worked
-  examples, for Jupyter."""
+Where everything is:
+{where}
+In each of the three:
+  data/          the input files: the ones you edit
+  editor/        the editor page, written for data/
+  output/        the viewer, written by a run (scenario and power only)
+  *.ipynb        the worked examples, for Jupyter
+
+Your input files:
+  {sizing / "data"}/
+  {scenario / "data"}/
+  {power / "data"}/
+
+To edit and view the power sample with the editor's server:
+  1. Start the server, and keep this terminal open:
+       python -m quicksat.editor serve {power / "data"} {power / "output"}
+  2. The Scenario Editor opens in your browser. If it does not, open the
+     address that the server prints.
+  3. Edit the files on the page.
+  4. Click Create the viewer, on the Files tab or the last Setup step. It
+     writes {power / "output" / "power_viewer.html"}.
+  5. Click Open the viewer. After each Update the viewer, click it again, or
+     reload the viewer's tab.
+  6. The server does not change the files in data/. To keep your changes,
+     download them from the page and put them back in data/.
+  7. Press Ctrl+C in the terminal to stop the server.
+For the scenario sample, give {scenario / "data"} and {scenario / "output"}.
+
+The Sizing Editor needs no server. Double-click
+  {sizing / "editor" / "editor.html"}"""
 
 
 if __name__ == "__main__":

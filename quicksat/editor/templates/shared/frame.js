@@ -8,8 +8,8 @@
 //
 //   DATA, project                 the files as read, and the project made of them
 //   PAGE_TITLE, CHECKS_NOTE       the page's name, and what its checks leave out
-//   TABS, STEPS, SECTIONS, INFO   the tabs, the steps, the sections and their help
-//   YAML_HELP, YAML_KINDS         the help it writes, and its YAML files' kinds
+//   TABS, STEPS, SECTIONS         the tabs, the steps and the sections
+//   YAML_KINDS                    its YAML files' kinds
 //   FILES                         the folder's files, by kind: [{kind}]
 //   OPENERS                       how the folder, and each of its files, opens
 //   projectFiles()                the files to save, each with its kind
@@ -17,7 +17,8 @@
 //   commentTarget(kind, path)     the block of a comment: [block, label, depth]
 //   runChecks()                   its checks, which end with showProblems()
 //
-// and, if it needs them, the hooks in `page`.
+// and, if it needs them, the hooks in `page`. The help comes from the page's
+// #help script, which Python fills from quicksat/editor/help/.
 
 /** What a page may add to the frame's work. */
 const page = {
@@ -466,7 +467,20 @@ const FILES_HELP = `<span class="k">The table of files</span>
 <p><b>State</b> says whether the file has changed: <i>unchanged</i> since it was opened, <i>modified</i>, <i>downloaded</i> when saved and not changed since, or <i>new</i> for a file started on the page.</p>
 <p><b>Simple check</b> is the page's own: names, units and ranges, run as you type. <b>Full check</b> is quicksat's own loaders, which read the files when Python wrote the page. A file opened since shows <i>not run</i>: write the page again for its full check. On a page that the Scenario Editor's server sends, a reload, or a run that creates the viewer, gives the full check too.</p>
 <span class="k">Opening and saving</span>
-<p><b>Open a folder</b> reads every file of the folder that the page knows, and fills every step. <b>Open</b>, on a row or on a tab, reads one file in place of that one. <b>download</b> saves one file, and the Files tab saves them all as a zip. Put the files back in the folder yourself: a browser cannot write into it.</p>`;
+<p><b>Open a folder</b> reads every file of the folder that the page knows, and fills every step. <b>Open</b>, on a row or on a tab, reads one file in place of that one. You can also drop a folder, or its files, on the first Setup step or anywhere on the page, and a file on its tab's bar. <b>download</b> saves one file, and the Files tab saves them all as a zip. Put the files back in the folder yourself: a browser cannot write into it.</p>`;
+
+// ---------------------------------------------------------------- the help
+
+// The help of the page's domains, by key, from quicksat/editor/help/: a step's
+// title and information box, and the help written above a key of a saved file.
+const HELP = JSON.parse($("#help").textContent);
+
+/** Each step's information box, as HTML. */
+const INFO = Object.fromEntries(Object.entries(HELP).filter(([, h]) => h.info)
+  .map(([key, h]) => [key, `<h4>${h.title}</h4>\n${h.info.replace("{{files}}", FILES_HELP)}`]));
+
+/** The help written as `#` lines above each key, when the user wants it. */
+const YAML_HELP = Object.fromEntries(Object.entries(HELP).filter(([, h]) => h.file).map(([key, h]) => [key, h.file]));
 
 /**
  * Where each file came from, by its kind: `{how, folder}`. `how` is `page` for a
@@ -570,13 +584,14 @@ function downloadButton(kind) {
 
 /** A tab's bar for one of its files: its name, where it came from, its state, and Open and download. */
 function fileBar(kind) {
-  return el("div", { class: "file-bar" },
+  const bar = el("div", { class: "file-bar", title: OPENERS[kind] ? `Drop a file here, in place of ${project.names[kind]}` : null },
     el("b", { class: "file-name", text: fileName(kind) }),
     el("span", { class: "hint", text: sourceText(kind) }),
     el("span", { class: "file-state", "data-state": kind }),
     el("span", { class: "spacer" }),
     OPENERS[kind] ? openButton(kind) : null,
     downloadButton(kind));
+  return OPENERS[kind] ? dropTarget(bar, kind) : bar;
 }
 
 /** The page's problems in a file's sections: [errors, notes]. */
@@ -646,11 +661,11 @@ function refreshFiles() {
  * the files it replaced. quicksat's loaders have not read them, so their checks
  * are marked as not run.
  */
-async function openWith(kind) {
+async function openWith(kind, dropped = null) {
   const opener = OPENERS[kind];
   const what = kind === "folder" ? "a folder replaces every file" : `a file replaces ${project.names[kind] || "it"}`;
   if (unsaved() && !confirm(`Opening ${what} on this page. The changes you have not saved are lost.`)) return;
-  const picked = await pickFiles(opener.pick);
+  const picked = dropped || (await pickFiles(opener.pick));
   if (!picked.files.length) return;
   const before = Object.fromEntries(Object.entries(DATA.files).map(([k, file]) => [k, file ? file.name : ""]));
   let kinds;
@@ -669,7 +684,8 @@ async function openWith(kind) {
     for (const k of Object.keys(sources)) delete sources[k];
     for (const k of Object.keys(savedText)) delete savedText[k];
     const held = Object.keys(currentTexts()).filter(isHeld);
-    for (const k of held) sources[k] = { how: "folder", folder: picked.folder };
+    // a folder's files dropped loose come without their folder's name
+    for (const k of held) sources[k] = picked.folder ? { how: "folder", folder: picked.folder } : { how: "file" };
     for (const k of Object.keys(currentTexts())) fileAdded(k);
     markSaved(held);
   } else {
@@ -684,12 +700,73 @@ async function openWith(kind) {
   page.afterChange();
 }
 
-/** The button that opens a folder in place of the page's files. */
+/** The area that opens a folder in place of the page's files: its button, or a drop. */
 function openFolderButton() {
-  return el("div", { class: "open-row" },
+  return dropTarget(el("div", { class: "open-row drop-area" },
     el("button", { class: "btn primary", text: "Open a folder…", onclick: () => openWith("folder") }),
-    el("span", { class: "hint", text: OPENERS.folder.hint }));
+    el("span", { class: "hint" }, OPENERS.folder.hint, el("br"), "Or drop the folder here, or its files.")), null);
 }
+
+// ---------------------------------------------------------------- dropping files
+
+/** The kind of file a name belongs to, if exactly one of the page's files has it. */
+function kindOfName(name) {
+  const kinds = Object.keys(project.names).filter((kind) => OPENERS[kind] && project.names[kind] === name);
+  return kinds.length === 1 ? kinds[0] : null;
+}
+
+/**
+ * Open what was dropped. A folder, or several files, open as a folder. One file
+ * opens as the kind it was dropped on, or as the page's file of the same name.
+ */
+async function openDropped(transfer, kind) {
+  let dropped;
+  try {
+    dropped = await droppedFiles(transfer);
+  } catch (error) {
+    alert(error.message);
+    return;
+  }
+  if (!dropped.files.length) return;
+  if (kind && dropped.isFolder) {
+    alert(`Drop a file here, in place of ${project.names[kind]}. A folder goes on the first Setup step.`);
+    return;
+  }
+  const single = dropped.files.length === 1 ? kindOfName(dropped.files[0].path) : null;
+  const target = kind || (dropped.isFolder || dropped.files.length > 1 ? "folder" : single);
+  if (!target) {
+    alert(`${dropped.files[0].path} is not one of this page's files by its name. Drop it on its tab's bar, or drop the whole folder.`);
+    return;
+  }
+  await openWith(target, dropped);
+}
+
+/** Let an element take drops, for a kind of file, or for the folder when kind is null. */
+function dropTarget(node, kind) {
+  node.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    node.classList.add("drag-over");
+  });
+  node.addEventListener("dragleave", (event) => {
+    if (!node.contains(event.relatedTarget)) node.classList.remove("drag-over");
+  });
+  node.addEventListener("drop", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    node.classList.remove("drag-over");
+    openDropped(event.dataTransfer, kind);
+  });
+  return node;
+}
+
+// A drop anywhere else on the page is read as a drop on the first Setup step, so
+// that the browser never leaves the page to show the dropped file
+document.addEventListener("dragover", (event) => event.preventDefault());
+document.addEventListener("drop", (event) => {
+  event.preventDefault();
+  openDropped(event.dataTransfer, null);
+});
 
 /** The button that opens one file, of a kind, in place of the page's. */
 function openButton(kind) {

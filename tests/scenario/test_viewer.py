@@ -13,11 +13,15 @@ bytes. Nothing here runs the page's JavaScript.
 
 import hashlib
 import json
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
+from quicksat.orbit.omm import write_omm_file
+from quicksat.orbit.tle import read_tle_file
 from quicksat.scenario import viewer
+from quicksat.scenario.config import Scenario
 from quicksat.scenario.viewer import (
     DATA_FILE,
     FORMAT,
@@ -56,6 +60,24 @@ def test_the_data_names_its_format_and_source(data, data_dir):
     assert data["scenario_text"] == (data_dir / "scenario.yaml").read_text()
     assert data["start"] == "2026-10-01T00:00:00.000"
     assert data["orbit"]["tle"] == (data_dir / "sso_510km.tle").read_text().splitlines()
+    # the orbit's file itself, so that the viewer holds every input of its run
+    assert data["orbit_file"] == "sso_510km.tle"
+    assert data["orbit_text"] == (data_dir / "sso_510km.tle").read_text()
+
+
+def test_an_omm_file_is_held_as_written_and_an_sso_has_no_file(data_dir, tmp_path):
+    write_omm_file(tmp_path / "leo.omm", read_tle_file(data_dir / "sso_510km.tle"))
+    text = (data_dir / "scenario.yaml").read_text()
+    sources = {
+        "omm_file: leo.omm": ("leo.omm", (tmp_path / "leo.omm").read_text()),
+        'sso: {altitude: 510 km, ltan: "13:30"}': (None, None),
+    }
+    for source, expected in sources.items():
+        scenario = Scenario.from_yaml_text(
+            text.replace("tle_file: sso_510km.tle", source), base_dir=tmp_path
+        )
+        found = viewer._orbit_file(SimpleNamespace(scenario=scenario))
+        assert (found["orbit_file"], found["orbit_text"]) == expected
 
 
 def test_every_grid_field_has_a_value_per_step(data, run):

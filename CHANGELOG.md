@@ -4,6 +4,16 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- Both editors open a folder, or its files, dropped onto the page, and a file dropped onto its tab's bar. The buttons still open the file picker.
+- `python -m quicksat init` prints where the input files and everything else went, and the steps to start the editor's server. The README walks through the server step by step.
+- The viewer holds every input file of its run. Its Inputs tab now shows the orbit's file, for a TLE, an OMM or a trajectory file, and the power consumption file. `scenario.js` is version 6, and `power.js` version 2.
+
+### Changed
+
+- The editors' help sits in one file per domain, in `quicksat/editor/help/`: each step's information box, and the `#` help lines that the editor writes into saved files. The text itself is unchanged.
+
 ## [0.1.0] - 2026-10-15
 
 Initial release.

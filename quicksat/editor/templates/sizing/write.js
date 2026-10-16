@@ -2,22 +2,6 @@
 
 // ---------------------------------------------------------------- writing the files
 
-const YAML_HELP = {
-  altitude: "Above the Earth's equatorial radius. The orbit is circular.",
-  inclination: "No budget reads it yet. It records the orbit the budgets assume.",
-  duration: "The design life. It scales the recurring manoeuvres.",
-  locations: "Each location's system margin, harness and harness margin, in percent, and whether it stays in orbit.",
-  generation: "What the payload makes. The raw rate is divided by the compression ratio, and flows for the duty cycle's share of each orbit.",
-  downlink: "What the link sends: the achieved throughput, the usable contacts in a day, and their average length.",
-  storage: "The memory is sized for this many orbits without a usable contact.",
-  propulsion: "The specific impulse, for the rocket equation.",
-  margin: "In percent, one allowance on the total delta-V.",
-  collision_avoidance: "return_burn is true when each avoidance comes back down, which doubles its delta-V.",
-  inertia_cases: "Each case is an envelope estimate or a stated inertia, never both. An envelope is a body box with an appendage factor per axis, and follows the mass budget's mass. A stated inertia is fixed.",
-  wheels: "A pyramid of reaction wheels about yaw. The momentum and the torque are nameplate figures per wheel. The use factor and the derating are the shares used in slews.",
-  settling_time: "What the platform needs after a slew before the payload can work.",
-};
-
 function start(comments) {
   const lines = [...HEADER, ""];
   if ((comments || "").trim()) { commentsLines(lines, 0, comments); lines.push(""); }

@@ -256,6 +256,7 @@ pre.file {
   overflow: auto; font: 11.5px/1.5 var(--mono); color: var(--text);
 }
 pre.file .comment { color: var(--dim); }
+pre.file.tall { max-height: 420px; }
 
 #page-activities.active, #page-inputs.active, #page-results.active { display: block; overflow: auto; padding: 12px; }
 .blocks {
@@ -5167,7 +5168,7 @@ var uPlot=function(){"use strict";const l="u-off",e="u-label",t="width",n="heigh
 // window or the libraries: each function takes its data as arguments.
 "use strict";
 
-const PAGE_VERSION = 5;
+const PAGE_VERSION = 6;
 
 const pad = (value) => String(value).padStart(2, "0");
 const clamp = (x, lo, hi) => Math.min(Math.max(x, lo), hi);
@@ -7193,9 +7194,17 @@ function showAttitude() {
 function showInputs() {
   const name = (title, file) => [title, " · ", element("b", { text: file })];
   const orbit = scenario.orbit;
-  // Two columns: the scenario file on the left; the orbit, the conventions
-  // below it, and the power file on the right
+  // Two columns: the scenario file and the orbit's file on the left; the orbit,
+  // the conventions below it, and the power and consumption files on the right
   const column = (blocks) => element("div", { class: "stack" }, blocks);
+  // The orbit's file and the consumption file, from version 6 of scenario.js and
+  // version 2 of power.js. Neither is YAML, so no line is dimmed, and a long file
+  // scrolls in its box.
+  const plainText = (text) => element("pre", { class: "file tall", text });
+  const orbitFile = scenario.orbit_text != null ? [block(name("Orbit file", scenario.orbit_file), [plainText(scenario.orbit_text)])] : [];
+  const consumptionFile = power && power.consumption_text != null
+    ? [block(name("Consumption file", power.consumption_file), [plainText(power.consumption_text)])]
+    : [];
   const orbitBlock = block(
     ["Orbit"],
     [
@@ -7241,8 +7250,8 @@ function showInputs() {
   );
   const powerFile = power ? [block(name("Power file", power.power_file), [fileText(power.power_text)])] : [];
   $("#inputs").append(
-    column([block(name("Scenario file", SCENARIO_FILE), [fileText(scenario.scenario_text || "")])]),
-    column([orbitBlock, conventions, ...powerFile]),
+    column([block(name("Scenario file", SCENARIO_FILE), [fileText(scenario.scenario_text || "")]), ...orbitFile]),
+    column([orbitBlock, conventions, ...powerFile, ...consumptionFile]),
   );
 }
 

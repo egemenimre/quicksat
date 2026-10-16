@@ -14,7 +14,8 @@ two match. So power writes both files, from one run.
 What `power.js` holds, as the page reads it:
 
 - `format`, `version` and `scenario_id`; `power_file` and `power_text`, the power
-  system file's name and text;
+  system file's name and text; `consumption_file` and `consumption_text`, the
+  consumption file's name and text, or null for one not read from a file;
 - `spacecraft`: the body box `body_m`, and each panel's `name`, `normal`, `axis`
   (the index of the body axis nearest the normal), `centre_m` and `size_m`,
   in body axes and metres, as the model draws it. Without a 3D model, the page
@@ -52,8 +53,9 @@ from quicksat.scenario.viewer import (
 FORMAT = "quicksat-power"
 """The `format` of `power.js`, which the page checks."""
 
-VERSION = 1
-"""The version of `power.js`. The page reads a version no newer than its own."""
+VERSION = 2
+"""The version of `power.js`. The page reads a version no newer than its own.
+Version 2 added `consumption_file` and `consumption_text`."""
 
 DATA_FILE = "power.js"
 """The name of the power data file, which the page loads from its own folder."""
@@ -214,12 +216,17 @@ def power_data(budget: BudgetRun, scenario_id: str) -> dict:
         }
     body = _body_box(model, turning)
     system = budget.power_system
+    loads = budget.consumption.consumption
     return {
         "format": FORMAT,
         "version": VERSION,
         "scenario_id": scenario_id,
         "power_file": system.source_file.name if system.source_file else "power system",
         "power_text": system.source_text or "",
+        "consumption_file": None
+        if loads.source_file is None
+        else loads.source_file.name,
+        "consumption_text": loads.source_text,
         "spacecraft": {
             "body_m": body,
             "panels": [

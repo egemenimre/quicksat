@@ -1,6 +1,6 @@
-// quicksat sizing editor: the sections, each one block of a file, and their
-// explanations. The Setup steps and the theme tabs both draw these, so each
-// field is built once.
+// quicksat sizing editor: the sections, each one block of a file. The Setup steps
+// and the theme tabs both draw these, so each field is built once. Their
+// explanations are in quicksat/editor/help/sizing.yaml.
 
 // ---------------------------------------------------------------- the sections
 
@@ -306,90 +306,4 @@ const SECTIONS = {
         el("button", { class: "btn", text: "go to the Files tab", onclick: () => showTab("files") })));
     },
   },
-};
-
-// ---------------------------------------------------------------- information boxes
-
-const INFO = {
-  folder: `<h4>Folder</h4>
-<p>This folder holds the input files of quicksat's sizing budgets. Each budget is a notebook, which reads its files and builds one table.</p>
-<p>Saving always writes every budget's files. A folder that lacks a budget's files gets them started here, as new, for you to fill in.</p>
-${FILES_HELP}
-<span class="k">What follows</span>
-<p>Data, delta-V and agility read <code>mission.yaml</code>, so the folder always holds it. Delta-V and agility also read the mass budget: delta-V for the dry mass, and agility for the mass of an envelope case. Without the mass files, their notebooks must give a mass instead.</p>
-<p>These files share nothing with a scenario or power folder. The mission's orbit is a reference orbit for the budgets: it has no epoch and no node.</p>`,
-
-  mission: `<h4>Reference orbit and design life</h4>
-<p>The mission is a circular orbit and a design life. The other budgets read it from here, so they cannot disagree on the orbit.</p>
-<span class="k">Altitude</span><p>Above the Earth's equatorial radius of 6378.1 km. quicksat models no eccentricity.</p>
-<span class="k">Inclination</span><p>No budget reads it yet. It records the orbit that the budgets assume. A sun-synchronous orbit at 500 km has an inclination of about 97.4 deg.</p>
-<span class="k">Duration</span><p>The design life. The delta-V budget multiplies each recurring manoeuvre's yearly count by it.</p>
-<span class="k">What follows</span><p>The figures under the fields come from the altitude alone. The data budget uses the period and the orbits in a day. Delta-V uses the orbit's radius and speed. Agility uses the ground track speed.</p>`,
-
-  locations: `<h4>Locations: margins and harness</h4>
-<p>Every equipment row names a location, such as Platform or Payload. The location sets the row's system margin and harness, and whether it stays in orbit.</p>
-<span class="k">System margin</span><p>In percent, on the location's subtotal, after each row's equipment margin.</p>
-<span class="k">Harness</span><p>The harness is worked out, not listed. It is a percentage of the location's equipment mass before margin, without the propellant. The harness takes its own margin, and then the system margin.</p>
-<span class="k">Stays in orbit</span><p>Untick it for hardware that leaves at separation.</p>
-<span class="k">Launcher</span><p><code>Launcher</code> needs no entry. It has no margins and no harness, and leaves at separation. Any other location that the equipment names must be listed here.</p>`,
-
-  equipment: `<h4>Equipment</h4>
-<p>One row per item, with the mass of one unit and the number flown. The mass takes its unit, such as <code>750 g</code> or <code>62 kg</code>.</p>
-<span class="k">Ids</span><p>An id has no spaces. Two rows may share an id only at different locations, such as the MLI on the payload and on the platform.</p>
-<span class="k">Margin</span><p>The equipment margin, in percent, follows how mature the item is. A usual rule is 5 % for an item off the shelf, 10 % for one modified, and 20 % for a new design.</p>
-<span class="k">Class</span><p><code>propellant</code> marks the propellant load. It never takes a margin, and the mass cases scale it from full to empty. Every other row is <code>equipment</code>.</p>
-<span class="k">Responsibility and subsystem</span><p>They group the rows in the notebook's tables. They do not change the mass.</p>
-<span class="k">What follows</span><p>The totals under the table add the rows as entered. The notebook adds the harness and the system margins.</p>`,
-
-  generation: `<h4>Payload data generation</h4>
-<p>What the payload makes in each orbit. The raw rate is divided by the compression ratio. The result flows for the duty cycle's share of each orbit.</p>
-<span class="k">Raw data rate</span><p>The instrument's output before compression, such as <code>1000 Mbit/s</code>.</p>
-<span class="k">Compression ratio</span><p>1 means no compression. It cannot be below 1.</p>
-<span class="k">Duty cycle</span><p>The share of each orbit spent making data, up to 100 %. An imager that works only on the day side, over land, may need a few percent.</p>`,
-
-  downlink: `<h4>Downlink</h4>
-<p>What the link sends down. It is given per day, because ground contacts are counted over the station's day.</p>
-<span class="k">Rate</span><p>The achieved throughput, not the symbol rate.</p>
-<span class="k">Contacts per day</span><p>The usable passes in a day, from Mission Analysis. It need not be a whole number.</p>
-<span class="k">Average contact</span><p>How long a usable pass lasts, on average.</p>`,
-
-  storage: `<h4>Storage</h4>
-<p>The memory is sized to hold the data of this many orbits without a usable pass. It need not be a whole number.</p>
-<span class="k">What follows</span><p>The data budget compares what the payload makes with what the link sends. It then gives the memory for this case.</p>`,
-
-  dvconfig: `<h4>Propulsion and margin</h4>
-<p>The settings of the delta-V budget. The orbit and the design life come from <code>mission.yaml</code>.</p>
-<span class="k">Isp</span><p>The specific impulse, for the rocket equation. Hydrazine monopropellant gives about 220 s.</p>
-<span class="k">Margin</span><p>In percent, one allowance on the total delta-V.</p>
-<span class="k">Collision avoidance</span><p>With the return burn, each avoidance goes up and comes back down, which doubles its delta-V. Leave it off when the satellite was due to be raised anyway. The avoidance then also pays off some of the drag make-up.</p>`,
-
-  manoeuvres: `<h4>Manoeuvres</h4>
-<p>One row per manoeuvre. Its type sets how the value turns into a delta-V, and the unit that the value takes.</p>
-<table><tr><th>type</th><th>value</th><th>worked out as</th></tr>
-<tr><td><code>altitude_change</code></td><td>a length</td><td>a Hohmann transfer between two circular orbits</td></tr>
-<tr><td><code>collision_avoidance</code></td><td>a length</td><td>the same, doubled with the return burn</td></tr>
-<tr><td><code>inclination_change</code></td><td>an angle</td><td>a plane change at the orbital speed</td></tr>
-<tr><td><code>deorbit</code></td><td>a length</td><td>one burn that lowers the perigee to this altitude</td></tr>
-<tr><td><code>given</code></td><td>a speed</td><td>taken as it is</td></tr></table>
-<span class="k">Count and per year</span><p>How many times. With <b>per year</b> ticked, the count is per year, and is multiplied by the design life.</p>
-<span class="k">Loss factor</span><p>The finite-burn and gravity losses, as a factor on the ideal delta-V. 1.0 is an impulsive burn, and the factor cannot be below 1.</p>
-<span class="k">Phase</span><p>It groups the rows in the notebook's tables, such as Commissioning, Operations and Disposal.</p>`,
-
-  cases: `<h4>Inertia cases</h4>
-<p>Each case is one spacecraft, with one set of mass properties. The names are yours: the agility notebook asks for a case by its name.</p>
-<span class="k">Envelope estimate</span><p>A uniform box, with a factor on each axis for the arrays, radiators and booms. Its inertia follows the mass from the mass budget, at the propellant level given.</p>
-<span class="k">Stated inertia</span><p>The roll and pitch inertia, as a mass properties report gives them. It is a fixed number: nothing checks that it still matches the mass budget.</p>
-<p>A case is one or the other, never both, so each figure has one source.</p>
-<span class="k">Axes</span><p>x is along the track, y across it, and z towards nadir.</p>`,
-
-  wheels: `<h4>Reaction wheels and settling</h4>
-<p>A pyramid of reaction wheels, with its axis along yaw.</p>
-<span class="k">Nameplate figures</span><p>The momentum and the torque of one wheel, as the vendor quotes them. The elevation is each wheel's angle above the pyramid's base.</p>
-<span class="k">Use policy</span><p>The momentum use factor is the share of the momentum kept for slews. The rest stores disturbances. The torque derating is the share of the torque used in a slew. The rest is kept for control.</p>
-<span class="k">Settling time</span><p>What the platform needs after a slew before the payload can work. It is added once, at the end of a manoeuvre.</p>
-<span class="k">Not in the file</span><p>The time allowed for a slew. It is asked of a spacecraft, so the notebook passes it to each call.</p>`,
-
-  save: `<h4>Save the files</h4>
-<p>Saving writes each file again. The page writes its own help as lines that start with #. Your notes are kept in the comments fields.</p>
-<p>Download the zip, or each file alone. Then put the files back in the folder, and run the notebooks.</p>`,
 };

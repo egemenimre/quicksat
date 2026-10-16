@@ -93,6 +93,8 @@ So the page checks only names, units and ranges. When Python writes the page, it
 
 **One folder, one page.** A scenario folder and a power folder each get their own page, as each domain keeps its own files (entry 9). A power folder's page edits the scenario, the power system and the consumption together. The sizing files will get a page of their own, because their reference orbit is not the scenario's orbit, and one page would invite the user to think they are linked.
 
+**Extended on 2026-10-16: the help in one file per domain.** The page's information boxes and the `#` help lines it writes into saved files were two copies in the page's scripts. They now sit in `quicksat/editor/help/`: `scenario.yaml`, `power.yaml` and `sizing.yaml`. Each key holds a step's title and information box, the help written above a key of the file, or both. Python puts the files of a page's domains inside the page as JSON. The reference notebooks stay the full explanation. Whether pydantic's field descriptions should also come from these files is left open.
+
 ---
 
 ## 13. The user's notes live in `comments` fields

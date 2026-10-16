@@ -1,0 +1,78 @@
+# quicksat Basic satellite sizing tool
+#
+# Copyright (C) Egemen Imre
+#
+# Licensed under GNU GPL v3.0. See LICENSE.md for more info.
+#
+# The help for the power files: the power system and the consumption.
+#
+# Each key is a step of the editor, a key of the file, or both:
+#
+#   title  the heading of the step's information box
+#   info   the information box, in HTML. {{files}} stands for the shared help on
+#          the table of files.
+#   file   the help that the editor writes above the key, as # lines, when it
+#          saves the file
+#
+# The editor's page holds these files, so that the page and the files it saves
+# read the same text. The reference notebooks give the full explanation.
+
+panels:
+  title: Solar panels
+  info: |-
+    <p>A panel names a flat part of the 3D model, which gives its area and the direction its cells face. A panel on a wing turns with it. Select one to see its normal.</p>
+    <span class="k">Options</span>
+    <p><b>Typed in:</b> a direction and an area, for a model without panel parts. The direction is a body axis, such as <code>+x</code>, or three numbers, such as <code>0, 1, -1</code>. It stays fixed in body axes, is never shaded, and shades nothing.</p>
+    <span class="k">Consequences</span>
+    <p>The fill ratio is the share of the part that the cells cover.</p>
+  file: >-
+    Each panel names a flat part of the 3D model, or gives a normal and an area. fill_ratio is the share of the part that the cells cover.
+
+cells:
+  title: Cells, losses and shading
+  info: |-
+    <p><b>Cell efficiency</b> is at the cells' rated temperature, such as 30% for triple-junction GaAs.</p>
+    <p><b>Loss factor</b> is every loss up to the array's output, as the share of power left: temperature, ageing, mismatch, UV and the array's wiring. Set it for the year being sized, such as the end of life.</p>
+    <span class="k">Self-shadowing</span>
+    <p>Whether the rest of the model shades the panels, such as a housing shading the deck cells. More points give a finer result, and take longer.</p>
+
+cell_efficiency:
+  file: >-
+    The cells' efficiency at their rated temperature.
+
+loss_factor:
+  file: >-
+    Every loss up to the array's output, as the share of the power left, for the year being sized.
+
+self_shadowing:
+  file: >-
+    Whether the rest of the model shades the panels. points is about how many sample points each panel gets.
+
+battery:
+  title: Battery
+  info: |-
+    <p><b>Capacity</b> is what it holds when new and full. The <b>capacity factor</b> is the share left in the year being sized, after fade.</p>
+    <span class="k">Consequences</span>
+    <p>The deepest discharge is a limit on each orbit: 30% is usual in low orbit, where the battery cycles some 5500 times a year. The generation needs no battery: only the power budget does.</p>
+  file: >-
+    capacity is what it holds when new and full. capacity_factor is the share left after fade. max_depth_of_discharge is the deepest it may go in each orbit.
+
+conditioning:
+  title: Power conditioning
+  info: |-
+    <p>An efficiency for each path the energy takes. Energy that goes through the battery pays both of its paths.</p>
+    <span class="k">Margin</span>
+    <p>The system margin is on all the loads together, on top of each equipment's own margin.</p>
+  file: >-
+    The efficiency of each path the energy takes. Energy through the battery pays both of its paths.
+
+system_margin:
+  file: >-
+    The margin on all the loads together, on top of each equipment's margin.
+
+consumption:
+  title: Consumption
+  info: |-
+    <p>One row for each powered equipment: the power of one unit in each mode, how many units are on, and its margin in percent.</p>
+    <span class="k">Slews</span>
+    <p>With slews on, the mode reads <code>slew</code> while the body turns, so each row needs its power in a slew column too.</p>

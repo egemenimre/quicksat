@@ -28,7 +28,7 @@ This writes `my_satellite/editor/editor.html`. Python reads the folder's files a
 
 The page needs no Python and no server. Double-click it to open it in a browser.
 
-A page you have already can open the folder instead: click **Open a folder…** on its first Setup step, and pick `my_satellite`. The page reads every sizing file it finds there. quicksat's loaders do not read a folder opened this way, so its files have only the page's simple check, and their full check shows *not run*.
+A page you have already can open the folder instead: click **Open a folder…** on its first Setup step, and pick `my_satellite`. Or drop the folder, or its files, onto the page. A single file dropped on a tab's bar replaces that tab's file. The page reads every sizing file it finds there. quicksat's loaders do not read a folder opened this way, so its files have only the page's simple check, and their full check shows *not run*.
 
 ## 3. Edit
 
