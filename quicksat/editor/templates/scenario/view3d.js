@@ -266,7 +266,9 @@ const view3d = (() => {
       attitudeArrows(a);
       text = `Attitude <b>${escapeHtml(a.name)}</b>: the body turns so that <b>${a.point[0]}</b> points at <b>${escapeHtml(a.point[1])}</b>, then turns about it until <b>${a.constrain[0]}</b> is as close as it can get to <b>${escapeHtml(a.constrain[1])}</b>.${a.offset ? ` Then it turns by ${escapeHtml(a.offset)}.` : ""}`;
     } else if (selection && selection.kind === "target") {
-      text = `Target <b>${escapeHtml(selection.item.name)}</b> is on the ground, so it has nothing to show on the spacecraft. An attitude can point an axis at it.`;
+      text = S.sat_targets.items.includes(selection.item)
+        ? `Target <b>${escapeHtml(selection.item.name)}</b> is another satellite, so it has nothing to show on the spacecraft. An attitude or an articulation can point an axis at it.`
+        : `Target <b>${escapeHtml(selection.item.name)}</b> is on the ground, so it has nothing to show on the spacecraft. An attitude can point an axis at it.`;
     } else if (selection && selection.kind === "activity") {
       const a = selection.item;
       const attitude = S.attitudes.items.find((x) => x.name === a.attitude);

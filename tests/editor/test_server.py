@@ -86,6 +86,19 @@ def test_run_scenario(tmp_path):
     assert result["report"]
 
 
+def test_run_with_satellite_targets(tmp_path):
+    """A satellite target's file goes by its name, as the page sends it."""
+    files = page_files(SCENARIO, ("scenario",))
+    files[0]["text"] += "sat_targets:\n  RELAY-01: {tle_file: relays.tle}\n"
+    relays = TESTS.parent / "docs" / "scenario" / "data" / "relays.tle"
+    files.append(
+        {"kind": "target:relays.tle", "name": "relays.tle", "text": relays.read_text()}
+    )
+    result = run_files(files, tmp_path)
+    assert result["ok"], result.get("error")
+    assert "Target RELAY-01:" in result["report"]
+
+
 def test_run_uses_the_page_text(tmp_path):
     """The run reads the files as the page sends them, not as they are on disk."""
     files = page_files(POWER)

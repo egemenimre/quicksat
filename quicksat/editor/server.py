@@ -130,8 +130,8 @@ def _write_inputs(root: Path, files: list[dict]) -> tuple[Path, dict]:
     """
     Write the page's files into a folder, where the scenario will find them.
 
-    The scenario names its 3D model and orbit file by a path from its own folder,
-    which may start with `..`. So the scenario goes deep enough inside `root` for
+    The scenario names its 3D model, its orbit file and its satellite targets'
+    files by a path from its own folder, which may start with `..`. So the scenario goes deep enough inside `root` for
     each such path to stay inside it too. A file named by an absolute path is not
     written: quicksat reads it from where it is.
 
@@ -202,7 +202,8 @@ def run_files(files: list[dict], output: str | Path) -> dict:
     ----------
     files : list of dict
         The page's files, each with `kind`: `scenario`, `model`, `orbit`,
-        `power` or `consumption`. `name`: the name the scenario gives it, or the
+        `power`, `consumption`, or `target:` and the file's name for a
+        satellite target's file. `name`: the name the scenario gives it, or the
         file's own name. `text`, or `base64` for the 3D model.
     output : str | Path
         The folder to write the viewer in. It is made if it does not exist.

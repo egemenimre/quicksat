@@ -77,6 +77,180 @@ function placeSearch(list) {
   return el("div", { class: "search" }, el("div", { class: "ctl" }, input, button, credit), results);
 }
 
+// ---------------------------------------------------------------- satellite targets
+
+/** The files a satellite target can name, for the file pickers. */
+const TARGET_FILE_TYPES = ".tle,.txt,.omm,.kvn,.xml,.json,.csv,.ecsv,.oem";
+
+/** The element sets of each held file, by its name, read once for each text. */
+const setsRead = new Map();
+
+/** The element sets of a held satellite target's file, or null for a trajectory, a file not held, or text that does not read. */
+function heldSets(name) {
+  if (!targetFiles.has(name)) return null;
+  const text = targetFiles.get(name);
+  const read = setsRead.get(name);
+  if (read && read.text === text) return read.sets;
+  const sets = elementSets(name, text);
+  setsRead.set(name, { text, sets });
+  return sets;
+}
+
+/**
+ * An epoch's distance from the start of the run, as text, and whether it is
+ * more than 7 days from either end. A duration in orbits has no end on the
+ * page, so the start alone counts then. The run checks both ends.
+ */
+function epochNote(epoch) {
+  const start = Date.parse(`${S.start}Z`);
+  const at = Date.parse(`${epoch}Z`);
+  if (Number.isNaN(start) || Number.isNaN(at)) return [epoch, false];
+  const unit = { s: 1, min: 60, h: 3600, d: 86400 }[S.duration.u];
+  const end = unit && S.duration.v > 0 ? start + S.duration.v * unit * 1000 : start;
+  const days = (ms) => Math.abs(ms) / 86400000;
+  const far = Math.max(days(at - start), days(at - end)) > 7;
+  return [`${days(at - start).toFixed(1)} d ${at < start ? "before" : "after"} the start`, far];
+}
+
+/** Add a satellite target, with a name of its own: the file's name for it, or that name and a number. */
+function addSatTarget(name, source, file, object) {
+  let unique = name;
+  for (let n = 2; targetNames().includes(unique); n++) unique = `${name} ${n}`;
+  // a target that cannot take its name from the file names its element set
+  S.sat_targets.items.push({ name: unique, source, file, object: unique === name ? object : object || name, min_clearance: q("", "km"), comments: "" });
+}
+
+/** A file of several satellites, just added, whose satellites the step offers to add. */
+let targetChoice = null;
+
+/** Hold a satellite target's file, and add its satellite, or offer its satellites when it holds several. */
+async function addTargetFile(file) {
+  const text = await file.text();
+  const kind = orbitFileKind(file.name, text);
+  const sets = kind === "trajectory" ? null : elementSets(file.name, text);
+  if (kind !== "trajectory" && !sets) {
+    alert(`${file.name} does not read as a TLE file, an OMM file or a trajectory file.`);
+    return;
+  }
+  targetFiles.set(file.name, text);
+  sources[targetKind(file.name)] = { how: "file" };
+  const stem = file.name.replace(/\.[^.]+$/, "");
+  if (kind === "trajectory") addSatTarget(stem, kind, file.name, "");
+  else if (sets.length === 1) addSatTarget(sets[0].name || stem, kind, file.name, "");
+  else targetChoice = { name: file.name, kind, sets, chosen: new Set() };
+  changed(true);
+}
+
+/** The satellites of a file just added, to choose from, with those already added marked. */
+function targetChooser() {
+  const choice = targetChoice;
+  const added = new Set(S.sat_targets.items.filter((t) => t.file === choice.name).map((t) => pickedElementSet(choice.sets, t.object, t.name).set));
+  const add = (indices) => {
+    for (const i of indices) {
+      const set = choice.sets[i];
+      addSatTarget(set.name || `satellite ${set.number}`, choice.kind, choice.name, set.name ? "" : String(set.number));
+    }
+    targetChoice = null;
+    changed(true);
+  };
+  const free = choice.sets.map((_, i) => i).filter((i) => !added.has(choice.sets[i]));
+  return el("div", { class: "target-choice" },
+    el("p", { class: "hint", text: `${choice.name} holds ${choice.sets.length} satellites. Choose the ones to add as targets. Each takes its name from the file.` }),
+    el("div", { class: "choices" }, ...choice.sets.map((set, i) => el("label", { class: added.has(set) ? "added" : "" },
+      el("input", {
+        type: "checkbox", checked: choice.chosen.has(i), disabled: added.has(set),
+        onchange: (e) => (e.target.checked ? choice.chosen.add(i) : choice.chosen.delete(i)),
+      }),
+      elementSetLabel(set),
+      el("small", { text: added.has(set) ? " · added" : ` · epoch ${set.epoch ? set.epoch.slice(0, 10) : "unknown"}` })))),
+    el("div", { class: "ctl" },
+      el("button", { class: "btn primary", text: "add the chosen", onclick: () => add([...choice.chosen]) }),
+      el("button", { class: "btn", text: `add all ${free.length}`, disabled: !free.length, onclick: () => add(free) }),
+      el("button", { class: "btn", text: "cancel", onclick: () => { targetChoice = null; changed(true); } })));
+}
+
+/** The area that adds satellite targets from a file: its button, or a drop. */
+function targetFileArea() {
+  const input = el("input", {
+    type: "file", accept: TARGET_FILE_TYPES, multiple: true, hidden: true,
+    onchange: async (e) => {
+      for (const file of e.target.files) await addTargetFile(file);
+      e.target.value = "";
+    },
+  });
+  const area = el("div", { class: "open-row drop-area" },
+    el("label", { class: "btn primary" }, "Add from a file…", input),
+    el("span", { class: "hint" }, "A TLE or OMM file with one satellite or a group of them, or a trajectory file.", el("br"), "Or drop the file here."));
+  area.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    area.classList.add("drag-over");
+  });
+  area.addEventListener("dragleave", (event) => {
+    if (!area.contains(event.relatedTarget)) area.classList.remove("drag-over");
+  });
+  area.addEventListener("drop", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    area.classList.remove("drag-over");
+    let dropped;
+    try {
+      dropped = await droppedFiles(event.dataTransfer);
+    } catch (error) {
+      alert(error.message);
+      return;
+    }
+    if (dropped.isFolder) { alert("Drop a file here. A folder goes on the first Setup step."); return; }
+    for (const { file } of dropped.files) await addTargetFile(file);
+  });
+  return el("div", {}, area, targetChoice && targetFiles.has(targetChoice.name) ? targetChooser() : null);
+}
+
+/** A satellite target's file: its kind, its name, and a button to choose it. */
+function targetFileCell(item) {
+  const held = targetFiles.has(item.file);
+  return el("span", { class: "ctl" },
+    selectInput(item, "source", [["tle", "TLE"], ["omm", "OMM"], ["trajectory", "trajectory"]], { onchange: () => item.source === "trajectory" && (item.object = "") }),
+    textInput(item, "file", { placeholder: "a file", onchange: (value) => { item.file = value.trim(); changed(true); } }),
+    el("label", { class: "btn small" }, "choose…", el("input", {
+      type: "file", accept: TARGET_FILE_TYPES, hidden: true,
+      onchange: async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const text = await file.text();
+        targetFiles.set(file.name, text);
+        sources[targetKind(file.name)] = { how: "file" };
+        Object.assign(item, { file: file.name, source: orbitFileKind(file.name, text) });
+        if (item.source === "trajectory") item.object = "";
+        changed(true);
+      },
+    })),
+    item.file && !held ? el("span", { class: "hint", text: "not held" }) : null);
+}
+
+/** Which satellite a target takes: a list of the file's satellites when it holds several, and a box otherwise. */
+function objectCell(item) {
+  if (item.source === "trajectory") return el("span", { class: "hint", text: "the file's only one" });
+  const sets = heldSets(item.file);
+  if (sets && sets.length > 1) {
+    const names = sets.map((set) => set.name);
+    const options = sets.map((set) => [set.name && names.indexOf(set.name) === names.lastIndexOf(set.name) ? set.name : String(set.number), elementSetLabel(set)]);
+    return selectInput(item, "object", options, { blank: "by the target's name", onchange: () => {} });
+  }
+  return textInput(item, "object", { placeholder: sets ? "the only one" : "a name or a number" });
+}
+
+/** The epoch of the element set a target takes, and how far it is from the run, or what is wrong. */
+function epochCell(item) {
+  if (item.source === "trajectory") return el("span", { class: "hint", text: "checked when the run starts" });
+  const sets = heldSets(item.file);
+  if (!sets) return el("span", { class: "hint", text: targetFiles.has(item.file) ? "the file does not read" : "—" });
+  const picked = pickedElementSet(sets, item.object, item.name);
+  if (!picked.set) return el("span", { class: "bad", text: picked.problem });
+  const [text, far] = epochNote(picked.set.epoch);
+  return el("span", { class: far ? "warn nowrap" : "nowrap", text, title: `${elementSetLabel(picked.set)}, epoch ${picked.set.epoch.replace("T", " ")} UTC` });
+}
+
 /** The comments on the overall power subsystem, which head the Power pages. */
 function powerComments() {
   if (!project.hasPower) return null;
@@ -151,7 +325,8 @@ const SECTIONS = {
     title: "Folder", file: "all files",
     render(body) {
       body.append(openFolderButton());
-      body.append(filesTable([{ rows: FILES.map(({ kind }) => ({ kind, add: { power: addPower, consumption: addConsumption }[kind] })) }]));
+      const targetRows = satTargetFiles().filter((name) => targetFiles.has(name)).map((name) => ({ kind: targetKind(name) }));
+      body.append(filesTable([{ rows: [...FILES.map(({ kind }) => ({ kind, add: { power: addPower, consumption: addConsumption }[kind] })), ...targetRows] }]));
       body.append(commentsBox(S, "Your comments on the overall scenario", { open: true, note: `They go in the comments field at the top of ${project.names.scenario}. The comments on the overall power subsystem are in the Power steps.` }));
     },
   },
@@ -268,10 +443,10 @@ const SECTIONS = {
     },
   },
 
-  targets: {
+  gnd_targets: {
     title: "Ground targets", file: "scenario",
     render(body) {
-      const list = S.targets.items;
+      const list = S.gnd_targets.items;
       body.append(placeSearch(list));
       const table = el("table", { class: "items" });
       table.append(el("tr", {}, ["name", "latitude", "longitude", "altitude", "min elevation", ""].map((h) => el("th", { text: h }))));
@@ -293,7 +468,32 @@ const SECTIONS = {
         class: "btn", text: "+ target",
         onclick: () => { list.push({ name: `target ${list.length + 1}`, latitude: q(0, "deg"), longitude: q(0, "deg"), altitude: q("", "m"), min_elevation: q("", "deg"), comments: "" }); changed(true); },
       })));
-      body.append(commentsBox(S.targets, "Your comments on all the targets"));
+      body.append(commentsBox(S.gnd_targets, "Your comments on all the targets"));
+    },
+  },
+
+  sat_targets: {
+    title: "Satellite targets", file: "scenario",
+    render(body) {
+      const list = S.sat_targets.items;
+      body.append(targetFileArea());
+      const table = el("table", { class: "items" });
+      table.append(el("tr", {}, ["name", "file", "satellite", "min clearance", "epoch", ""].map((h) => el("th", { text: h }))));
+      const tbody = el("tbody");
+      table.append(tbody);
+      list.forEach((item, index) => {
+        const tr = selectable(el("tr"), { kind: "target", item });
+        tr.append(
+          el("td", {}, nameInput(item, "target", targetNames)),
+          el("td", {}, targetFileCell(item)),
+          el("td", {}, objectCell(item)),
+          el("td", {}, quantityInput(item, "min_clearance", ["km"], { placeholder: "100" })),
+          el("td", {}, epochCell(item)),
+          el("td", { class: "tools" }, commentsButton(item, 6, tbody, tr), " ", itemTools(list, index, { kind: "target", name: item.name })));
+        tbody.append(tr);
+      });
+      body.append(el("div", { class: "scroll-x" }, table));
+      body.append(commentsBox(S.sat_targets, "Your comments on all the satellite targets"));
     },
   },
 

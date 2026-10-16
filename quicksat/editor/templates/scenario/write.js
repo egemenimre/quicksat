@@ -1,7 +1,5 @@
 // quicksat scenario editor: writing the folder's files from the project.
 
-const ORBIT_KEYS = { tle: "tle_file", omm: "omm_file", trajectory: "trajectory_file" };
-
 function scenarioYaml() {
   const lines = [...HEADER, ""];
   if (S.comments.trim()) { commentsLines(lines, 0, S.comments); lines.push(""); }
@@ -59,12 +57,23 @@ function scenarioYaml() {
     lines.push("");
   }
 
-  if (S.targets.items.length || S.targets.comments.trim()) {
-    helpLines(lines, 0, "targets");
-    lines.push("targets:");
-    commentsLines(lines, 2, S.targets.comments);
-    for (const t of S.targets.items) {
+  if (S.gnd_targets.items.length || S.gnd_targets.comments.trim()) {
+    helpLines(lines, 0, "gnd_targets");
+    lines.push("gnd_targets:");
+    commentsLines(lines, 2, S.gnd_targets.comments);
+    for (const t of S.gnd_targets.items) {
       itemLines(lines, 2, t.name, [["latitude", yq(t.latitude)], ["longitude", yq(t.longitude)], ["altitude", yq(t.altitude)], ["min_elevation", yq(t.min_elevation)]], t.comments);
+    }
+    lines.push("");
+  }
+
+  if (S.sat_targets.items.length || S.sat_targets.comments.trim()) {
+    helpLines(lines, 0, "sat_targets");
+    lines.push("sat_targets:");
+    commentsLines(lines, 2, S.sat_targets.comments);
+    for (const t of S.sat_targets.items) {
+      const pairs = [[ORBIT_KEYS[t.source], ys(t.file)], ["object", t.object ? ys(t.object) : ""], ["min_clearance", yq(t.min_clearance)]];
+      itemLines(lines, 2, t.name, pairs, t.comments);
     }
     lines.push("");
   }
@@ -189,7 +198,7 @@ function savePath(name) {
   return { path: base, note: `the scenario names ${name}, so move it there` };
 }
 
-/** Every file the folder saves: the scenario, its model and orbit file, and the power files. */
+/** Every file the folder saves: the scenario, its model, orbit and satellite target files, and the power files. */
 function projectFiles() {
   const files = [{ kind: "scenario", path: project.names.scenario, text: scenarioYaml() }];
   if (S.model.file && model.bytes) {
@@ -200,6 +209,10 @@ function projectFiles() {
   if (key && orbitFile && orbitFile.name === S.orbit[key]) {
     const { path, note } = savePath(S.orbit[key]);
     files.push({ kind: "orbit", path, text: orbitFile.text, note: note || "the orbit file" });
+  }
+  for (const name of satTargetFiles().filter((name) => targetFiles.has(name))) {
+    const { path, note } = savePath(name);
+    files.push({ kind: targetKind(name), path, text: targetFiles.get(name), note: note || "a satellite target's file" });
   }
   if (project.hasPower) files.push({ kind: "power", path: project.names.power, text: powerYaml() });
   if (project.hasConsumption) files.push({ kind: "consumption", path: project.names.consumption, text: consumptionCsv() });

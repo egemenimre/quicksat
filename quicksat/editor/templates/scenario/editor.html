@@ -20,6 +20,15 @@ main.with-3d { grid-template-columns: minmax(0, 1fr) minmax(320px, 38%); }
 .search-results button:hover { border-color: var(--accent); }
 .search-results small { color: var(--muted); }
 
+/* The satellites of a file just added, to choose from */
+.drop-area + .target-choice { margin-top: 8px; }
+.target-choice { border: 1px solid var(--line); border-radius: 4px; padding: 8px 14px 12px; margin-bottom: 10px; }
+.target-choice .choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 2px 14px; margin: 6px 0 10px; max-height: 260px; overflow: auto; }
+.target-choice label { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.target-choice label.added { color: var(--muted); }
+.target-choice small { color: var(--muted); }
+.nowrap { white-space: nowrap; }
+
 .items .trigger-text { color: var(--amber); white-space: nowrap; font-size: 11.5px; margin-top: 5px; }
 /* Activities: the trigger's cell has two lines, so every cell aligns to the top and the
    controls of a row stay on one line, with the written trigger below them */
@@ -101,6 +110,7 @@ main:not(.with-3d) .panel3d { display: none; }
     </section>
     <section class="page" id="page-orbit"><div class="sheet" id="sheet-orbit"></div></section>
     <section class="page" id="page-spacecraft"><div class="sheet" id="sheet-spacecraft"></div></section>
+    <section class="page" id="page-targets"><div class="sheet" id="sheet-targets"></div></section>
     <section class="page" id="page-operations"><div class="sheet" id="sheet-operations"></div></section>
     <section class="page" id="page-activities"><div class="sheet" id="sheet-activities"></div></section>
     <section class="page" id="page-power"><div class="sheet" id="sheet-power"></div></section>
