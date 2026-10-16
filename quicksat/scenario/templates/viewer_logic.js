@@ -5,7 +5,7 @@
 // window or the libraries: each function takes its data as arguments.
 "use strict";
 
-const PAGE_VERSION = 5;
+const PAGE_VERSION = 6;
 
 const pad = (value) => String(value).padStart(2, "0");
 const clamp = (x, lo, hi) => Math.min(Math.max(x, lo), hi);

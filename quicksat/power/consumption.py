@@ -128,14 +128,21 @@ class PowerConsumption:
         The modes, in the order of the file's columns
     source_file : Path, optional
         The file the rows were read from
+    source_text : str, optional
+        The file's text, as read, for the viewer to show
     """
 
     def __init__(
-        self, loads: list[Load], modes: list[str], source_file: Path | None = None
+        self,
+        loads: list[Load],
+        modes: list[str],
+        source_file: Path | None = None,
+        source_text: str | None = None,
     ):
         self.loads = loads
         self.modes = modes
         self.source_file = source_file
+        self.source_text = source_text
 
     @classmethod
     def from_csv(cls, csv_path: str | Path) -> "PowerConsumption":
@@ -202,7 +209,7 @@ class PowerConsumption:
         twice = sorted({name for name in ids if ids.count(name) > 1})
         if twice:
             raise ValueError(f"{path.name}: equipment IDs used more than once: {twice}")
-        return cls(loads, modes, path)
+        return cls(loads, modes, path, path.read_text(encoding="utf-8"))
 
     def mode_table(self, margin: bool = False) -> pd.DataFrame:
         """

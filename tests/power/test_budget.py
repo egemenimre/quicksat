@@ -248,3 +248,6 @@ def test_the_panels_are_placed_as_the_model_draws_them(budget):
     # the body box leaves the wings out
     assert data["spacecraft"]["body_m"][1] < 1
     assert data["power_text"].startswith("# Fixture for the power tests")
+    csv = budget.consumption.consumption.source_file
+    assert data["consumption_file"] == "power_consumption.csv"
+    assert data["consumption_text"] == csv.read_text(encoding="utf-8")

@@ -112,6 +112,8 @@ def test_the_viewer_names_the_file(trajectory_run):
     name, frame = FORMATS[form]
     assert orbit["tle"] is None
     assert orbit["name"] == "SSO 510"
+    path = trajectory_run.scenario.orbit.trajectory_file
+    assert (data["orbit_file"], data["orbit_text"]) == (name, path.read_text())
     trajectory = orbit["trajectory"]
     assert (trajectory["file"], trajectory["format"], trajectory["frame"]) == (
         name,

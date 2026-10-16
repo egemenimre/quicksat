@@ -4,6 +4,10 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- The viewer holds every input file of its run. Its Inputs tab now shows the orbit's file, for a TLE, an OMM or a trajectory file, and the power consumption file. `scenario.js` is version 6, and `power.js` version 2.
+
 ### Changed
 
 - The editors' help sits in one file per domain, in `quicksat/editor/help/`: each step's information box, and the `#` help lines that the editor writes into saved files. The text itself is unchanged.
