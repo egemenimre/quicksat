@@ -118,6 +118,34 @@ const consumptionModes = () => (S.slew.enabled || project.slewColumn ? [...S.mod
 
 // ---------------------------------------------------------------- sections
 
+/** A time of day 12 h later, such as `01:30` for `13:30`, or the text as it is if it is not a time. */
+function twelveHoursOn(time) {
+  const match = /^(\d{1,2}):(\d{2})/.exec(time);
+  if (!match) return time;
+  return `${String((Number(match[1]) + 12) % 24).padStart(2, "0")}:${match[2]}${time.slice(match[0].length)}`;
+}
+
+/** The hint by the node time: which node it is, and the other node's time, 12 h away. */
+function otherNodeText(sso) {
+  const which = sso.node === "ltan" ? "ascending" : "descending";
+  if (twelveHoursOn(sso.time) === sso.time) return `local time of the ${which} node`;
+  return `local time of the ${which} node: the same orbit as ${sso.node === "ltan" ? "LTDN" : "LTAN"} ${twelveHoursOn(sso.time)}`;
+}
+
+/** The choice of node. Switching keeps the orbit: the time moves 12 h, to the other node's. */
+function nodeChoice(sso) {
+  const node = el("div", { class: "radio-row" });
+  for (const [value, label] of [["ltan", "ascending (LTAN)"], ["ltdn", "descending (LTDN)"]]) {
+    node.append(el("label", { class: sso.node === value ? "on" : "" },
+      el("input", {
+        type: "radio", checked: sso.node === value,
+        onchange: () => { sso.time = twelveHoursOn(sso.time); sso.node = value; changed(true); },
+      }),
+      label));
+  }
+  return node;
+}
+
 const SECTIONS = {
   project: {
     title: "Folder", file: "all files",
@@ -136,9 +164,13 @@ const SECTIONS = {
       row(g, "Where it comes from", radioRow(o, "source", [["sso", "sun-synchronous"], ["tle", "TLE file"], ["omm", "OMM file"], ["trajectory", "trajectory file"]]));
       if (o.source === "sso") {
         row(g, "Altitude", quantityInput(o.sso, "altitude", ["km"]), "averaged over one orbit");
-        row(g, "LTAN", el("span", { class: "ctl" },
-          el("input", { type: "time", value: o.sso.ltan, oninput: (e) => { o.sso.ltan = e.target.value; changed(); } }),
-          el("span", { class: "hint", text: "local time of the ascending node" })));
+        row(g, "Node", nodeChoice(o.sso), "switching keeps the orbit");
+        const other = el("span", { class: "hint" });
+        const showOther = () => { other.textContent = otherNodeText(o.sso); };
+        row(g, o.sso.node.toUpperCase(), el("span", { class: "ctl" },
+          el("input", { type: "time", value: o.sso.time, oninput: (e) => { o.sso.time = e.target.value; showOther(); changed(); } }),
+          other));
+        showOther();
       } else {
         const key = { tle: "tle_file", omm: "omm_file", trajectory: "trajectory_file" }[o.source];
         const accept = { tle: ".tle,.txt", omm: ".omm,.kvn,.xml,.json,.csv", trajectory: ".ecsv,.oem,.kvn" }[o.source];

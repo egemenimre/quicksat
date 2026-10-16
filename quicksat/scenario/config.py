@@ -448,20 +448,22 @@ _CLOCK_TIME = re.compile(r"(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?")
 """A time of day written as hours and minutes, with seconds if wanted."""
 
 
-def _parse_ltan(value) -> Quantity:
+def _parse_node_time(value, name: str) -> Quantity:
     """
-    Pydantic BeforeValidator for the local time of the ascending node.
+    The local time of a node: of the ascending node, or of the descending node.
 
     Parameters
     ----------
     value : str or Quantity
         A time of day in quotes, such as `"10:30"` or `"10:30:15"`, or a time
         with a unit, such as `10.5 h`
+    name : str
+        The field's name, `ltan` or `ltdn`, for the error messages
 
     Returns
     -------
-    ltan : Quantity
-        The local time of the ascending node, in hours, from 0 to 24
+    time : Quantity
+        The local time of the node, in hours, from 0 to 24
 
     Raises
     ------
@@ -473,7 +475,7 @@ def _parse_ltan(value) -> Quantity:
     example = 'such as "10:30" in quotes, or 10.5 h'
     if isinstance(value, bool) or isinstance(value, (int, float)):
         raise ValueError(
-            f"ltan must be a time of day, {example}. Got the bare number {value}. "
+            f"{name} must be a time of day, {example}. Got the bare number {value}. "
             "YAML reads an unquoted 10:30 as the number 630, so put it in quotes."
         )
     if isinstance(value, Quantity):
@@ -484,22 +486,24 @@ def _parse_ltan(value) -> Quantity:
         if match:
             hour, minute, second = match.groups()
             if int(minute) >= 60 or float(second or 0) >= 60:
-                raise ValueError(f"ltan has more than 59 minutes or seconds: '{text}'")
+                raise ValueError(
+                    f"{name} has more than 59 minutes or seconds: '{text}'"
+                )
             hours = Q_(int(hour) + int(minute) / 60 + float(second or 0) / 3600, "h")
         else:
             try:
                 hours = Q_(text)
             except (TypeError, ValueError):
                 raise ValueError(
-                    f"ltan must be a time of day, {example}. Got '{text}'"
+                    f"{name} must be a time of day, {example}. Got '{text}'"
                 ) from None
     else:
-        raise ValueError(f"ltan must be a time of day, {example}. Got {value!r}")
+        raise ValueError(f"{name} must be a time of day, {example}. Got {value!r}")
     if not u.h.is_equivalent(hours.unit):
-        raise ValueError(f"ltan must be a time of day, {example}. Got '{hours}'")
+        raise ValueError(f"{name} must be a time of day, {example}. Got '{hours}'")
     hours = hours.to(u.h)
     if not Q_(0, "h") <= hours < Q_(24, "h"):
-        raise ValueError(f"ltan must be from 0 to 24 h, got {hours}")
+        raise ValueError(f"{name} must be from 0 to 24 h, got {hours}")
     return hours
 
 
@@ -515,9 +519,13 @@ class SsoOrbit(Commented):
     altitude : Quantity
         Distance from the centre of the Earth minus `R_EARTH`, averaged over one
         orbit. Positive.
-    ltan : Quantity
+    ltan : Quantity, optional
         Local mean time of the ascending node, from 0 to 24 h. Written `"10:30"`,
         in quotes, or `10.5 h`.
+    ltdn : Quantity, optional
+        Local mean time of the descending node, in place of `ltan`. The two are
+        12 h apart, so `ltdn: "10:30"` is the same orbit as `ltan: "22:30"`.
+        Exactly one of `ltan` and `ltdn` is given.
     comments : str, optional
         Your own notes on this block. quicksat keeps them and does not read them.
     """
@@ -525,15 +533,35 @@ class SsoOrbit(Commented):
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     altitude: LengthQty
-    ltan: Annotated[Quantity, BeforeValidator(_parse_ltan)]
+    ltan: Annotated[
+        Quantity | None, BeforeValidator(lambda v: _parse_node_time(v, "ltan"))
+    ] = None
+    ltdn: Annotated[
+        Quantity | None, BeforeValidator(lambda v: _parse_node_time(v, "ltdn"))
+    ] = None
 
-    @field_validator("altitude")
-    @classmethod
-    def _positive_altitude(cls, value):
-        """Checks that the altitude is above zero."""
-        if value <= Q_(0, "km"):
-            raise ValueError(f"altitude must be positive, got '{value}'")
-        return value
+    @model_validator(mode="after")
+    def _one_node_time(self):
+        """Checks that exactly one of the two node times is given."""
+        if (self.ltan is None) == (self.ltdn is None):
+            raise ValueError(
+                'sso needs exactly one of ltan and ltdn, such as ltan: "10:30"'
+            )
+        return self
+
+    @property
+    def ascending_node_time(self) -> Quantity:
+        """The local time of the ascending node: `ltan`, or `ltdn` 12 h away."""
+        if self.ltan is not None:
+            return self.ltan
+        return (self.ltdn + Q_(12, "h")) % Q_(24, "h")
+
+    @property
+    def node_label(self) -> str:
+        """The node time as the file gives it, such as `LTDN 10.5 h`."""
+        if self.ltan is not None:
+            return f"LTAN {self.ltan:.4g}"
+        return f"LTDN {self.ltdn:.4g}"
 
 
 class Orbit(Commented):

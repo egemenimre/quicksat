@@ -35,7 +35,7 @@ function runChecks() {
   const o = S.orbit;
   if (o.source === "sso") {
     positive("orbit", "the altitude", o.sso.altitude);
-    if (!/^\d{1,2}:\d{2}(:\d{2})?$/.test(o.sso.ltan)) add("orbit", "the LTAN must be a time of day, such as 13:30");
+    if (!/^\d{1,2}:\d{2}(:\d{2})?$/.test(o.sso.time)) add("orbit", `the ${o.sso.node.toUpperCase()} must be a time of day, such as 13:30`);
   } else {
     const key = { tle: "tle_file", omm: "omm_file", trajectory: "trajectory_file" }[o.source];
     if (!o[key]) add("orbit", "no file is chosen");
