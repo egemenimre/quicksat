@@ -7,9 +7,10 @@
 Tests for the articulations: the parts of the 3D model that turn to point an
 axis toward a direction, such as the sun.
 
-`articulated_run` is `scenario.yaml` with slews, and with the model and two
-articulations. One wing tracks the sun and parks in `downlink`. The other turns
-about `-y` within a range, so the sign and the clamp are both tested.
+`articulated_run`, from the conftest, is `scenario.yaml` with slews, and with
+the model and two articulations. One wing tracks the sun and parks in
+`downlink`. The other turns about `-y` within a range, so the sign and the
+clamp are both tested.
 """
 
 import dataclasses
@@ -32,27 +33,13 @@ from quicksat.scenario.spacecraft import node_index, read_glb_json
 from quicksat.scenario.viewer import scenario_data
 from quicksat.utils.intervals import labels_at
 
-from .conftest import SLEW
-
-MODEL = """3d_model:
-  file: spacecraft.glb
-  articulations:
-    wing +y: {part: Wing +y, axis: +y, point: [-z, sun], park: {downlink: 45 deg}}
-    limited: {part: Wing -y, axis: -y, point: [-z, sun], range: [-30 deg, 60 deg]}
-"""
-"""The model block of `articulated_run`."""
+from .conftest import ARTICULATED_MODEL, SLEW
 
 
 @pytest.fixture(scope="module")
 def text(data_dir) -> str:
     """The fixture scenario file, which names no model."""
     return (data_dir / "scenario.yaml").read_text()
-
-
-@pytest.fixture(scope="module")
-def articulated_run(text, data_dir) -> ScenarioRun:
-    """Three orbits of `scenario.yaml`, with slews and two articulations."""
-    return run_scenario(Scenario.from_yaml_text(MODEL + text + SLEW, data_dir))
 
 
 def sun_in_body(run: ScenarioRun) -> np.ndarray:
@@ -139,7 +126,7 @@ def test_the_model_and_its_articulations_read(articulated_run, data_dir):
     assert (wing.part, wing.axis, wing.point) == ("Wing +y", "+y", ("-z", "sun"))
     assert [end.to_value(u.deg) for end in wing.range] == [-180, 180]
     assert wing.park["downlink"].to_value(u.deg) == 45
-    limited = model.articulations["limited"]
+    limited = model.articulations["wing -y"]
     assert [end.to_value(u.deg) for end in limited.range] == [-30, 60]
 
 
@@ -206,7 +193,7 @@ def test_without_articulations_there_are_no_angles(run):
 
 def test_each_articulation_has_an_angle_at_each_step(articulated_run):
     angles = articulated_run.articulations
-    assert set(angles) == {"wing +y", "limited"}
+    assert set(angles) == {"wing +y", "wing -y"}
     for values in angles.values():
         assert values.shape == articulated_run.times.shape
         assert np.all(np.abs(values.to_value(u.deg)) <= 180)
@@ -225,7 +212,7 @@ def test_a_tracking_wing_faces_the_sun_as_closely_as_its_axis_allows(articulated
 
 
 def test_a_part_can_turn_toward_any_direction_an_attitude_can_use(text, data_dir):
-    model = MODEL.replace(
+    model = ARTICULATED_MODEL.replace(
         "point: [-z, sun], park: {downlink: 45 deg}", "point: [-z, nadir]"
     )
     run = run_scenario(Scenario.from_yaml_text(model + text + SLEW, data_dir))
@@ -249,7 +236,9 @@ def test_a_wing_parks_in_its_parking_mode(articulated_run):
 
 
 def test_a_wing_can_park_while_the_body_slews(text, data_dir):
-    model = MODEL.replace("park: {downlink: 45 deg}", "park: {slew: 10 deg}")
+    model = ARTICULATED_MODEL.replace(
+        "park: {downlink: 45 deg}", "park: {slew: 10 deg}"
+    )
     run = run_scenario(Scenario.from_yaml_text(model + text + SLEW, data_dir))
     slewing = modes_of(run) == "slew"
     assert slewing.any()
@@ -274,7 +263,7 @@ def test_a_limited_wing_turns_the_other_way_and_stops_at_its_range(articulated_r
     suns = sun_in_body(run)
     minus_y, minus_z = axis_vector("-y"), axis_vector("-z")
     free = np.degrees(tracking_angles(minus_y, minus_z, suns))
-    limited = run.articulations["limited"].to_value(u.deg)
+    limited = run.articulations["wing -y"].to_value(u.deg)
     inside = (free >= -30) & (free <= 60)
     assert inside.any() and (~inside).any()
     assert limited[inside] == pytest.approx(free[inside])
@@ -292,7 +281,7 @@ def test_the_viewer_data_carries_each_articulation(articulated_run, data_dir):
     data = scenario_data(articulated_run)
     joints = data["model"]["articulations"]
     gltf = read_glb_json(data_dir / "spacecraft.glb")
-    assert [joint["name"] for joint in joints] == ["wing +y", "limited"]
+    assert [joint["name"] for joint in joints] == ["wing +y", "wing -y"]
     first = joints[0]
     assert first["part"] == "Wing +y"
     assert first["node"] == node_index(gltf, "Wing +y")
