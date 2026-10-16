@@ -149,10 +149,10 @@ function builtTriggerText(end) {
 
 // ---------------------------------------------------------------- the scenario file
 
-/** The LTAN as `HH:MM`, from `"13:30"`, `10.5 h`, or the minutes YAML makes of an unquoted 13:30. */
-function readLtan(value) {
+/** A node's local time, `ltan` or `ltdn`, as `HH:MM`, from `"13:30"`, `10.5 h`, or the minutes YAML makes of an unquoted 13:30. */
+function readNodeTime(value, key) {
   if (typeof value === "number") {
-    notice("changed", `orbit › sso › ltan: an unquoted ${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")} reads as ${value} in YAML; the editor writes it in quotes`);
+    notice("changed", `orbit › sso › ${key}: an unquoted ${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")} reads as ${value} in YAML; the editor writes it in quotes`);
     return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
   }
   const text = String(value ?? "").trim();
@@ -213,7 +213,10 @@ function readScenario(raw) {
   const orbitRaw = raw.orbit && typeof raw.orbit === "object" ? raw.orbit : {};
   knownKeys(orbitRaw, ["comments", "sso", "tle_file", "omm_file", "trajectory_file"], "orbit");
   const ssoRaw = orbitRaw.sso && typeof orbitRaw.sso === "object" ? orbitRaw.sso : null;
-  knownKeys(ssoRaw, ["altitude", "ltan", "comments"], "orbit › sso");
+  knownKeys(ssoRaw, ["altitude", "ltan", "ltdn", "comments"], "orbit › sso");
+  // the local time of one node: the ascending one, unless only the descending one is given
+  const node = ssoRaw && ssoRaw.ltdn != null && ssoRaw.ltan == null ? "ltdn" : "ltan";
+  if (ssoRaw && ssoRaw.ltan != null && ssoRaw.ltdn != null) notice("changed", "orbit › sso has both ltan and ltdn, which quicksat refuses; the editor keeps ltan");
   const source = ssoRaw ? "sso" : orbitRaw.tle_file ? "tle" : orbitRaw.omm_file ? "omm" : orbitRaw.trajectory_file ? "trajectory" : "sso";
 
   const modelRaw = raw["3d_model"];
@@ -229,7 +232,8 @@ function readScenario(raw) {
       source,
       sso: {
         altitude: ssoRaw ? readQ(ssoRaw.altitude, "km", "orbit › sso › altitude") : q(500, "km"),
-        ltan: ssoRaw ? readLtan(ssoRaw.ltan) : "10:30",
+        node,
+        time: ssoRaw ? readNodeTime(ssoRaw[node], node) : "10:30",
         comments: ssoRaw ? str(ssoRaw.comments) : "",
       },
       tle_file: str(orbitRaw.tle_file),

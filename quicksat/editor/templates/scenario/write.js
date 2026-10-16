@@ -12,7 +12,7 @@ function scenarioYaml() {
   commentsLines(lines, 2, o.comments);
   if (o.source === "sso") {
     helpLines(lines, 2, "sso");
-    const sso = [["altitude", yq(o.sso.altitude)], ["ltan", JSON.stringify(o.sso.ltan)]];
+    const sso = [["altitude", yq(o.sso.altitude)], [o.sso.node, JSON.stringify(o.sso.time)]];
     if (!o.sso.comments.trim()) lines.push(`  sso: ${flowMap(sso)}`);
     else {
       lines.push("  sso:");

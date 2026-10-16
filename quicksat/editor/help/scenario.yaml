@@ -30,7 +30,8 @@ orbit:
   info: |-
     <p>The orbit sets where the satellite is at each step: when it is in sunlight, what it flies over, and which ground stations see it.</p>
     <span class="k">Options</span>
-    <p><b>Sun-synchronous:</b> quicksat builds a TLE from the altitude and the LTAN, with its epoch at the start time. The quickest way to begin.</p>
+    <p><b>Sun-synchronous:</b> quicksat builds a TLE from the altitude and the local time of one node, with its epoch at the start time. The quickest way to begin.</p>
+    <p>The node is the <b>ascending</b> one, where the satellite crosses the equator going north: the LTAN. Or it is the <b>descending</b> one, going south: the LTDN. The two are 12 hours apart, so an LTDN of 10:30 is the same orbit as an LTAN of 22:30. Give the one your mission quotes.</p>
     <p><b>TLE or OMM file:</b> a real element set, such as one from CelesTrak. The file must hold exactly one.</p>
     <p><b>Trajectory file:</b> positions and velocities at times, in ECSV or CCSDS OEM. Use it for an orbit from another tool, such as GMAT.</p>
     <span class="k">Consequences</span>
@@ -40,7 +41,7 @@ orbit:
 
 sso:
   file: >-
-    For a sun-synchronous orbit, quicksat builds the TLE, with its epoch at the start time. The altitude is averaged over one orbit. The LTAN is in quotes, because YAML reads an unquoted 13:30 as the number 810.
+    For a sun-synchronous orbit, quicksat builds the TLE, with its epoch at the start time. The altitude is averaged over one orbit. It takes the local time of the ascending node, ltan, or of the descending node, ltdn, 12 h away. The time is in quotes, because YAML reads an unquoted 13:30 as the number 810.
 
 time:
   title: Start, duration and step

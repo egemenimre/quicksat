@@ -8,8 +8,9 @@
 orbit:
   # The orbit is given one of four ways. Here, a sun-synchronous orbit, for which
   # quicksat builds the TLE, with its epoch at the start time below. The altitude
-  # is averaged over one orbit. Write the LTAN in quotes: YAML reads an unquoted
-  # 13:30 as the number 810.
+  # is averaged over one orbit. Give the local time of the ascending node, ltan,
+  # or of the descending node, ltdn, 12 h away: ltdn: "01:30" is the same orbit.
+  # Write the time in quotes: YAML reads an unquoted 13:30 as the number 810.
   sso: {altitude: 510 km, ltan: "13:30"}
   # Or a TLE file with exactly one TLE. A relative path is taken from the folder
   # of this file. This one is a 510 km orbit at 10:30 LTAN, with its epoch at the

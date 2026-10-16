@@ -422,6 +422,21 @@ def test_an_sso_orbit_is_built_at_the_start(data_dir):
     assert tle.name == "SSO 510 km, LTAN 13.5 h"
 
 
+def test_an_ltdn_gives_the_orbit_of_the_ltan_12_h_away(data_dir):
+    def tle(node):
+        text = (
+            (data_dir / "scenario.yaml")
+            .read_text()
+            .replace("tle_file: sso_510km.tle", f"sso: {{altitude: 510 km, {node}}}")
+        )
+        return scenario_orbit(Scenario.from_yaml_text(text, base_dir=data_dir))
+
+    ascending = tle('ltan: "22:30"')
+    descending = tle('ltdn: "10:30"')
+    assert descending.name == "SSO 510 km, LTDN 10.5 h"
+    assert descending.lines[1:] == ascending.lines[1:]
+
+
 def test_an_omm_file_gives_the_tle_it_was_written_from(data_dir, tmp_path):
     # the run takes its orbit from scenario_orbit, so the same TLE gives the same run
     tle = read_tle_file(data_dir / "sso_510km.tle")

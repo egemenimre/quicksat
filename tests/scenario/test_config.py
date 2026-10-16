@@ -245,6 +245,43 @@ def test_an_ltan_out_of_range_is_refused(ltan):
 
 
 @pytest.mark.parametrize(
+    ("ltdn", "ascending"),
+    [("10:30", 22.5), ("22:30", 10.5), ("0:00", 12), ("13.5 h", 1.5)],
+)
+def test_the_ltdn_gives_the_ascending_node_12_h_away(ltdn, ascending):
+    sso = scenario(orbit={"sso": {"altitude": "510 km", "ltdn": ltdn}}).orbit.sso
+    assert sso is not None
+    assert sso.ltan is None
+    assert_quantity_allclose(sso.ascending_node_time, Q_(ascending, "h"))
+    assert sso.node_label.startswith("LTDN ")
+
+
+def test_the_ltan_is_the_ascending_node():
+    sso = scenario(orbit={"sso": {"altitude": "510 km", "ltan": "13:30"}}).orbit.sso
+    assert sso is not None
+    assert_quantity_allclose(sso.ascending_node_time, Q_(13.5, "h"))
+    assert sso.node_label == "LTAN 13.5 h"
+
+
+@pytest.mark.parametrize(
+    "sso",
+    [
+        {"altitude": "510 km"},
+        {"altitude": "510 km", "ltan": "10:30", "ltdn": "22:30"},
+    ],
+)
+def test_the_sso_needs_exactly_one_node_time(sso):
+    with pytest.raises(ValueError, match="exactly one of ltan and ltdn"):
+        scenario(orbit={"sso": sso})
+
+
+@pytest.mark.parametrize("ltdn", ["24:00", "10:75", "noon"])
+def test_an_ltdn_out_of_range_is_refused(ltdn):
+    with pytest.raises(ValueError, match="ltdn"):
+        scenario(orbit={"sso": {"altitude": "510 km", "ltdn": ltdn}})
+
+
+@pytest.mark.parametrize(
     ("duration", "expected"),
     [
         ("5 h", Q_(5, "h")),

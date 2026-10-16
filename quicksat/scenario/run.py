@@ -238,8 +238,10 @@ def scenario_orbit(scenario: Scenario) -> OrbitSource:
     orbit = scenario.orbit
     if orbit.sso is not None:
         sso = orbit.sso
-        name = f"SSO {sso.altitude:g}, LTAN {sso.ltan:.4g}"
-        return sso_tle(round_time(scenario.start), sso.altitude, sso.ltan, name=name)
+        name = f"SSO {sso.altitude:g}, {sso.node_label}"
+        return sso_tle(
+            round_time(scenario.start), sso.altitude, sso.ascending_node_time, name=name
+        )
     if orbit.trajectory_file is not None:
         return read_trajectory_file(orbit.trajectory_file)
     if orbit.omm_file is not None:
