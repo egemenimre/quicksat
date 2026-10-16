@@ -5,7 +5,7 @@
 // window or the libraries: each function takes its data as arguments.
 "use strict";
 
-const PAGE_VERSION = 6;
+const PAGE_VERSION = 7;
 
 const pad = (value) => String(value).padStart(2, "0");
 const clamp = (x, lo, hi) => Math.min(Math.max(x, lo), hi);
@@ -23,10 +23,10 @@ function scenarioProblem(scenario) {
   if (scenario.format !== "quicksat-scenario" || !Number.isInteger(scenario.version)) {
     return "scenario.js is not a quicksat scenario file.";
   }
-  if (scenario.version > PAGE_VERSION) {
+  if (scenario.version !== PAGE_VERSION) {
     return (
-      `scenario.js is version ${scenario.version}, but this page reads version ${PAGE_VERSION} and older. ` +
-      "Run the notebook again: it copies a matching page into the folder."
+      `scenario.js is version ${scenario.version}, but this page reads version ${PAGE_VERSION}. ` +
+      "Run the notebook again: it writes a matching page and data into the folder."
     );
   }
   return "";
@@ -199,4 +199,95 @@ function excessPieces(t, attitude, attitudeTrack) {
     else pieces.push({ start_s: t[k], end_s: t[k + 1] });
   }
   return pieces;
+}
+
+// ---------------------------------------------------------------- Targets
+
+const WGS84_RADIUS_KM = 6378.137;
+const WGS84_FLATTENING = 1 / 298.257223563;
+
+/**
+ * The pass of a target under way at `time`, or null when it is out of view.
+ * Each pass, `{start_s, end_s}`, holds its start and not its end, as the run's
+ * intervals do. The end of the run, `runEnd`, counts as inside the pass that
+ * reaches it, so that the last time of the grid is not out of view.
+ */
+function passAt(passes, time, runEnd) {
+  if (!passes.length) return null;
+  const pass = pieceAt(passes, time);
+  const inside = pass.start_s <= time && (time < pass.end_s || (time === runEnd && pass.end_s === runEnd));
+  return inside ? pass : null;
+}
+
+/**
+ * A vector in GCRS turned into Earth-fixed axes. `q` turns Earth-fixed vectors
+ * into GCRS, as `q_earth` does, with its scalar last: [x, y, z, w]. So the
+ * vector turns by its inverse.
+ */
+function earthFixed(q, v) {
+  const [x, y, z, w] = [-q[0], -q[1], -q[2], q[3]];
+  // v + w t + q × t, with t = 2 q × v
+  const tx = 2 * (y * v[2] - z * v[1]);
+  const ty = 2 * (z * v[0] - x * v[2]);
+  const tz = 2 * (x * v[1] - y * v[0]);
+  return [v[0] + w * tx + (y * tz - z * ty), v[1] + w * ty + (z * tx - x * tz), v[2] + w * tz + (x * ty - y * tx)];
+}
+
+/**
+ * The geodetic latitude and the longitude, in degrees, of an Earth-fixed
+ * position in km, on the WGS84 ellipsoid. Bowring's method, refined three
+ * times, which is far closer than the map can show.
+ */
+function geodeticOf(position) {
+  const [x, y, z] = position;
+  const a = WGS84_RADIUS_KM;
+  const f = WGS84_FLATTENING;
+  const b = a * (1 - f);
+  const e2 = f * (2 - f);
+  const across = Math.hypot(x, y);
+  let reduced = Math.atan2(z, (1 - f) * across);
+  let latitude = 0;
+  for (let k = 0; k < 3; k++) {
+    latitude = Math.atan2(z + (e2 / (1 - e2)) * b * Math.sin(reduced) ** 3, across - e2 * a * Math.cos(reduced) ** 3);
+    reduced = Math.atan2((1 - f) * Math.sin(latitude), Math.cos(latitude));
+  }
+  return [(latitude * 180) / Math.PI, (Math.atan2(y, x) * 180) / Math.PI];
+}
+
+/** A ground point's Earth-fixed position in km, from its geodetic latitude and longitude in degrees and its height in km. */
+function groundPoint(latitude, longitude, altitude) {
+  const lat = (latitude * Math.PI) / 180;
+  const lon = (longitude * Math.PI) / 180;
+  const e2 = WGS84_FLATTENING * (2 - WGS84_FLATTENING);
+  const n = WGS84_RADIUS_KM / Math.sqrt(1 - e2 * Math.sin(lat) ** 2);
+  return [
+    (n + altitude) * Math.cos(lat) * Math.cos(lon),
+    (n + altitude) * Math.cos(lat) * Math.sin(lon),
+    (n * (1 - e2) + altitude) * Math.sin(lat),
+  ];
+}
+
+/**
+ * The targets that the body points at, at `time`: those that the attitude in
+ * effect names, unless the body is slewing, and the target of each
+ * articulation that its mode does not park. `pointing` is scenario.js's.
+ */
+function pointedTargets(pointing, attitudeTrack, modeTrack, articulations, time) {
+  const names = [...(pointing.attitudes[pieceAt(attitudeTrack, time).value] || [])];
+  const mode = pieceAt(modeTrack, time).value;
+  for (const [name, target] of Object.entries(pointing.articulations)) {
+    const joint = articulations.find((item) => item.name === name);
+    if (joint && !joint.park_modes.includes(mode)) names.push(target);
+  }
+  return [...new Set(names)];
+}
+
+/**
+ * The targets the body view draws an arrow to: those in view, the nearest
+ * first, at most `most` of them, and then each target in `always`, in view or
+ * not. `ranges` gives each target's range by its name.
+ */
+function arrowTargets(inView, ranges, always, most) {
+  const nearest = [...inView].sort((a, b) => ranges[a] - ranges[b]).slice(0, most);
+  return [...new Set([...nearest, ...always])];
 }

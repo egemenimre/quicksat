@@ -25,10 +25,13 @@ const LOGIC = path.join(ROOT, "quicksat", "scenario", "templates", "viewer_logic
 // A script's functions and constants are globals, as in the page. Run in this
 // realm, the arrays they return compare with deepEqual.
 vm.runInThisContext(fs.readFileSync(LOGIC, "utf8"), { filename: LOGIC });
-const { PAGE_VERSION, scenarioProblem, checkPower, joinEclipses, pieceAt, stepAt, attitudeFraction, jointAngle, lightFraction, excessPieces } =
-  vm.runInThisContext(
-    "({ PAGE_VERSION, scenarioProblem, checkPower, joinEclipses, pieceAt, stepAt, attitudeFraction, jointAngle, lightFraction, excessPieces })",
-  );
+const NAMES =
+  "PAGE_VERSION, scenarioProblem, checkPower, joinEclipses, pieceAt, stepAt, attitudeFraction, jointAngle, lightFraction, " +
+  "excessPieces, passAt, earthFixed, geodeticOf, groundPoint, pointedTargets, arrowTargets";
+const {
+  PAGE_VERSION, scenarioProblem, checkPower, joinEclipses, pieceAt, stepAt, attitudeFraction, jointAngle, lightFraction,
+  excessPieces, passAt, earthFixed, geodeticOf, groundPoint, pointedTargets, arrowTargets,
+} = vm.runInThisContext(`({ ${NAMES} })`);
 
 /** The data a viewer folder gives the page, from its scenario.js and power.js. */
 function readFolder(folder) {
@@ -48,11 +51,13 @@ test("the power sample's files pass the checks", () => {
   assert.deepEqual(checkPower(power, scenario), [power, ""]);
 });
 
-test("a missing, foreign or newer scenario.js stops the page, with the reason", () => {
+test("a missing, foreign, newer or older scenario.js stops the page, with the reason", () => {
   assert.match(scenarioProblem(undefined), /no scenario\.js/);
   assert.match(scenarioProblem({ format: "quicksat-power", version: 1 }), /not a quicksat scenario file/);
   const newer = { format: "quicksat-scenario", version: PAGE_VERSION + 1 };
-  assert.match(scenarioProblem(newer), new RegExp(`version ${PAGE_VERSION + 1}, but this page reads version ${PAGE_VERSION}`));
+  assert.match(scenarioProblem(newer), new RegExp(`version ${PAGE_VERSION + 1}, but this page reads version ${PAGE_VERSION}\\.`));
+  const older = { format: "quicksat-scenario", version: PAGE_VERSION - 1 };
+  assert.match(scenarioProblem(older), new RegExp(`version ${PAGE_VERSION - 1}, but this page reads version ${PAGE_VERSION}\\.`));
 });
 
 test("power.js from another run, or with steps or panels missing, is left out with a note", () => {
@@ -182,4 +187,76 @@ test("the sample's spans past the limits are its warnings' passes", () => {
   const spans = excessPieces(run.grid.t_s, run.attitude, run.tracks.attitude);
   const attitudes = new Set(spans.map((span) => pieceAt(run.tracks.attitude, span.start_s).value));
   assert.deepEqual([...attitudes], ["track Svalbard"]);
+});
+
+test("a target is in view from the start of a pass to its end, and at the end of the run", () => {
+  const passes = [
+    { start_s: 10, end_s: 20 },
+    { start_s: 30, end_s: 40 },
+  ];
+  assert.equal(passAt(passes, 5, 40), null);
+  assert.equal(passAt(passes, 10, 40), passes[0]);
+  assert.equal(passAt(passes, 19.999, 40), passes[0]);
+  assert.equal(passAt(passes, 20, 40), null);
+  assert.equal(passAt(passes, 40, 40), passes[1]);
+  assert.equal(passAt(passes, 40, 50), null);
+  assert.equal(passAt([], 10, 40), null);
+});
+
+test("the sample's positions give back its latitude and longitude in Earth-fixed axes", () => {
+  const { r_km: r, q_earth: q, lat_deg: lat, lon_deg: lon } = scenario.grid;
+  for (let k = 0; k < T.length; k += 7) {
+    const fixed = earthFixed(q.slice(4 * k, 4 * k + 4), r.slice(3 * k, 3 * k + 3));
+    const [latitude, longitude] = geodeticOf(fixed);
+    assert.ok(Math.abs(latitude - lat[k]) < 1e-3, `latitude at step ${k}: ${latitude} against ${lat[k]}`);
+    assert.ok(Math.abs(((longitude - lon[k] + 540) % 360) - 180) < 1e-3, `longitude at step ${k}`);
+  }
+});
+
+test("a ground point's position and its geodetic place turn into each other", () => {
+  for (const [latitude, longitude, altitude] of [[78.229, 15.408, 0.5], [0, 0, 0], [-90, 0, 0], [43.6, -120, 2], [89.99, 179, 500]]) {
+    const [lat, lon] = geodeticOf(groundPoint(latitude, longitude, altitude));
+    assert.ok(Math.abs(lat - latitude) < 1e-9, `latitude ${latitude}`);
+    if (Math.abs(latitude) < 90) assert.ok(Math.abs(lon - longitude) < 1e-9, `longitude ${longitude}`);
+  }
+  // the polar radius is 21.4 km short of the equatorial one
+  assert.ok(Math.abs(groundPoint(90, 0, 0)[2] - 6356.752) < 1e-3);
+});
+
+test("the body points at the targets of its attitude, and of each part its mode does not park", () => {
+  const pointing = { attitudes: { "track RELAY": ["RELAY"] }, articulations: { antenna: "Svalbard" } };
+  const attitudes = [
+    { value: "nadir", start_s: 0, end_s: 10 },
+    { value: "slew", target: "track RELAY", start_s: 10, end_s: 20 },
+    { value: "track RELAY", start_s: 20, end_s: 40 },
+  ];
+  const modes = [
+    { value: "idle", start_s: 0, end_s: 30 },
+    { value: "downlink", start_s: 30, end_s: 40 },
+  ];
+  const joints = [{ name: "antenna", park_modes: ["downlink"] }];
+  assert.deepEqual(pointedTargets(pointing, attitudes, modes, joints, 5), ["Svalbard"]);
+  assert.deepEqual(pointedTargets(pointing, attitudes, modes, joints, 15), ["Svalbard"]);
+  assert.deepEqual(pointedTargets(pointing, attitudes, modes, joints, 25), ["RELAY", "Svalbard"]);
+  assert.deepEqual(pointedTargets(pointing, attitudes, modes, joints, 35), ["RELAY"]);
+});
+
+test("the arrows go to the nearest targets in view, and to those the body points at", () => {
+  const ranges = { A: 3000, B: 1200, C: 2500, D: 900, E: 4000 };
+  assert.deepEqual(arrowTargets(["A", "B", "C"], ranges, [], 4), ["B", "C", "A"]);
+  assert.deepEqual(arrowTargets(["A", "B", "C", "D", "E"], ranges, [], 4), ["D", "B", "C", "A"]);
+  // a pointed target is drawn even out of view, and only once
+  assert.deepEqual(arrowTargets(["A", "B", "C", "D", "E"], ranges, ["E", "B"], 2), ["D", "B", "E"]);
+});
+
+test("the sample's downlink points the body at Svalbard", () => {
+  const svalbard = scenario.targets.find((target) => target.name === "Svalbard");
+  assert.equal(svalbard.kind, "ground");
+  assert.ok(svalbard.passes.length >= 2);
+  const downlink = scenario.occurrences.find((o) => o.attitude === "track Svalbard");
+  const middle = (downlink.start_s + downlink.end_s) / 2;
+  assert.deepEqual(pointedTargets(scenario.pointing, scenario.tracks.attitude, scenario.tracks.mode, [], middle), ["Svalbard"]);
+  // the downlink ends 2 min after Svalbard sets, so Svalbard is in view just before that
+  assert.ok(passAt(svalbard.passes, downlink.end_s - 121, T[T.length - 1]));
+  assert.equal(passAt(svalbard.passes, downlink.end_s - 119, T[T.length - 1]), null);
 });
