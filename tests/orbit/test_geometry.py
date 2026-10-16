@@ -4,7 +4,8 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Tests for the geometry: the beta angle, the shadow, and the Earth.
+Tests for the geometry: the beta angle, the shadow, the Earth, and the line of
+sight between two satellites.
 
 For the beta angle, the satellite sits on the x axis and moves along y, so the
 orbit normal is +z. For the shadow, the sun lies along +x. Both are placed by
@@ -37,6 +38,7 @@ from quicksat.orbit.geometry import (
     earth_rotations,
     geodetic,
     light_fraction,
+    line_of_sight_clear,
     shadow_cones,
     shadow_intervals,
     sun_positions,
@@ -226,3 +228,72 @@ def test_earth_rotations_turn_itrs_into_gcrs():
     )
     expected = gcrs.xyz.to_value(u.km).T
     assert np.allclose(rotations @ vector, expected, atol=1e-9)
+
+
+# ---------------------------------------------------------------- The line of sight
+
+A_KM = EARTH_EQUATORIAL_RADIUS.to_value(u.km)
+B_KM = A_KM * (1 - EARTH_FLATTENING)
+SIGHT_TIMES = Time("2026-10-01T00:00:00", scale="utc") + np.arange(4) * u.h
+
+
+def fixed(point):
+    """A point fixed to the Earth, given in ITRS in km, as a state in GCRS."""
+    gcrs = earth_rotations(SIGHT_TIMES) @ np.asarray(point, dtype=float)
+    return SkyCoord(
+        CartesianRepresentation(gcrs.T, unit=u.km), frame=GCRS(obstime=SIGHT_TIMES)
+    )
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "clear"),
+    [
+        # grazing over the equator, 1 km either side of the clearance
+        ([A_KM + 99, -3000, 0], [A_KM + 99, 3000, 0], False),
+        ([A_KM + 101, -3000, 0], [A_KM + 101, 3000, 0], True),
+        # grazing over the pole, 21 km nearer the centre than the equator
+        ([-3000, 0, B_KM + 99], [3000, 0, B_KM + 99], False),
+        ([-3000, 0, B_KM + 101], [3000, 0, B_KM + 101], True),
+        # on opposite sides of the Earth, and close together
+        ([A_KM + 500, 0, 0], [-A_KM - 500, 0, 0], False),
+        ([A_KM + 500, 0, 0], [A_KM + 500, 10, 0], True),
+        # one above the other: the line points at the centre, but stops short
+        ([A_KM + 500, 0, 0], [42164, 0, 0], True),
+        # both in one place: a line of no length
+        ([A_KM + 500, 0, 0], [A_KM + 500, 0, 0], True),
+    ],
+)
+def test_the_line_of_sight_must_keep_its_height_above_the_ellipsoid(
+    first, second, clear
+):
+    found = line_of_sight_clear(fixed(first), fixed(second), Q_(100, "km"))
+    assert found.tolist() == [clear] * len(SIGHT_TIMES)
+    # either satellite may come first
+    back = line_of_sight_clear(fixed(second), fixed(first), Q_(100, "km"))
+    assert back.tolist() == found.tolist()
+
+
+@pytest.mark.parametrize("longitude", [0.0, 90.0, 180.0, 270.0])
+def test_a_line_grazing_at_45_deg_of_latitude_is_judged_to_20_m(longitude):
+    # The line runs east, in the plane that touches the raised ellipsoid at a
+    # point 100 km up, so that point is its lowest. Taking GCRS's z axis for
+    # the pole, 0.15 deg away, would move the height there by up to 56 m.
+    for height, clear in ((99.98, False), (100.02, True)):
+        point = EarthLocation.from_geodetic(
+            longitude * u.deg, 45 * u.deg, height * u.km
+        )
+        centre = np.array([c.to_value(u.km) for c in point.geocentric])
+        east = np.array(
+            [-np.sin(np.radians(longitude)), np.cos(np.radians(longitude)), 0]
+        )
+        ends = [fixed(centre - 2000 * east), fixed(centre + 2000 * east)]
+        assert line_of_sight_clear(*ends, Q_(100, "km")).tolist() == [clear] * 4
+
+
+def test_the_clearance_sets_the_height():
+    ends = [fixed([A_KM + 150, -3000, 0]), fixed([A_KM + 150, 3000, 0])]
+    assert line_of_sight_clear(*ends, Q_(100, "km")).all()
+    assert not line_of_sight_clear(*ends, Q_(200, "km")).any()
+    # a single time works as an array does
+    single = [SkyCoord(end[0]) for end in ends]
+    assert line_of_sight_clear(*single, Q_(100, "km")).tolist() == [True]

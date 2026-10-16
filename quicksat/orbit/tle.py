@@ -11,11 +11,15 @@ so the text it was read from is not kept. A TLE is one way in, and later OMM can
 be another: sgp4 reads both into the same `Satrec`. The two TLE lines can always
 be written again from the elements, with `Tle.lines`.
 
-A TLE file holds exactly one element set, in two lines or in three with a name
-line first. sgp4's fast parser checks very little. It accepts a wrong checksum,
-and gives an error code for swapped lines instead of raising. So sgp4's own
-checks run first: `verify_checksum`, and its pure-Python parser, which checks the
-fixed columns and that both lines name the same satellite.
+A TLE file holds one element set or several, each in two lines or in three with
+a name line first, as CelesTrak and Space-Track give a group of satellites.
+`read_tle_file` takes one: the file's only one, or the satellite asked for, by
+its name or its catalogue number.
+
+sgp4's fast parser checks very little. It accepts a wrong checksum, and gives an
+error code for swapped lines instead of raising. So sgp4's own checks run first:
+`verify_checksum`, and its pure-Python parser, which checks the fixed columns and
+that both lines name the same satellite.
 
 SGP4 gives positions and velocities in TEME, the true equator and mean equinox
 frame of date. astropy's own transform turns them into GCRS, so that they share
@@ -46,8 +50,8 @@ from quicksat import Q_, u
 from quicksat.utils.intervals import TimeArray
 
 MAX_EPOCH_OFFSET = Q_(7, "day")
-"""How far a run may start from the TLE epoch before `warn_if_far_from_epoch`
-complains. SGP4 loses accuracy away from its epoch."""
+"""How far either end of a run may be from the epoch of an element set before
+`warn_if_far_from_epoch` complains. SGP4 loses accuracy away from its epoch."""
 
 
 @dataclass(frozen=True)
@@ -164,18 +168,219 @@ def nodal_period(satrec: Satrec) -> Quantity:
     return Q_(2 * np.pi / (satrec.mdot + satrec.argpdot), "min")
 
 
-def read_tle_file(path: str | Path) -> Tle:
+def _name(line: str) -> str:
     """
-    Read a file holding exactly one TLE.
+    A TLE's name line, without the padding, and without the `0 ` that
+    Space-Track's three-line form puts in front.
 
-    The file has two lines, or three with a name line first. Blank lines are
-    ignored. sgp4 checks both checksums, the fixed columns, and that both lines
-    name the same satellite. SGP4 must then initialise without an error.
+    Parameters
+    ----------
+    line : str
+        The name line
+
+    Returns
+    -------
+    name : str
+        The satellite's name
+    """
+    name = line.strip()
+    return name[2:].strip() if name.startswith("0 ") else name
+
+
+def _element_set(name: str | None, line1: str, line2: str, where: str) -> Tle:
+    """
+    One TLE, checked by sgp4, and initialised.
+
+    Parameters
+    ----------
+    name : str or None
+        The name line's satellite, if there is a name line
+    line1, line2 : str
+        The two TLE lines
+    where : str
+        The file and the line, for the messages
+
+    Returns
+    -------
+    tle : Tle
+        The checked element set
+
+    Raises
+    ------
+    ValueError
+        If sgp4 finds a wrong checksum or a wrong column, or SGP4 reports an
+        error when it initialises
+    """
+    try:
+        verify_checksum(line1, line2)
+        # sgp4's pure-Python parser checks the columns, which its fast one does not
+        twoline2rv(line1, line2, wgs72)
+    except ValueError as error:
+        raise ValueError(f"{where}: {error}") from error
+
+    satrec = Satrec.twoline2rv(line1, line2, WGS72)
+    if satrec.error != 0:
+        raise ValueError(
+            f"{where}: SGP4 rejected the TLE with error code {satrec.error}: "
+            f"{SGP4_ERRORS.get(satrec.error, 'unknown error')}"
+        )
+    return Tle(name, satrec)
+
+
+def read_tle_sets(path: str | Path) -> list[Tle]:
+    """
+    Read every TLE in a file.
+
+    Each TLE has two lines, or three with a name line first, as CelesTrak and
+    Space-Track give a group of satellites. Blank lines are ignored. sgp4 checks
+    both checksums, the fixed columns, and that both lines name the same
+    satellite. SGP4 must then initialise without an error.
 
     Parameters
     ----------
     path : str | Path
         Filepath of the TLE file
+
+    Returns
+    -------
+    tles : list of Tle
+        The checked element sets, in the file's order
+
+    Raises
+    ------
+    FileNotFoundError
+        If the file does not exist
+    ValueError
+        If the file holds no TLE, a line belongs to no TLE, or a TLE is not
+        valid
+    """
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"File does not exist: {path}")
+
+    lines = [
+        (number, line.rstrip())
+        for number, line in enumerate(path.read_text().splitlines(), start=1)
+        if line.strip()
+    ]
+    if not lines:
+        raise ValueError(f"{path}: the file holds no TLE")
+
+    def is_pair(index: int) -> bool:
+        return (
+            index + 1 < len(lines)
+            and lines[index][1].startswith("1 ")
+            and lines[index + 1][1].startswith("2 ")
+        )
+
+    tles, index = [], 0
+    while index < len(lines):
+        number, line = lines[index]
+        if is_pair(index):
+            where = f"{path}, line {number}"
+            tles.append(_element_set(None, line, lines[index + 1][1], where))
+            index += 2
+        elif is_pair(index + 1):
+            where = f"{path}, line {lines[index + 1][0]}"
+            line1, line2 = lines[index + 1][1], lines[index + 2][1]
+            tles.append(_element_set(_name(line), line1, line2, where))
+            index += 3
+        else:
+            raise ValueError(
+                f"{path}, line {number}: '{line.strip()}' is not part of a TLE. A TLE "
+                "is two lines, which start with 1 and 2. A name line must come "
+                "first, if there is one."
+            )
+    return tles
+
+
+_LISTED = 10
+"""Most element sets that a message lists by name."""
+
+
+def _label(tle: Tle) -> str:
+    """An element set's name and catalogue number, for the messages."""
+    number = tle.satrec.satnum
+    return f"{tle.name} ({number})" if tle.name else f"catalogue number {number}"
+
+
+def _is_satellite(tle: Tle, satellite: str | int) -> bool:
+    """
+    Whether an element set is the satellite asked for: by its catalogue number,
+    or by its name, whatever the case and the spaces.
+    """
+    wanted = " ".join(str(satellite).split()).casefold()
+    if wanted.isdigit() and int(wanted) == tle.satrec.satnum:
+        return True
+    return tle.name is not None and " ".join(tle.name.split()).casefold() == wanted
+
+
+def pick_element_set(
+    element_sets: list[Tle], satellite: str | int | None, path: str | Path
+) -> Tle:
+    """
+    One of a file's element sets: the only one, or the satellite asked for.
+
+    Parameters
+    ----------
+    element_sets : list of Tle
+        The file's element sets
+    satellite : str or int or None
+        The satellite's name, or its catalogue number. None takes the file's
+        only element set.
+    path : str | Path
+        The file, for the messages
+
+    Returns
+    -------
+    tle : Tle
+        The element set
+
+    Raises
+    ------
+    ValueError
+        If no satellite is asked for and the file holds several element sets, if
+        none is the satellite asked for, or if several are
+    """
+    labels = [_label(tle) for tle in element_sets[:_LISTED]]
+    if len(element_sets) > _LISTED:
+        labels.append(f"and {len(element_sets) - _LISTED} more")
+    listed = ", ".join(labels)
+    if satellite is None:
+        if len(element_sets) == 1:
+            return element_sets[0]
+        raise ValueError(
+            f"{path} holds {len(element_sets)} element sets, so it is not clear "
+            f"which one to take: {listed}"
+        )
+    found = [tle for tle in element_sets if _is_satellite(tle, satellite)]
+    if not found:
+        raise ValueError(
+            f"{path} holds no element set named or numbered '{satellite}'. It "
+            f"holds: {listed}"
+        )
+    if len(found) > 1:
+        epochs = ", ".join(f"{tle.epoch.utc.isot} UTC" for tle in found)
+        raise ValueError(
+            f"{path} holds {len(found)} element sets for '{satellite}', with the "
+            f"epochs {epochs}. Keep one of them in the file."
+        )
+    return found[0]
+
+
+def read_tle_file(path: str | Path, satellite: str | int | None = None) -> Tle:
+    """
+    Read one TLE from a file: its only one, or the satellite asked for.
+
+    See `read_tle_sets` for the file, and `pick_element_set` for the choice.
+
+    Parameters
+    ----------
+    path : str | Path
+        Filepath of the TLE file
+    satellite : str or int, optional
+        The satellite's name, or its catalogue number, for a file that holds
+        several. Without it, the file must hold one TLE.
 
     Returns
     -------
@@ -187,67 +392,58 @@ def read_tle_file(path: str | Path) -> Tle:
     FileNotFoundError
         If the file does not exist
     ValueError
-        If the file does not hold exactly one valid TLE, or if SGP4 reports an
-        error when it initialises from it
+        If a TLE in the file is not valid, or the file does not hold the one TLE
+        asked for
     """
-    path = Path(path)
-    if not path.is_file():
-        raise FileNotFoundError(f"File does not exist: {path}")
-
-    lines = [line.rstrip() for line in path.read_text().splitlines() if line.strip()]
-    if len(lines) == 2:
-        name, (line1, line2) = None, lines
-    elif len(lines) == 3:
-        if lines[0].startswith("1 ") and lines[1].startswith("2 "):
-            raise ValueError(
-                f"{path}: the name line must come first, before the two TLE lines"
-            )
-        name, line1, line2 = lines[0].strip(), lines[1], lines[2]
-    else:
-        raise ValueError(
-            f"{path}: a TLE file holds exactly one TLE, in two lines or in three "
-            f"with a name line first. Found {len(lines)} non-blank lines."
-        )
-
-    try:
-        verify_checksum(line1, line2)
-        # sgp4's pure-Python parser checks the columns, which its fast one does not
-        twoline2rv(line1, line2, wgs72)
-    except ValueError as error:
-        raise ValueError(f"{path}: {error}") from error
-
-    satrec = Satrec.twoline2rv(line1, line2, WGS72)
-    if satrec.error != 0:
-        raise ValueError(
-            f"{path}: SGP4 rejected the TLE with error code {satrec.error}: "
-            f"{SGP4_ERRORS.get(satrec.error, 'unknown error')}"
-        )
-    return Tle(name, satrec)
+    return pick_element_set(read_tle_sets(path), satellite, path)
 
 
-def warn_if_far_from_epoch(tle: Tle, time: TimeArray) -> None:
+def warn_if_far_from_epoch(
+    tle: Tle,
+    start: TimeArray,
+    end: TimeArray | None = None,
+    label: str = "the TLE",
+) -> str | None:
     """
-    Warn if a time is more than 7 days from the epoch of the TLE.
+    Warn if either end of a run is more than 7 days from the epoch of an element
+    set.
 
     SGP4 loses accuracy away from the epoch of its element set. A run that starts
-    a week or more from it should not be trusted.
+    or ends a week or more from it should not be trusted.
 
     Parameters
     ----------
     tle : Tle
         The element set
-    time : Time
-        The time to compare against the epoch, normally the start of the run
+    start : Time
+        The start of the run
+    end : Time, optional
+        The end of the run. Without it, the start alone is checked.
+    label : str, optional
+        What the element set is, for the message, such as `the TLE`
+
+    Returns
+    -------
+    text : str or None
+        The warning's text, so that a run can show it too, or None if both ends
+        are close enough
     """
-    offset = float(abs((time - tle.epoch).to_value(u.day)))
-    if offset > MAX_EPOCH_OFFSET.to(u.day).value:
-        warnings.warn(
-            f"The run starts {offset:.1f} days from the TLE epoch "
-            f"({tle.epoch.utc.isot} UTC). SGP4 loses accuracy away from its epoch, "
-            f"so use a TLE within {MAX_EPOCH_OFFSET.to(u.day).value:.0f} days of "
-            "the start.",
-            stacklevel=2,
-        )
+    ends = {"starts": start} if end is None else {"starts": start, "ends": end}
+    offsets = {
+        word: float(abs((time - tle.epoch).to_value(u.day)))
+        for word, time in ends.items()
+    }
+    word = max(offsets, key=lambda key: offsets[key])
+    limit = MAX_EPOCH_OFFSET.to(u.day).value
+    if offsets[word] <= limit:
+        return None
+    text = (
+        f"The run {word} {offsets[word]:.1f} days from the epoch of {label} "
+        f"({tle.epoch.utc.isot} UTC). SGP4 loses accuracy away from its epoch, so "
+        f"use an element set within {limit:.0f} days of the whole run."
+    )
+    warnings.warn(text, stacklevel=2)
+    return text
 
 
 def tle_states(tle: Tle, times: TimeArray, with_velocity: bool = True) -> SkyCoord:

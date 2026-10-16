@@ -544,7 +544,9 @@ class Trajectory:
             )
         return SkyCoord(GCRS(data, obstime=times))
 
-    def check_covers(self, start: TimeArray, end: TimeArray) -> None:
+    def check_covers(
+        self, start: TimeArray, end: TimeArray, label: str = "the trajectory"
+    ) -> str | None:
         """
         Check that a run lies inside the trajectory and crosses no gap, and warn
         if it comes close to either end of its segments' samples.
@@ -553,6 +555,14 @@ class Trajectory:
         ----------
         start, end : Time
             The start and the end of the run
+        label : str, optional
+            What the trajectory is, for the messages, such as `the trajectory`
+
+        Returns
+        -------
+        text : str or None
+            The warning's text, so that a run can show it too, or None if the run
+            keeps away from the ends
 
         Raises
         ------
@@ -566,7 +576,7 @@ class Trajectory:
         if np.any(indices < 0):
             raise ValueError(
                 f"The run, from {start.utc.isot} to {end.utc.isot} UTC, does not lie "
-                f"inside the trajectory, which runs from {self.start.utc.isot} to "
+                f"inside {label}, which runs from {self.start.utc.isot} to "
                 f"{self.end.utc.isot} UTC. quicksat does not extrapolate."
             )
         for index in range(indices[0], indices[1]):
@@ -575,7 +585,7 @@ class Trajectory:
                 gap_start = (self.epoch + Q_(before.last, "s")).utc.isot
                 gap_end = (self.epoch + Q_(after.first, "s")).utc.isot
                 raise ValueError(
-                    f"The run crosses a gap in the trajectory, from {gap_start} to "
+                    f"The run crosses a gap in {label}, from {gap_start} to "
                     f"{gap_end} UTC, between segments {index + 1} and {index + 2}."
                 )
         opening = self._segments[indices[0]].offsets
@@ -584,12 +594,14 @@ class Trajectory:
             first < opening[min(END_SAMPLES, len(opening) - 1)]
             or last > (closing[max(-1 - END_SAMPLES, -len(closing))])
         ):
-            warnings.warn(
-                f"The run comes within {END_SAMPLES} samples of an end of the "
-                "trajectory, where the interpolation is less accurate. A file that "
-                "reaches a few samples past the run at each end avoids it.",
-                stacklevel=2,
+            text = (
+                f"The run comes within {END_SAMPLES} samples of an end of {label}, "
+                "where the interpolation is less accurate. A file that reaches a few "
+                "samples past the run at each end avoids it."
             )
+            warnings.warn(text, stacklevel=2)
+            return text
+        return None
 
 
 def frame_of(name: str) -> tuple[type, dict]:

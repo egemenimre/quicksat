@@ -18,12 +18,15 @@ tells them apart by their first character:
 - CSV, as CelesTrak gives it, with a header line of field names. sgp4 reads
   it.
 
-The file holds exactly one element set. Where the file gives them, the centre
-must be the Earth, the frame TEME, the time system UTC, and the element theory
-SGP4: other elements would not mean the same thing to SGP4. The elements then
-go to sgp4's `omm.initialize`, which builds the same `Satrec` that a TLE gives.
-The bookkeeping fields, such as `ELEMENT_SET_NO`, take a TLE's usual values
-where the file leaves them out.
+The file holds one element set or several, as CelesTrak gives a group of
+satellites. `read_omm_file` takes one: the file's only one, or the satellite
+asked for, by its `OBJECT_NAME` or its `NORAD_CAT_ID`. KVN holds one element set.
+
+Where the file gives them, the centre must be the Earth, the frame TEME, the
+time system UTC, and the element theory SGP4: other elements would not mean the
+same thing to SGP4. The elements then go to sgp4's `omm.initialize`, which
+builds the same `Satrec` that a TLE gives. The bookkeeping fields, such as
+`ELEMENT_SET_NO`, take a TLE's usual values where the file leaves them out.
 
 """
 
@@ -38,7 +41,7 @@ from sgp4 import omm
 from sgp4.api import SGP4_ERRORS, WGS72, Satrec
 
 from quicksat.orbit.ccsds import key_value, normalised_epoch
-from quicksat.orbit.tle import Tle
+from quicksat.orbit.tle import Tle, pick_element_set
 
 THEORIES = ("SGP4", "SGP/SGP4")
 """The `MEAN_ELEMENT_THEORY` values read: the elements must be SGP4's."""
@@ -161,7 +164,7 @@ def _fields(text: str, path: Path) -> list[dict[str, str]]:
     )
 
 
-def _checked(fields: dict[str, str], path: Path) -> dict[str, str]:
+def _checked(fields: dict[str, str], path: str | Path) -> dict[str, str]:
     """
     An element set's fields, checked, with the bookkeeping filled in and the
     epoch in the form sgp4 reads.
@@ -170,8 +173,8 @@ def _checked(fields: dict[str, str], path: Path) -> dict[str, str]:
     ----------
     fields : dict
         The fields, as text by name
-    path : Path
-        The file, for the messages
+    path : str | Path
+        The file, and the element set in it if it holds several, for the messages
 
     Returns
     -------
@@ -223,14 +226,62 @@ def _checked(fields: dict[str, str], path: Path) -> dict[str, str]:
     return checked
 
 
-def read_omm_file(path: str | Path) -> Tle:
+def read_omm_sets(path: str | Path) -> list[Tle]:
     """
-    Read a file holding exactly one OMM element set. See the module notes.
+    Read every element set in an OMM file. See the module notes.
 
     Parameters
     ----------
     path : str | Path
         Filepath of the OMM
+
+    Returns
+    -------
+    tles : list of Tle
+        The element sets, ready for SGP4, each named by its `OBJECT_NAME`, in the
+        file's order
+
+    Raises
+    ------
+    FileNotFoundError
+        If the file does not exist
+    ValueError
+        If the file holds no element set, or one that SGP4 cannot use, or if
+        SGP4 reports an error when it initialises from one
+    """
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"File does not exist: {path}")
+    element_sets = _fields(path.read_text(), path)
+    if not element_sets:
+        raise ValueError(f"{path}: the OMM holds no element set")
+    tles = []
+    for number, raw in enumerate(element_sets, start=1):
+        where = path if len(element_sets) == 1 else f"{path}, element set {number}"
+        fields = _checked(raw, where)
+        satrec = Satrec()
+        omm.initialize(satrec, fields, WGS72)
+        if satrec.error != 0:
+            raise ValueError(
+                f"{where}: SGP4 rejected the elements with error code "
+                f"{satrec.error}: {SGP4_ERRORS.get(satrec.error, 'unknown error')}"
+            )
+        tles.append(Tle(fields.get("OBJECT_NAME") or None, satrec))
+    return tles
+
+
+def read_omm_file(path: str | Path, satellite: str | int | None = None) -> Tle:
+    """
+    Read one element set from an OMM file: its only one, or the satellite asked
+    for. See `pick_element_set` for the choice.
+
+    Parameters
+    ----------
+    path : str | Path
+        Filepath of the OMM
+    satellite : str or int, optional
+        The satellite's `OBJECT_NAME`, or its `NORAD_CAT_ID`, for a file that
+        holds several. Without it, the file must hold one element set.
 
     Returns
     -------
@@ -242,27 +293,10 @@ def read_omm_file(path: str | Path) -> Tle:
     FileNotFoundError
         If the file does not exist
     ValueError
-        If the file does not hold exactly one element set that SGP4 can use, or
-        if SGP4 reports an error when it initialises from it
+        If an element set in the file is not one that SGP4 can use, or the file
+        does not hold the one asked for
     """
-    path = Path(path)
-    if not path.is_file():
-        raise FileNotFoundError(f"File does not exist: {path}")
-    element_sets = _fields(path.read_text(), path)
-    if len(element_sets) != 1:
-        raise ValueError(
-            f"{path}: an OMM file holds exactly one element set here. Found "
-            f"{len(element_sets)}."
-        )
-    fields = _checked(element_sets[0], path)
-    satrec = Satrec()
-    omm.initialize(satrec, fields, WGS72)
-    if satrec.error != 0:
-        raise ValueError(
-            f"{path}: SGP4 rejected the elements with error code {satrec.error}: "
-            f"{SGP4_ERRORS.get(satrec.error, 'unknown error')}"
-        )
-    return Tle(fields.get("OBJECT_NAME") or None, satrec)
+    return pick_element_set(read_omm_sets(path), satellite, path)
 
 
 def _object_id(designator: str) -> str:
