@@ -219,7 +219,7 @@ The run warns about the orbits too, and those warnings come first: an element se
 - `scenario_viewer.html` is the page. Double-click it to open it in a browser.
 - `scenario.js` holds the data of the run.
 
-The page shows the run in 3D, with the ground track, the timeline and the activity table. With targets, it draws them on the globe, in the body view and on the map, and its Targets tab shows when each one is in view. Its Attitude tab shows the body's roll, pitch and yaw against LVLH, its turn rate and its acceleration against the slew limits, and the warnings. Amber bands mark where an attitude turns the body faster than the slews may. The tab also offers the attitude files of step 11 for download. The page needs no Python, no server and no network. Keep the two files together, because the page reads `scenario.js` from its own folder.
+The page shows the run in 3D, with the ground track, the timeline and the activity table. With targets, it draws them on the globe, in the body view and on the map, and its Targets tab shows when each one is in view and when the spacecraft points at it. Its Attitude tab shows the body's roll, pitch and yaw against LVLH, its turn rate and its acceleration against the slew limits, and the warnings. Amber bands mark where an attitude turns the body faster than the slews may. The tab also offers the attitude files of step 11 for download. The page needs no Python, no server and no network. Keep the two files together, because the page reads `scenario.js` from its own folder.
 
 After you change the scenario, run it again and reload the page. The page then reads the new `scenario.js`.
 

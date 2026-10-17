@@ -291,3 +291,37 @@ function arrowTargets(inView, ranges, always, most) {
   const nearest = [...inView].sort((a, b) => ranges[a] - ranges[b]).slice(0, most);
   return [...new Set([...nearest, ...always])];
 }
+
+/**
+ * When the body or a part points at each target, by the target's name: its
+ * spans of time in time order, with the spans that touch or overlap joined.
+ * The rules are those of `pointedTargets`, over the whole run.
+ */
+function pointedSpans(pointing, attitudeTrack, modeTrack, articulations) {
+  const spans = {};
+  const add = (name, piece) => (spans[name] ||= []).push({ start_s: piece.start_s, end_s: piece.end_s });
+  for (const piece of attitudeTrack) {
+    for (const name of pointing.attitudes[piece.value] || []) add(name, piece);
+  }
+  for (const [name, target] of Object.entries(pointing.articulations)) {
+    const joint = articulations.find((item) => item.name === name);
+    if (!joint) continue;
+    for (const piece of modeTrack) if (!joint.park_modes.includes(piece.value)) add(target, piece);
+  }
+  for (const [name, list] of Object.entries(spans)) {
+    spans[name] = list
+      .sort((a, b) => a.start_s - b.start_s)
+      .reduce((joined, span) => {
+        const last = joined[joined.length - 1];
+        if (last && span.start_s <= last.end_s) last.end_s = Math.max(last.end_s, span.end_s);
+        else joined.push(span);
+        return joined;
+      }, []);
+  }
+  return spans;
+}
+
+/** The seconds that `spans`, apart from each other, share with the time from `start` to `end`. */
+function sharedSeconds(spans, start, end) {
+  return spans.reduce((sum, span) => sum + Math.max(0, Math.min(end, span.end_s) - Math.max(start, span.start_s)), 0);
+}

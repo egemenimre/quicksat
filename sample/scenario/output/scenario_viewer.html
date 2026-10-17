@@ -490,7 +490,7 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
     <div class="data-panel" id="vp-passes">
       <div class="vp-title" data-help="passes"><b>Passes</b></div>
       <table class="list">
-        <thead><tr><th>Target</th><th>From, UTC</th><th>To, UTC</th><th class="num">Length</th><th class="num">Closest</th></tr></thead>
+        <thead><tr><th>Target</th><th>From, UTC</th><th>To, UTC</th><th class="num">Length</th><th class="num">Pointed at</th><th class="num">Closest</th></tr></thead>
         <tbody id="pass-rows"></tbody>
       </table>
     </div>
@@ -5504,6 +5504,40 @@ function arrowTargets(inView, ranges, always, most) {
   const nearest = [...inView].sort((a, b) => ranges[a] - ranges[b]).slice(0, most);
   return [...new Set([...nearest, ...always])];
 }
+
+/**
+ * When the body or a part points at each target, by the target's name: its
+ * spans of time in time order, with the spans that touch or overlap joined.
+ * The rules are those of `pointedTargets`, over the whole run.
+ */
+function pointedSpans(pointing, attitudeTrack, modeTrack, articulations) {
+  const spans = {};
+  const add = (name, piece) => (spans[name] ||= []).push({ start_s: piece.start_s, end_s: piece.end_s });
+  for (const piece of attitudeTrack) {
+    for (const name of pointing.attitudes[piece.value] || []) add(name, piece);
+  }
+  for (const [name, target] of Object.entries(pointing.articulations)) {
+    const joint = articulations.find((item) => item.name === name);
+    if (!joint) continue;
+    for (const piece of modeTrack) if (!joint.park_modes.includes(piece.value)) add(target, piece);
+  }
+  for (const [name, list] of Object.entries(spans)) {
+    spans[name] = list
+      .sort((a, b) => a.start_s - b.start_s)
+      .reduce((joined, span) => {
+        const last = joined[joined.length - 1];
+        if (last && span.start_s <= last.end_s) last.end_s = Math.max(last.end_s, span.end_s);
+        else joined.push(span);
+        return joined;
+      }, []);
+  }
+  return spans;
+}
+
+/** The seconds that `spans`, apart from each other, share with the time from `start` to `end`. */
+function sharedSeconds(spans, start, end) {
+  return spans.reduce((sum, span) => sum + Math.max(0, Math.min(end, span.end_s) - Math.max(start, span.start_s)), 0);
+}
 </script>
 <script>
 "use strict";
@@ -5611,8 +5645,12 @@ const POINTING = scenario.pointing;
 const PASSES = TARGETS.flatMap((target) => target.passes.map((pass) => ({ target, ...pass }))).sort(
   (a, b) => a.start_s - b.start_s,
 );
-const TARGET_COLOUR = "#f472b6";
-const TARGET_DIM = "#7a4763";
+// When the body or a part points at each target, by its name
+const POINTED = pointedSpans(POINTING, TRACKS.attitude, TRACKS.mode, ARTICULATIONS);
+// A ground target is pink and a satellite target lime: bright while in view,
+// and dim otherwise
+const TARGET_COLOURS = { ground: ["#f472b6", "#7a4763"], satellite: ["#a3e635", "#567b2a"] };
+const targetColour = (target, inView = true) => TARGET_COLOURS[target.kind][inView ? 0 : 1];
 // The body view draws an arrow to at most this many targets in view, the nearest
 const MOST_ARROWS = 4;
 const AXIS_VECTORS = { "+x": [1, 0, 0], "-x": [-1, 0, 0], "+y": [0, 1, 0], "-y": [0, -1, 0], "+z": [0, 0, 1], "-z": [0, 0, -1] };
@@ -6179,12 +6217,13 @@ const orbitView = (() => {
   // is a dot on the Earth, which turns with it. It sits on the drawn sphere, as
   // the coastlines do: on the ellipsoid, it would hide under the sphere near
   // the poles. Each is bright while in view of the spacecraft, and dim otherwise.
+  // A ground target is pink and a satellite target lime.
   const satelliteMarks = new THREE.Group();
   const groundMarks = new THREE.Group();
   world.add(satelliteMarks);
   earth.add(groundMarks);
   const targetMarks = targetState.map((item) => {
-    const mark = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: TARGET_COLOUR }));
+    const mark = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: targetColour(item.target) }));
     if (item.fixed) {
       mark.position.copy(item.fixed).setLength(RE * 1.004);
       groundMarks.add(mark);
@@ -6193,17 +6232,20 @@ const orbitView = (() => {
       const r = item.target.r_km;
       const steps = [];
       for (let k = 0; k + 5 < r.length; k += 3) steps.push(...r.slice(k, k + 6).map((x) => x * MM));
-      satelliteMarks.add(mark, lines(steps, TARGET_COLOUR, 0.2));
+      satelliteMarks.add(mark, lines(steps, targetColour(item.target), 0.2));
     }
     return mark;
   });
   // The links: a bright line to each target that the attitude or a part points
   // at, in view or not, so that a line into the Earth shows a hidden target. A
-  // fainter line goes to each other target in view.
+  // fainter line goes to each other target in view. Each takes its target's
+  // colour.
   const links = (opacity) => {
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(6 * Math.max(TARGETS.length, 1)), 3));
-    const lines = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: TARGET_COLOUR, transparent: true, opacity }));
+    const room = 6 * Math.max(TARGETS.length, 1);
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(room), 3));
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(room), 3));
+    const lines = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity }));
     lines.frustumCulled = false;
     world.add(lines);
     return lines;
@@ -6213,6 +6255,7 @@ const orbitView = (() => {
   let targetsShown = true;
   let linksShown = true;
   const markAt = new THREE.Vector3();
+  const linkColour = new THREE.Color();
   /** Where the view draws a target, in Mm: a ground target on the drawn sphere. */
   const drawnAt = (item, out) => {
     out.copy(item.r).multiplyScalar(MM);
@@ -6220,14 +6263,16 @@ const orbitView = (() => {
   };
   /** Joins the spacecraft to each of the targets, from the start of the line's buffer. */
   function joinTo(lines, items) {
-    const position = lines.geometry.attributes.position;
+    const { position, color } = lines.geometry.attributes;
     items.forEach((item, j) => {
       drawnAt(item, markAt);
       position.setXYZ(2 * j, state.r.x * MM, state.r.y * MM, state.r.z * MM);
       position.setXYZ(2 * j + 1, markAt.x, markAt.y, markAt.z);
+      linkColour.set(targetColour(item.target));
+      for (const end of [2 * j, 2 * j + 1]) color.setXYZ(end, linkColour.r, linkColour.g, linkColour.b);
     });
     lines.geometry.setDrawRange(0, 2 * items.length);
-    position.needsUpdate = true;
+    position.needsUpdate = color.needsUpdate = true;
   }
 
   // The sun's direction and the Earth's shadow
@@ -6272,7 +6317,7 @@ const orbitView = (() => {
   const sunLabel = labels.add("Sun", VECTOR_COLOURS.sun);
   const craftLabel = labels.add("Spacecraft", THEME.text, [0, -16]);
   // A target's name shows while it is in view
-  const targetLabels = targetState.map((item) => labels.add(item.target.name, TARGET_COLOUR, [0, -12]));
+  const targetLabels = targetState.map((item) => labels.add(item.target.name, targetColour(item.target), [0, -12]));
   let size = { width: 1, height: 1 };
   // True when the Earth stands between the camera and `point`
   const behindEarth = (point) => {
@@ -6398,7 +6443,7 @@ const orbitView = (() => {
         const mark = targetMarks[j];
         drawnAt(item, markAt);
         if (!item.fixed) mark.position.copy(markAt);
-        mark.material.color.set(item.inView ? TARGET_COLOUR : TARGET_DIM);
+        mark.material.color.set(targetColour(item.target, item.inView));
         mark.scale.setScalar((3.5 * 2 * camera.position.distanceTo(markAt) * Math.tan((camera.fov * D2R) / 2)) / viewHeight);
         targetLabels[j].position.copy(markAt);
       });
@@ -6452,10 +6497,10 @@ const bodyView = (() => {
   // of them, and to each target that the body or a part points at, in view or
   // not. Out of view, the arrow is dim.
   const targetArrows = targetState.map((item) => {
-    const arrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 1.8, TARGET_COLOUR, 0.15, 0.075);
+    const arrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 1.8, targetColour(item.target), 0.15, 0.075);
     arrow.visible = false;
     world.add(arrow);
-    return { item, arrow, label: labels.add(item.target.name, TARGET_COLOUR) };
+    return { item, arrow, label: labels.add(item.target.name, targetColour(item.target)) };
   });
   let targetArrowsShown = true;
   // Each panel's name sits just past its normal, at a point that turns with
@@ -6591,7 +6636,7 @@ const bodyView = (() => {
         if (!on) continue;
         direction.copy(item.r).sub(state.r).normalize().applyQuaternion(toDisplay);
         arrow.setDirection(direction);
-        const colour = item.inView ? TARGET_COLOUR : TARGET_DIM;
+        const colour = targetColour(item.target, item.inView);
         arrow.setColor(colour);
         label.node.style.color = colour;
         label.position.copy(direction).multiplyScalar(2.05);
@@ -6744,7 +6789,7 @@ const groundView = (() => {
     c.font = `10px ${MONO}`;
     c.lineWidth = 1.5;
     for (const item of targetState) {
-      c.strokeStyle = c.fillStyle = item.inView ? TARGET_COLOUR : TARGET_DIM;
+      c.strokeStyle = c.fillStyle = targetColour(item.target, item.inView);
       if (passesShown && item.inView && item.lats) {
         const pass = passAt(item.target.passes, state.t, T_END);
         const from = sampleAt(pass.start_s)[0];
@@ -7208,7 +7253,8 @@ const charts = (() => {
   }
 
   // The Targets page: the timeline, and when each target is in view, with a
-  // row for each target and a bar for each pass
+  // row for each target and a bar for each pass. A thin bar under the passes
+  // shows when the body or a part points at the target, in view or not.
   if (TARGETS.length) {
     $("#page-tabs").querySelector('[data-page="targets"]').hidden = false;
     gantt("#targets-gantt", hiddenX);
@@ -7216,14 +7262,18 @@ const charts = (() => {
     const drawLanes = (u) =>
       clipped(u, (c, box) => {
         const rowHeight = box.height / rows;
-        c.fillStyle = TARGET_COLOUR;
+        const bar = (span, top, height) => {
+          const x0 = u.valToPos(span.start_s / 60, "x", true);
+          const x1 = u.valToPos(span.end_s / 60, "x", true);
+          c.fillRect(x0, top, Math.max(px(), x1 - x0), height);
+        };
         TARGETS.forEach((target, row) => {
-          const top = box.top + (row + 0.2) * rowHeight;
-          for (const pass of target.passes) {
-            const x0 = u.valToPos(pass.start_s / 60, "x", true);
-            const x1 = u.valToPos(pass.end_s / 60, "x", true);
-            c.fillRect(x0, top, Math.max(px(), x1 - x0), 0.6 * rowHeight);
-          }
+          const top = box.top + (row + 0.12) * rowHeight;
+          c.fillStyle = targetColour(target);
+          for (const pass of target.passes) bar(pass, top, 0.5 * rowHeight);
+          c.fillStyle = THEME.text;
+          const strip = Math.max(2 * px(), 0.12 * rowHeight);
+          for (const span of POINTED[target.name] || []) bar(span, top + 0.62 * rowHeight, strip);
         });
       });
     const lanes = make(
@@ -7247,11 +7297,17 @@ const charts = (() => {
       const row = clamp(Math.floor((event.offsetY / lanes.over.clientHeight) * rows), 0, rows - 1);
       const target = TARGETS[row];
       const pass = passAt(target.passes, time, T_END);
-      lanes.over.title = pass
-        ? `${target.name}: in view from ${clockText(pass.start_s)} to ${clockText(pass.end_s)}, ${numberText((pass.end_s - pass.start_s) / 60, 2)} min`
-        : `${target.name}: out of view`;
+      const pointed = passAt(POINTED[target.name] || [], time, T_END);
+      lanes.over.title = [
+        pass
+          ? `${target.name}: in view from ${clockText(pass.start_s)} to ${clockText(pass.end_s)}, ${numberText((pass.end_s - pass.start_s) / 60, 2)} min`
+          : `${target.name}: out of view`,
+        ...(pointed ? [`pointed at from ${clockText(pointed.start_s)} to ${clockText(pointed.end_s)}`] : []),
+      ].join("\n");
     });
-    head("#head-lanes", "IN VIEW", "each target's passes", [], "lanes");
+    const kinds = ["ground", "satellite"].filter((kind) => TARGETS.some((target) => target.kind === kind));
+    const keys = [...kinds.map((kind) => [kind, TARGET_COLOURS[kind][0]]), ["pointed at", THEME.text]];
+    head("#head-lanes", "IN VIEW", "each target's passes", keys, "lanes");
   }
 
   function zoom(from, to) {
@@ -7354,7 +7410,7 @@ const readouts = (() => {
   // The Targets page: each target, whether it is in view, its range, and
   // whether the body or a part points at it
   const targetRows = targetState.map((item) => {
-    const fill = element("span", { class: "fill", style: `background:${TARGET_COLOUR}` });
+    const fill = element("span", { class: "fill", style: `background:${targetColour(item.target)}` });
     const value = element("dd");
     $("#targets-now").append(element("dt", {}, [fill, item.target.name]), value);
     return { item, fill, value };
@@ -7557,13 +7613,19 @@ function epochNote(epoch) {
  */
 function showTargets() {
   if (!TARGETS.length) return;
+  // the time in the pass that the body or a part points at the target
+  const pointedText = (pass) => {
+    const seconds = sharedSeconds(POINTED[pass.target.name] || [], pass.start_s, pass.end_s);
+    return seconds ? `${(seconds / 60).toFixed(2)} min` : "";
+  };
   $("#pass-rows").replaceChildren(
     ...PASSES.map((pass) =>
       element("tr", { title: "Move the time cursor to the start of this pass", onclick: () => setTime(pass.start_s) }, [
-        element("td", {}, [element("span", { class: "dot", style: `background:${TARGET_COLOUR}` }), pass.target.name]),
+        element("td", {}, [element("span", { class: "dot", style: `background:${targetColour(pass.target)}` }), pass.target.name]),
         element("td", { text: utcText(pass.start_s) }),
         element("td", { text: utcText(pass.end_s) }),
         element("td", { class: "num", text: `${((pass.end_s - pass.start_s) / 60).toFixed(2)} min` }),
+        element("td", { class: "num", text: pointedText(pass) }),
         element("td", { class: "num", text: pass.closest_km == null ? "" : `${Math.round(pass.closest_km).toLocaleString("en")} km` }),
       ]),
     ),
@@ -7574,7 +7636,12 @@ function showTargets() {
     ...TARGETS.map((target) => {
       const seconds = target.passes.reduce((sum, pass) => sum + pass.end_s - pass.start_s, 0);
       const count = target.passes.length;
-      const lines = [line(`${count} pass${count === 1 ? "" : "es"}, ${(seconds / 60).toFixed(1)} min in view`)];
+      const spans = POINTED[target.name] || [];
+      const pointed = spans.reduce((sum, span) => sum + span.end_s - span.start_s, 0);
+      const lines = [
+        line(`${count} pass${count === 1 ? "" : "es"}, ${(seconds / 60).toFixed(1)} min in view`),
+        line(spans.length ? `pointed at for ${(pointed / 60).toFixed(1)} min, ${spans.length} time${spans.length === 1 ? "" : "s"}` : "not pointed at"),
+      ];
       if (target.kind === "ground") {
         const place = `${Math.abs(target.latitude_deg)}°${target.latitude_deg >= 0 ? "N" : "S"}, ${Math.abs(target.longitude_deg)}°${target.longitude_deg >= 0 ? "E" : "W"}`;
         lines.unshift(line(`ground, ${place}, ${numberText(target.altitude_km * 1000, 0)} m`), line(`min elevation ${numberText(target.min_elevation_deg)}°`));
@@ -7589,7 +7656,8 @@ function showTargets() {
           lines.splice(1, 0, line(`trajectory from ${source.start.replace("T", " ").slice(0, 16)} to ${source.end.replace("T", " ").slice(0, 16)} UTC`));
         }
       }
-      return element("div", { class: "source" }, [element("b", { text: target.name }), ...lines]);
+      const name = element("b", {}, [element("span", { class: "dot", style: `background:${targetColour(target)}` }), target.name]);
+      return element("div", { class: "source" }, [name, ...lines]);
     }),
   );
 }
@@ -7684,8 +7752,9 @@ function showAttitude() {
 function showInputs() {
   const name = (title, file) => [title, " · ", element("b", { text: file })];
   const orbit = scenario.orbit;
-  // Two columns: the scenario file and the orbit's file on the left; the orbit,
-  // the conventions below it, and the power and consumption files on the right
+  // Two columns: the scenario file and the orbit's file on the left; on the
+  // right, the orbit, the target files, the conventions, and the power and
+  // consumption files
   const column = (blocks) => element("div", { class: "stack" }, blocks);
   // The orbit's file and the consumption file, from version 6 of scenario.js and
   // version 2 of power.js. Neither is YAML, so no line is dimmed, and a long file
@@ -7742,8 +7811,8 @@ function showInputs() {
   );
   const powerFile = power ? [block(name("Power file", power.power_file), [fileText(power.power_text)])] : [];
   $("#inputs").append(
-    column([block(name("Scenario file", SCENARIO_FILE), [fileText(scenario.scenario_text || "")]), ...orbitFile, ...targetFiles]),
-    column([orbitBlock, conventions, ...powerFile, ...consumptionFile]),
+    column([block(name("Scenario file", SCENARIO_FILE), [fileText(scenario.scenario_text || "")]), ...orbitFile]),
+    column([orbitBlock, ...targetFiles, conventions, ...powerFile, ...consumptionFile]),
   );
 }
 
@@ -7881,8 +7950,8 @@ const HELP = {
       "The orbit in GCRS, the Earth-centred frame that does not turn with the Earth. The Earth and its " +
       "coastlines turn under the orbit. The track takes its colours from the row chosen in the legend. The " +
       "yellow arrow points at the sun. The Earth's shadow is two dark cones: the umbra, and around it the " +
-      "lighter penumbra. The two part only far from the Earth, as in a high orbit. The targets are pink: " +
-      "bright while in view, and dim otherwise. Drag to turn the view, right-drag to pan, and scroll to zoom.",
+      "lighter penumbra. The two part only far from the Earth, as in a high orbit. The ground targets are " +
+      "pink and the satellite targets lime: bright while in view, and dim otherwise. Drag to turn the view, right-drag to pan, and scroll to zoom.",
   },
   body: {
     title: "Body view",
@@ -7891,15 +7960,16 @@ const HELP = {
       "the nadir, the orbit normal and the sun. The first three are close to the LVLH axes: x along track, " +
       "z nadir, and y minus the orbit normal. The spacecraft is the 3D model that 3d_model names in the " +
       "scenario file, or a 1 m cube without one. It is scaled to fit the view. The parts that the scenario " +
-      "names as articulations, such as solar wings, turn toward their direction, such as the sun. A pink " +
-      "arrow points at each of the nearest targets in view, and at the targets the body or a part points at.",
+      "names as articulations, such as solar wings, turn toward their direction, such as the sun. An " +
+      "arrow points at each of the nearest targets in view, and at the targets the body or a part points at: " +
+      "pink for a ground target, and lime for a satellite.",
   },
   ground: {
     title: "Ground track",
     text:
       "The point below the spacecraft, in geodetic latitude and longitude. The track has the same colours " +
       "as the orbit view. The dark area is the night side, and the dashed line is the terminator. The " +
-      "yellow dot is the point below the sun, and the red dot is the spacecraft. A pink circle is the point " +
+      "yellow dot is the point below the sun, and the red dot is the spacecraft. A lime circle is the point " +
       "below a satellite target, and a pink square a ground target, each filled while in view.",
   },
   timeline: {
@@ -8138,7 +8208,9 @@ const HELP = {
     text:
       "A row for each target, with a bar for each pass: the time the target is in view. A ground target is in " +
       "view above its minimum elevation. A satellite target is in view while the line between the two " +
-      "satellites keeps its minimum clearance above the Earth. Click to move the time cursor.",
+      "satellites keeps its minimum clearance above the Earth. The thin light bar under the passes is the " +
+      "time the attitude or a part points at the target, in view or not. Every pass is drawn, whether it is " +
+      "used or not. Click to move the time cursor.",
   },
   targetsNow: {
     title: "Targets now",
@@ -8150,13 +8222,16 @@ const HELP = {
     title: "Passes",
     text:
       "Every time a target is in view, in time order. A pass under way at the start or the end of the run is " +
-      "cut there. The closest range is at the time steps in the pass. Click a pass to move the time cursor to it.",
+      "cut there. Pointed at is the time in the pass that the attitude or a part points at the target, and is " +
+      "blank for a pass that is not used. The closest range is at the time steps in the pass. Click a pass to " +
+      "move the time cursor to it.",
   },
   targetSources: {
     title: "Sources",
     text:
       "Where each ground target is, and where each satellite target's orbit came from: its file, its element " +
-      "set and its epoch, or its trajectory's span. An epoch more than 7 days from either end of the run is amber.",
+      "set and its epoch, or its trajectory's span. An epoch more than 7 days from either end of the run is " +
+      "amber. Each also has its time in view, and how long and how many times the attitude or a part points at it.",
   },
   inView: { title: "In view", text: "The targets in view of the spacecraft at the time cursor. The Targets page has more." },
   targets: { title: "Targets", text: "Show or hide the targets, and the satellite targets' trajectories." },

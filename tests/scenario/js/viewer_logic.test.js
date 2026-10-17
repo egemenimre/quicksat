@@ -31,10 +31,10 @@ const DATA = path.join(__dirname, "data");
 vm.runInThisContext(fs.readFileSync(LOGIC, "utf8"), { filename: LOGIC });
 const NAMES =
   "PAGE_VERSION, scenarioProblem, checkPower, joinEclipses, pieceAt, stepAt, attitudeFraction, jointAngle, lightFraction, " +
-  "excessPieces, passAt, earthFixed, geodeticOf, groundPoint, pointedTargets, arrowTargets";
+  "excessPieces, passAt, earthFixed, geodeticOf, groundPoint, pointedTargets, arrowTargets, pointedSpans, sharedSeconds";
 const {
   PAGE_VERSION, scenarioProblem, checkPower, joinEclipses, pieceAt, stepAt, attitudeFraction, jointAngle, lightFraction,
-  excessPieces, passAt, earthFixed, geodeticOf, groundPoint, pointedTargets, arrowTargets,
+  excessPieces, passAt, earthFixed, geodeticOf, groundPoint, pointedTargets, arrowTargets, pointedSpans, sharedSeconds,
 } = vm.runInThisContext(`({ ${NAMES} })`);
 
 /** The data a viewer folder gives the page, from its scenario.js and power.js. */
@@ -243,6 +243,41 @@ test("the body points at the targets of its attitude, and of each part its mode 
   assert.deepEqual(pointedTargets(pointing, attitudes, modes, joints, 35), ["RELAY"]);
 });
 
+test("the spans the body points at each target join, and leave out its slews and parked parts", () => {
+  const pointing = { attitudes: { "track RELAY": ["RELAY"], "track both": ["RELAY", "Svalbard"] }, articulations: { antenna: "Svalbard" } };
+  const attitudes = [
+    { value: "nadir", start_s: 0, end_s: 10 },
+    { value: "slew", target: "track RELAY", start_s: 10, end_s: 20 },
+    { value: "track RELAY", start_s: 20, end_s: 40 },
+    { value: "track both", start_s: 40, end_s: 50 },
+    { value: "nadir", start_s: 50, end_s: 60 },
+  ];
+  const modes = [
+    { value: "idle", start_s: 0, end_s: 30 },
+    { value: "downlink", start_s: 30, end_s: 45 },
+    { value: "idle", start_s: 45, end_s: 60 },
+  ];
+  const joints = [{ name: "antenna", park_modes: ["downlink"] }];
+  const spans = pointedSpans(pointing, attitudes, modes, joints);
+  assert.deepEqual(spans, {
+    RELAY: [{ start_s: 20, end_s: 50 }],
+    Svalbard: [
+      { start_s: 0, end_s: 30 },
+      { start_s: 40, end_s: 60 },
+    ],
+  });
+  // the same as pointedTargets at each time
+  for (let t = 0.5; t < 60; t += 1) {
+    const now = Object.keys(spans).filter((name) => passAt(spans[name], t, 60)).sort();
+    assert.deepEqual(now, pointedTargets(pointing, attitudes, modes, joints, t).sort(), `at ${t} s`);
+  }
+  // a part that the model does not have points at nothing
+  assert.deepEqual(pointedSpans(pointing, attitudes, modes, []).Svalbard, [{ start_s: 40, end_s: 50 }]);
+  assert.equal(sharedSeconds(spans.Svalbard, 25, 45), 10);
+  assert.equal(sharedSeconds(spans.Svalbard, 30, 40), 0);
+  assert.equal(sharedSeconds([], 0, 60), 0);
+});
+
 test("the arrows go to the nearest targets in view, and to those the body points at", () => {
   const ranges = { A: 3000, B: 1200, C: 2500, D: 900, E: 4000 };
   assert.deepEqual(arrowTargets(["A", "B", "C"], ranges, [], 4), ["B", "C", "A"]);
@@ -261,4 +296,10 @@ test("the sample's downlink points the body at Svalbard", () => {
   // the downlink ends 2 min after Svalbard sets, so Svalbard is in view just before that
   assert.ok(passAt(svalbard.passes, downlink.end_s - 121, T[T.length - 1]));
   assert.equal(passAt(svalbard.passes, downlink.end_s - 119, T[T.length - 1]), null);
+  // the turn to nadir fills those 2 min, so the body points at Svalbard through nearly all its pass
+  const spans = pointedSpans(scenario.pointing, scenario.tracks.attitude, scenario.tracks.mode, []).Svalbard;
+  const pass = passAt(svalbard.passes, middle, T[T.length - 1]);
+  const span = passAt(spans, middle, T[T.length - 1]);
+  assert.ok(pass.end_s < span.end_s && span.end_s < downlink.end_s - 100);
+  assert.ok(sharedSeconds(spans, pass.start_s, pass.end_s) > 0.99 * (pass.end_s - pass.start_s));
 });
