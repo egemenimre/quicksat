@@ -32,6 +32,10 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 - The hints for older scenario files. An articulation with `sun_axis`, or an activity list with no title, is now refused as any other mistake is. The Scenario Editor no longer converts them either.
 - The viewer's code for older `scenario.js` and `power.js` files, such as the page without an Attitude tab.
 
+### Fixed
+
+- `python -m quicksat init` closes GitHub's response when it falls back to `master`, so Python no longer warns about it.
+
 ## [0.1.0] - 2026-10-15
 
 Initial release.
