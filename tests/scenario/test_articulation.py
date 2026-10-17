@@ -163,7 +163,6 @@ def wing(fields: str) -> str:
             "park angle for 'idle'",
         ),
         ("part: Wing +y, axis: +y", "point"),
-        ("part: Wing +y, axis: +y, sun_axis: -z", r"write point: \[-z, sun\]"),
         ("part: Wing +y, axis: +y, point: [-z, moon]", "'moon' is not a direction"),
         ("part: Wing +y, axis: +y, point: [-z, sun], speed: 1 deg/s", "speed"),
         ("part: Wing +q, axis: +y, point: [-z, sun]", "no node named 'Wing \\+q'"),

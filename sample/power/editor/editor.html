@@ -7066,12 +7066,8 @@ function readStart(value) {
 
 function readArticulation(name, raw) {
   const where = `3d_model › articulations › ${name}`;
-  knownKeys(raw, ["part", "axis", "point", "sun_axis", "range", "park", "comments"], where);
-  let point = Array.isArray(raw.point) ? raw.point.map(str) : ["-z", "sun"];
-  if (!Array.isArray(raw.point) && typeof raw.sun_axis === "string") {
-    point = [raw.sun_axis, "sun"];
-    notice("changed", `${where}: sun_axis: ${raw.sun_axis} is now written point: [${raw.sun_axis}, sun]`);
-  }
+  knownKeys(raw, ["part", "axis", "point", "range", "park", "comments"], where);
+  const point = Array.isArray(raw.point) ? raw.point.map(str) : ["-z", "sun"];
   const park = raw.park && typeof raw.park === "object" ? Object.entries(raw.park).map(([mode, angle]) => ({ mode, angle: readQ(angle, "deg", where) })) : [];
   const range = Array.isArray(raw.range) && raw.range.length === 2 ? { min: readQ(raw.range[0], "deg", where), max: readQ(raw.range[1], "deg", where) } : null;
   return { name, part: str(raw.part), axis: str(raw.axis) || "+y", point, park, range, comments: str(raw.comments) };
@@ -7092,10 +7088,7 @@ function readActivity(raw, index) {
   const where = `activities › ${index + 1}`;
   let fields = {};
   if (Array.isArray(raw)) {
-    // a list from before titles starts with its trigger
-    const untitled = (raw.length === 3 || raw.length === 4) && parseTrigger(raw[0]).kind !== "text" && parseTrigger(raw[1]).kind === "text";
-    if (untitled) notice("changed", `${where}: it had no title, so its title is empty`);
-    const [title, end, attitude, mode, constraint] = untitled ? ["", ...raw] : raw;
+    const [title, end, attitude, mode, constraint] = raw;
     fields = { title, end, attitude, mode, constraint };
   } else if (raw && typeof raw === "object") {
     knownKeys(raw, ["title", "end", "attitude", "mode", "constraint", "comments"], where);

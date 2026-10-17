@@ -16,7 +16,13 @@ import pytest
 from quicksat import Q_, u
 from quicksat.power.budget import LOSSES, budget_summary, run_budget, simulate
 from quicksat.power.config import Battery, Conditioning, PowerSystem
-from quicksat.power.viewer import DATA_FILE, PAGE_FILE, power_data, write_power_viewer
+from quicksat.power.viewer import (
+    DATA_FILE,
+    PAGE_FILE,
+    VERSION,
+    power_data,
+    write_power_viewer,
+)
 from quicksat.scenario.viewer import DATA_FILE as SCENARIO_FILE
 
 BATTERY = Battery(
@@ -215,6 +221,9 @@ def test_the_viewer_folder_holds_both_data_files(budget, tmp_path):
     power = read_js(tmp_path / DATA_FILE)
     assert power["scenario_id"] == scenario["id"]
     assert power["format"] == "quicksat-power"
+    # the page reads this version of power.js, and no other
+    assert power["version"] == VERSION
+    assert f"const POWER_VERSION = {VERSION};" in page.read_text()
     steps = len(scenario["grid"]["t_s"])
     grid = power["grid"]
     for name in ("generated_w", "consumed_w", "soc"):

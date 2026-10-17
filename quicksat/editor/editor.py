@@ -49,8 +49,9 @@ FORMAT = "quicksat-editor"
 """The `format` field of the data the page holds."""
 
 VERSION = 1
-"""The `version` field of the data the page holds. It goes up when a field
-changes."""
+"""The `version` field of the data the page holds. It stays the same during
+development, even when a field changes. It goes up only once older pages must
+still be read."""
 
 PAGE_FILE = "editor.html"
 """Name of the page written in the output folder."""

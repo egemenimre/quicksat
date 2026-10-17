@@ -6,6 +6,7 @@
 "use strict";
 
 const PAGE_VERSION = 7;
+const POWER_VERSION = 2;
 
 const pad = (value) => String(value).padStart(2, "0");
 const clamp = (x, lo, hi) => Math.min(Math.max(x, lo), hi);
@@ -38,21 +39,21 @@ function checkPower(power, scenario) {
   if (power.format !== "quicksat-power" || !Number.isInteger(power.version)) {
     return [null, "power.js is not a quicksat power file."];
   }
-  if (power.version > PAGE_VERSION) {
-    return [null, `power.js is version ${power.version}, newer than this page, which reads version ${PAGE_VERSION}.`];
+  if (power.version !== POWER_VERSION) {
+    return [null, `power.js is version ${power.version}, but this page reads version ${POWER_VERSION}.`];
   }
   if (power.scenario_id !== scenario.id) {
     return [null, "power.js was written with another scenario.js, so it may not match this run."];
   }
   const n = scenario.grid.t_s.length;
   const grid = power.grid;
-  const lengths = [grid.generated_w, grid.consumed_w, grid.soc, ...grid.sun_cos, ...(grid.panel_w || [])].map(
+  const lengths = [grid.generated_w, grid.consumed_w, grid.soc, ...grid.sun_cos, ...grid.panel_w].map(
     (a) => a.length,
   );
   if (lengths.some((length) => length !== n)) {
     return [null, "power.js has a different number of time steps from scenario.js."];
   }
-  if (grid.panel_w && grid.panel_w.length !== power.spacecraft.panels.length) {
+  if (grid.panel_w.length !== power.spacecraft.panels.length) {
     return [null, "power.js gives the power of a different number of panels from its panel list."];
   }
   return [power, ""];
@@ -150,14 +151,13 @@ function jointAngle(joint, modeTrack, t, i, f, time) {
  * penumbra it runs straight between the grid values inside the penumbra and its
  * edges, where it is 1 on the sunlit side and 0 on the umbra side. A plain line
  * between grid values would not do: a 10 s step can jump a whole 9 s penumbra,
- * and would then show part of the sun at a time that is sunlit. Without grid
- * values, as in version 1 of scenario.js, any shadow counts as dark.
+ * and would then show part of the sun at a time that is sunlit.
  */
 function lightFraction(illumination, t, light, time, i) {
   const index = pieceIndexAt(illumination, time);
   const piece = illumination[index];
   if (piece.value === "sunlit") return 1;
-  if (piece.value === "umbra" || !light) return 0;
+  if (piece.value === "umbra") return 0;
   const edge = (neighbour) => (!neighbour ? null : neighbour.value === "sunlit" ? 1 : neighbour.value === "umbra" ? 0 : null);
   const before = edge(illumination[index - 1]);
   const after = edge(illumination[index + 1]);

@@ -30,11 +30,13 @@ const DATA = path.join(__dirname, "data");
 // realm, the arrays they return compare with deepEqual.
 vm.runInThisContext(fs.readFileSync(LOGIC, "utf8"), { filename: LOGIC });
 const NAMES =
-  "PAGE_VERSION, scenarioProblem, checkPower, joinEclipses, pieceAt, stepAt, attitudeFraction, jointAngle, lightFraction, " +
-  "excessPieces, passAt, earthFixed, geodeticOf, groundPoint, pointedTargets, arrowTargets, pointedSpans, sharedSeconds";
+  "PAGE_VERSION, POWER_VERSION, scenarioProblem, checkPower, joinEclipses, pieceAt, stepAt, attitudeFraction, jointAngle, " +
+  "lightFraction, excessPieces, passAt, earthFixed, geodeticOf, groundPoint, pointedTargets, arrowTargets, pointedSpans, " +
+  "sharedSeconds";
 const {
-  PAGE_VERSION, scenarioProblem, checkPower, joinEclipses, pieceAt, stepAt, attitudeFraction, jointAngle, lightFraction,
-  excessPieces, passAt, earthFixed, geodeticOf, groundPoint, pointedTargets, arrowTargets, pointedSpans, sharedSeconds,
+  PAGE_VERSION, POWER_VERSION, scenarioProblem, checkPower, joinEclipses, pieceAt, stepAt, attitudeFraction, jointAngle,
+  lightFraction, excessPieces, passAt, earthFixed, geodeticOf, groundPoint, pointedTargets, arrowTargets, pointedSpans,
+  sharedSeconds,
 } = vm.runInThisContext(`({ ${NAMES} })`);
 
 /** The data a viewer folder gives the page, from its scenario.js and power.js. */
@@ -64,10 +66,12 @@ test("a missing, foreign, newer or older scenario.js stops the page, with the re
   assert.match(scenarioProblem(older), new RegExp(`version ${PAGE_VERSION - 1}, but this page reads version ${PAGE_VERSION}\\.`));
 });
 
-test("power.js from another run, or with steps or panels missing, is left out with a note", () => {
+test("power.js of another version or run, or with steps or panels missing, is left out with a note", () => {
   assert.deepEqual(checkPower(undefined, scenario), [null, ""]);
+  const reads = new RegExp(`but this page reads version ${POWER_VERSION}\\.`);
   const cases = [
-    [(file) => (file.version = PAGE_VERSION + 1), /newer than this page/],
+    [(file) => (file.version = POWER_VERSION + 1), reads],
+    [(file) => (file.version = POWER_VERSION - 1), reads],
     [(file) => (file.scenario_id = "0000000000000000"), /another scenario\.js/],
     [(file) => file.grid.soc.pop(), /different number of time steps/],
     [(file) => file.grid.panel_w.pop(), /different number of panels/],

@@ -23,6 +23,12 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 - The scenario file's `targets` block is now `gnd_targets`, for the ground points, beside `sat_targets` for the satellites. A file with `targets` is refused, so rename the key in older files.
 - An element set's epoch is checked against both ends of the run, not only its start. Its warning, and a trajectory's near its ends, are now among the run's own warnings, so the viewer and the editor show them.
 - The viewer reads `scenario.js` version 7 only. An older one asks for the notebook to be run again.
+- The viewer reads `power.js` version 2 only. With any other version, the page leaves out the power and says why.
+
+### Removed
+
+- The hints for older scenario files. An articulation with `sun_axis`, or an activity list with no title, is now refused as any other mistake is. The Scenario Editor no longer converts them either.
+- The viewer's code for older `scenario.js` and `power.js` files, such as the page without an Attitude tab.
 
 ## [0.1.0] - 2026-10-15
 

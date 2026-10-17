@@ -31,8 +31,9 @@ FORMAT = "quicksat-sizing-editor"
 """The `format` field of the data the page holds."""
 
 VERSION = 1
-"""The `version` field of the data the page holds. It goes up when a field
-changes."""
+"""The `version` field of the data the page holds. It stays the same during
+development, even when a field changes. It goes up only once older pages must
+still be read."""
 
 NAMES = {
     "mission": "mission.yaml",

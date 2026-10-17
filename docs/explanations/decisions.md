@@ -93,7 +93,7 @@ A file opened alone shows no folder: a browser does not tell the page where it c
 
 An articulation was first a part that turns to face the sun, with `sun_axis` naming the axis that faces it. It is now written `point: [-z, sun]`: the axis, and the direction to turn it toward. The direction is any that an attitude can use: the sun, nadir, the orbit normal, the velocity, the ground velocity, or a ground target. So an antenna on a one-axis drive can follow a ground station, with the same rule as a wing that follows the sun.
 
-The form matches the attitudes', so the file has one way to name an axis and its direction. A file that still says `sun_axis` is refused, with the line to write in its place. A second spacecraft as a direction would need a second orbit, which quicksat does not have.
+The form matches the attitudes', so the file has one way to name an axis and its direction. A file that still says `sun_axis` is refused. A second spacecraft as a direction would need a second orbit, which quicksat does not have.
 
 ---
 
