@@ -1152,15 +1152,13 @@ class Activity(Commented):
         Raises
         ------
         ValueError
-            If the list has the wrong length or a field is not valid. A list in
-            the form before titles, which starts with its trigger, is named as
-            such.
+            If the list has the wrong length or a field is not valid
         """
         if not isinstance(fields, (list, tuple)) or len(fields) not in (4, 5):
             raise ValueError(
                 "an activity is a list of four or five items: the title, the "
                 "trigger, the attitude, the mode and an optional constraint. Got "
-                f"{fields!r}" + _untitled_hint(fields)
+                f"{fields!r}"
             )
         names = ("title", "attitude", "mode")
         for name, value in zip(names, (fields[0], fields[2], fields[3]), strict=True):
@@ -1173,13 +1171,9 @@ class Activity(Commented):
                 f"no mode may be named '{SLEW}': the run gives the mode row that "
                 "name while the body turns"
             )
-        try:
-            trigger = parse_trigger(fields[1])
-        except ValueError as exc:
-            raise ValueError(f"{exc}{_untitled_hint(fields)}") from exc
         return cls(
             title=fields[0].strip(),
-            trigger=trigger,
+            trigger=parse_trigger(fields[1]),
             attitude=fields[2].strip(),
             mode=fields[3].strip(),
             constraint=parse_constraint(fields[4]) if len(fields) == 5 else None,
@@ -1225,33 +1219,6 @@ class Activity(Commented):
         if comments is not None and not isinstance(comments, str):
             raise ValueError(f"comments must be text, got {comments!r}")
         return activity.model_copy(update={COMMENTS: comments})
-
-
-def _untitled_hint(fields) -> str:
-    """
-    A hint for a list written before titles, which starts with its trigger.
-
-    Parameters
-    ----------
-    fields
-        The activity's fields, as written
-
-    Returns
-    -------
-    hint : str
-        A sentence to add to the error, or nothing if the first field is not a
-        trigger
-    """
-    if not isinstance(fields, (list, tuple)) or not fields:
-        return ""
-    try:
-        parse_trigger(fields[0])
-    except (ValueError, TypeError, AttributeError):
-        return ""
-    return (
-        ". The first field reads as a trigger: the title now comes first, such as "
-        f"[my title, {', '.join(str(field) for field in fields)}]"
-    )
 
 
 def _parse_start(value) -> Time:
@@ -1434,18 +1401,6 @@ class Articulation(Commented):
     point: AxisPair
     range: tuple[SignedAngleQty, SignedAngleQty] = FULL_TURN
     park: dict[str, SignedAngleQty] = Field(default_factory=dict)
-
-    @model_validator(mode="before")
-    @classmethod
-    def _sun_axis_hint(cls, data):
-        """Names the change for a file written with `sun_axis`, before `point`."""
-        if isinstance(data, dict) and "sun_axis" in data and "point" not in data:
-            raise ValueError(
-                f"sun_axis is now written as point, with the direction: write "
-                f"point: [{data['sun_axis']}, sun] in place of "
-                f"sun_axis: {data['sun_axis']}"
-            )
-        return data
 
     @model_validator(mode="after")
     def _check(self):

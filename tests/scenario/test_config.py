@@ -176,20 +176,6 @@ def test_an_activity_has_a_title_and_four_or_five_fields():
         Activity.from_fields(["", "10 min", "nadir", "downlink"])
 
 
-@pytest.mark.parametrize(
-    "fields",
-    [
-        ["10 min", "nadir", "downlink"],
-        ["eclipse entry", "sun pointing", "idle", "sunlit"],
-    ],
-)
-def test_an_activity_without_a_title_is_named_as_such(fields):
-    with pytest.raises(
-        ValueError, match="the title now comes first, such as \\[my title, "
-    ):
-        Activity.from_fields(fields)
-
-
 # ---------------------------------------------------------------- The whole file
 
 

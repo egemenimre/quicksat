@@ -54,8 +54,9 @@ FORMAT = "quicksat-power"
 """The `format` of `power.js`, which the page checks."""
 
 VERSION = 2
-"""The version of `power.js`. The page reads a version no newer than its own.
-Version 2 added `consumption_file` and `consumption_text`."""
+"""The version of `power.js`. The page reads only this version. It stays the
+same during development, even when a field changes. It goes up only once older
+files must still be read."""
 
 DATA_FILE = "power.js"
 """The name of the power data file, which the page loads from its own folder."""

@@ -68,18 +68,9 @@ FORMAT = "quicksat-scenario"
 """The `format` field of the scenario data."""
 
 VERSION = 7
-"""The `version` field of the scenario data. It goes up when a field changes.
-Version 2 added `light` to the grid, and `penumbra` and `umbra` to the
-illumination track, in place of `eclipse`. Version 3 added `model`, the
-spacecraft's 3D model. Version 4 added `orbit.trajectory` for an orbit from a
-trajectory file, ECSV or OEM, where `orbit.tle` is null, and renamed
-`orbit.nodal_period_s` to `orbit.period_s`. Version 5 added
-`model.articulations`, the parts of the model that turn, with their angles.
-Version 6 added `orbit_file` and `orbit_text`, the name and text of the file
-the orbit was read from: a TLE, an OMM or a trajectory file. Version 7 added
-`targets`, the ground and satellite targets with their passes, `target_files`,
-the satellite targets' files, `pointing`, the targets that the attitudes and
-the articulations name, and `orbit_warnings`, the warnings on the orbits."""
+"""The `version` field of the scenario data. The page reads only this version.
+It stays the same during development, even when a field changes. It goes up
+only once older files must still be read."""
 
 DATA_FILE = "scenario.js"
 """Name of the file the scenario data is written to."""
