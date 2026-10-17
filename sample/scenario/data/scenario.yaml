@@ -49,13 +49,24 @@ step: 10 s
 # above the WGS84 ellipsoid, and 0 m if left out. The triggers Svalbard rise and
 # Svalbard set find when it sees the satellite above min_elevation, 5 deg if left
 # out.
-targets:
+gnd_targets:
   Svalbard: {latitude: 78.229 deg, longitude: 15.408 deg, altitude: 500 m}
+
+# Other satellites that an attitude can point at, by any name. Optional. Here,
+# two of the ten relays in relays.tle, a made-up constellation at 1200 km. A
+# target takes the element set of its own name from a file that holds several,
+# or the one that object names, by its name or its catalogue number. The
+# triggers RELAY-01 rise and RELAY-01 set find when the line between the two
+# satellites keeps min_clearance above the Earth, 100 km if left out.
+sat_targets:
+  RELAY-01: {tle_file: relays.tle}
+  RELAY-06: {tle_file: relays.tle}
 
 # The attitudes, each under a name of your choice, which the activities use. An
 # attitude fixes one body axis on a direction (point), and turns a second body
-# axis as close as it can get to another direction (constrain). The directions are
-# nadir, sun, orbit normal, velocity, ground velocity, and the names in targets.
+# axis as close as it can get to another direction (constrain). The directions
+# are nadir, sun, orbit normal, velocity, ground velocity, and the names in
+# gnd_targets and sat_targets.
 attitudes:
   # +z points at the Earth and -y runs along the orbit normal. The body axes then
   # match LVLH: x along the track, y minus the orbit normal and z nadir.
@@ -71,6 +82,9 @@ attitudes:
   yaw steering: {point: [+z, nadir], constrain: [+x, ground velocity]}
   # For the downlink: +z, where the antenna is, tracks the ground station.
   track Svalbard: {point: [+z, Svalbard], constrain: [-y, orbit normal]}
+  # For the relay link: -z, the side that faces away from the Earth in nadir
+  # pointing, tracks the relay, and +x stays as close to the velocity as it can.
+  track relay: {point: [-z, RELAY-01], constrain: [+x, velocity]}
   # Another example, not used by the activities below: a 30 deg roll off nadir,
   # a turn about x after the nadir orientation.
   # roll 30: {point: [+z, nadir], constrain: [-y, orbit normal], offset: [x 30 deg]}
@@ -114,11 +128,16 @@ slew:
 # Svalbard rises within a minute or so of that. The downlink ends 2 min after
 # Svalbard sets, because the turn to nadir takes about 2 min of it, so the antenna
 # stays on the station until it sets. The pass ends a few minutes before the
-# eclipse. Neither gap leaves time to turn to sun pointing and back.
+# eclipse. Neither gap leaves time to turn to sun pointing and back. After the
+# eclipse, the body waits in nadir for RELAY-01 to rise, and tracks it until it
+# sets. Its pass comes before the next 45 deg crossing, so each orbit keeps its
+# imaging.
 activities:
   - [power generation, latitude 45 deg -2 min, sun pointing, idle, sunlit]
   - [imaging 45 deg lat, latitude 45 deg +5 min, yaw steering, imaging, sunlit]
   - [downlink Svalbard, Svalbard set + 2 min, track Svalbard, downlink]
   - [nadir before eclipse, eclipse entry, nadir, idle, sunlit]
   - [eclipse in nadir, eclipse exit, nadir, idle, eclipse]
+  - [wait for relay, RELAY-01 rise, nadir, idle]
+  - [relay link, RELAY-01 set, track relay, downlink]
 

@@ -133,6 +133,22 @@ def test_a_power_folder_gives_every_file(power_dir):
     ]
 
 
+def test_the_satellite_targets_files_come_once_each(scenario_dir, tmp_path):
+    folder = tmp_path / "relays"
+    shutil.copytree(scenario_dir, folder)
+    relays = (folder / "relays.tle").read_text()
+    with open(folder / "scenario.yaml", "a") as file:
+        file.write(
+            "sat_targets:\n"
+            "  RELAY-01: {tle_file: relays.tle}\n"
+            "  relay: {tle_file: relays.tle, object: 90002}\n"
+            "  lost: {tle_file: nowhere.tle}\n"
+        )
+    data = editor_data(folder)
+    assert data["target_files"] == [{"name": "relays.tle", "text": relays}]
+    assert editor_data(scenario_dir)["target_files"] == []
+
+
 def test_a_scenario_folder_has_no_power_files(scenario_dir):
     data = editor_data(scenario_dir)
     assert data["files"]["power"] is None

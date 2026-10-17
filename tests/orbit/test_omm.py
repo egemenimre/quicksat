@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 
 from quicksat import Q_
-from quicksat.orbit.omm import read_omm_file, write_omm_file
+from quicksat.orbit.omm import read_omm_file, read_omm_sets, write_omm_file
 
 from .conftest import vectors
 
@@ -184,8 +184,12 @@ def test_a_file_of_several_or_of_another_form_is_refused(data_dir, tmp_path):
     record = json.loads((data_dir / "omm_celestrak.json").read_text())[0]
     two = tmp_path / "two.json"
     two.write_text(json.dumps([record, record]))
-    with pytest.raises(ValueError, match="exactly one element set here. Found 2"):
+    with pytest.raises(ValueError, match="holds 2 element sets"):
         read_omm_file(two)
+    empty = tmp_path / "empty.json"
+    empty.write_text("[]")
+    with pytest.raises(ValueError, match="holds no element set"):
+        read_omm_file(empty)
     plain = tmp_path / "plain.txt"
     plain.write_text("1 45018U 20003C   20364.16527091\n")
     with pytest.raises(ValueError, match="not an OMM that quicksat reads"):
@@ -198,3 +202,41 @@ def test_a_file_of_several_or_of_another_form_is_refused(data_dir, tmp_path):
         read_omm_file(broken)
     with pytest.raises(FileNotFoundError):
         read_omm_file(tmp_path / "nowhere.omm")
+
+
+def relays(data_dir) -> list[dict]:
+    """NUSAT-8's record twice, as two relays of a group from CelesTrak."""
+    record = json.loads((data_dir / "omm_celestrak.json").read_text())[0]
+    return [
+        record | {"OBJECT_NAME": f"RELAY-0{n}", "NORAD_CAT_ID": 90000 + n}
+        for n in (1, 2)
+    ]
+
+
+def test_a_group_gives_the_satellite_asked_for_in_json_and_csv(data_dir, tmp_path):
+    records = relays(data_dir)
+    as_json = tmp_path / "relays.json"
+    as_json.write_text(json.dumps(records))
+    as_csv = tmp_path / "relays.csv"
+    as_csv.write_text(
+        "\n".join(
+            [",".join(records[0])]
+            + [",".join(str(v) for v in record.values()) for record in records]
+        )
+        + "\n"
+    )
+    for path in (as_json, as_csv):
+        assert [tle.name for tle in read_omm_sets(path)] == ["RELAY-01", "RELAY-02"]
+        assert read_omm_file(path, "relay-02").satrec.satnum == 90002
+        assert read_omm_file(path, 90001).name == "RELAY-01"
+        with pytest.raises(ValueError, match="no element set named or numbered"):
+            read_omm_file(path, "RELAY-03")
+
+
+def test_a_wrong_element_set_in_a_group_is_named_by_its_number(data_dir, tmp_path):
+    records = relays(data_dir)
+    del records[1]["BSTAR"]
+    path = tmp_path / "relays.json"
+    path.write_text(json.dumps(records))
+    with pytest.raises(ValueError, match="relays.json, element set 2: .* no BSTAR"):
+        read_omm_file(path, "RELAY-01")

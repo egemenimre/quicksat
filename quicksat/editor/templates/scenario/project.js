@@ -25,6 +25,8 @@ const TRIGGERS = [
   ["text", "as written"],
 ];
 const SLEW = "slew";
+/** The key that names an orbit's file, for each kind of file. */
+const ORBIT_KEYS = { tle: "tle_file", omm: "omm_file", trajectory: "trajectory_file" };
 
 /** The folder's files: as Python wrote them into the page, or as the user opened them. */
 let DATA = JSON.parse($("#project").textContent);
@@ -188,6 +190,17 @@ function readArticulation(name, raw) {
   return { name, part: str(raw.part), axis: str(raw.axis) || "+y", point, park, range, comments: str(raw.comments) };
 }
 
+/** A satellite target: where its orbit comes from, the element set it takes, and its clearance. */
+function readSatTarget(name, raw) {
+  const where = `sat_targets › ${name}`;
+  knownKeys(raw, ["tle_file", "omm_file", "trajectory_file", "object", "min_clearance", "comments"], where);
+  const source = raw.omm_file ? "omm" : raw.trajectory_file ? "trajectory" : "tle";
+  return {
+    name, source, file: str(raw[ORBIT_KEYS[source]]), object: str(raw.object),
+    min_clearance: readQ(raw.min_clearance, "km", where), comments: str(raw.comments),
+  };
+}
+
 function readActivity(raw, index) {
   const where = `activities › ${index + 1}`;
   let fields = {};
@@ -209,7 +222,7 @@ function readActivity(raw, index) {
 
 function readScenario(raw) {
   raw = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
-  knownKeys(raw, ["comments", "orbit", "start", "duration", "step", "3d_model", "targets", "attitudes", "slew", "activities"], "scenario");
+  knownKeys(raw, ["comments", "orbit", "start", "duration", "step", "3d_model", "gnd_targets", "sat_targets", "attitudes", "slew", "activities"], "scenario");
   const orbitRaw = raw.orbit && typeof raw.orbit === "object" ? raw.orbit : {};
   knownKeys(orbitRaw, ["comments", "sso", "tle_file", "omm_file", "trajectory_file"], "orbit");
   const ssoRaw = orbitRaw.sso && typeof orbitRaw.sso === "object" ? orbitRaw.sso : null;
@@ -252,16 +265,20 @@ function readScenario(raw) {
         items: namedItems(modelMap.articulations).map(([name, value]) => readArticulation(name, value || {})),
       },
     },
-    targets: {
-      comments: sectionComments(raw.targets),
-      items: namedItems(raw.targets).map(([name, t]) => {
+    gnd_targets: {
+      comments: sectionComments(raw.gnd_targets),
+      items: namedItems(raw.gnd_targets).map(([name, t]) => {
         t = t || {};
-        knownKeys(t, ["latitude", "longitude", "altitude", "min_elevation", "comments"], `targets › ${name}`);
+        knownKeys(t, ["latitude", "longitude", "altitude", "min_elevation", "comments"], `gnd_targets › ${name}`);
         return {
           name, latitude: readQ(t.latitude, "deg", name), longitude: readQ(t.longitude, "deg", name),
           altitude: readQ(t.altitude, "m", name), min_elevation: readQ(t.min_elevation, "deg", name), comments: str(t.comments),
         };
       }),
+    },
+    sat_targets: {
+      comments: sectionComments(raw.sat_targets),
+      items: namedItems(raw.sat_targets).map(([name, t]) => readSatTarget(name, t || {})),
     },
     attitudes: {
       comments: sectionComments(raw.attitudes),
@@ -411,6 +428,9 @@ let project = readProject(DATA);
 // file's text, which the save writes back beside the scenario
 const model = { fileName: "", bytes: null, parts: [], nodes: [] };
 let orbitFile = DATA.orbit_file ? { name: DATA.orbit_file.name, text: DATA.orbit_file.text } : null;
+// The satellite targets' files that the page holds, as text by name: each once,
+// however many targets take an element set from it
+const targetFiles = new Map(DATA.target_files.map((file) => [file.name, file.text]));
 
 // What the page shows, beyond the frame's: the item selected in the 3D panel,
 // and whether the panel is shown on each step and tab
@@ -422,7 +442,11 @@ let P = project.power;
 // ---------------------------------------------------------------- names and their uses
 
 const attitudeNames = () => S.attitudes.items.map((a) => a.name);
-const targetNames = () => S.targets.items.map((t) => t.name);
+const targetNames = () => [...S.gnd_targets.items, ...S.sat_targets.items].map((t) => t.name);
+/** The files that the satellite targets name, each once, in the order of the targets. */
+const satTargetFiles = () => [...new Set(S.sat_targets.items.map((t) => t.file).filter(Boolean))];
+/** The kind of a satellite target's file among the page's files: one kind for each file. */
+const targetKind = (name) => `target:${name}`;
 const directions = () => [...BUILT_IN_DIRECTIONS, ...targetNames()];
 /** The modes a park angle can name: slew is one while the body turns, when there are slews. */
 const parkModes = () => (S.slew.enabled ? [...S.modes, SLEW] : S.modes);
@@ -449,6 +473,9 @@ function rename(kind, from, to) {
   if (kind === "attitude") {
     S.activities.forEach((a) => a.attitude === from && (a.attitude = to));
   } else if (kind === "target") {
+    // a satellite target that takes its element set by its own name keeps it, by the old name
+    const satellite = S.sat_targets.items.find((t) => t.name === from);
+    if (satellite && !satellite.object && (heldSets(satellite.file) || []).length > 1) satellite.object = from;
     S.attitudes.items.forEach((a) => {
       if (a.point[1] === from) a.point[1] = to;
       if (a.constrain[1] === from) a.constrain[1] = to;

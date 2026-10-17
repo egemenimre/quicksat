@@ -6,6 +6,26 @@ Newest first. When a decision replaces an earlier one, the earlier one is kept i
 
 ---
 
+## 19. Other satellites are targets, in a block of their own
+
+**2026-10-16. Implemented. Renames `targets` to `gnd_targets`.**
+
+A target can be another satellite, such as a relay of a constellation, as well as a point on the ground. Attitudes and articulations point at it, and its rise and set end activities, as for a ground target. A target is a direction, from the satellite to the target at each step, so the attitudes need no new maths.
+
+**Two blocks, not one.** `gnd_targets` holds the ground points, and `sat_targets` the satellites. The two kinds share no field: a ground point has a latitude, a longitude, an altitude and `min_elevation`, and a satellite has an orbit file and `min_clearance`. In one block, a typo such as `lattitude` would fail against both models, and pydantic would report both. Two blocks cost one check, that no name is in both. They give plainer errors, their own help, and a plainer editor. The rename breaks scenario files written for 0.1.0, which nobody uses yet, so the old key is refused with no message of its own.
+
+**The orbit comes from a file.** A satellite target takes a TLE or OMM file, or a trajectory file, as the scenario's own orbit does. There is no `sso`: it builds an orbit for the scenario's own satellite, and a target's orbit already exists. A TLE or OMM file may hold a group of satellites, as CelesTrak and Space-Track give them. A target takes the one that `object` names, by its name or catalogue number, or else the one of its own name. A given `object` must match a file of one satellite too, so that a wrong file is caught.
+
+**In view.** The line between the two satellites must keep `min_clearance` above the WGS84 ellipsoid, 100 km by default, so that a link does not cross the atmosphere. The test raises the ellipsoid by that height, which stays within 1 m of the true height up to 500 km. Stretching along the Earth's pole then turns it into a sphere, and the line's closest point to the centre is found in closed form. The ellipsoid turns about its pole, so the pole is all the test needs of the Earth's orientation. It is taken once for each call: it moves by about 1e-5 rad in a month. Turning every step into ITRS instead cost 0.28 s a call on the sample's grid, and the pole takes 4 ms.
+
+**No warning for a target out of view.** An attitude that tracks a hidden target points through the Earth, as for a ground target since 2026-10-10. The rise and set triggers end activities at a pass instead.
+
+**The orbits are checked against the run.** An element set more than 7 days from either end of the run gets a warning, and a trajectory must cover the run. The warnings are among the run's own, so the viewer and the editor show them. Before, the epoch warning was a Python warning only, and only the start was checked.
+
+**One satellite for each target.** An activity tracks one target. With a constellation, "point at whichever relay is in view" would need a group, with a rule for when to hand over. The user chose on 2026-10-16 to leave groups out, for the Activity Designer to help choose a relay by hand. A group could come later as a block of its own, which would break nothing, and serve a network of ground stations too.
+
+---
+
 ## 18. The Scenario Editor runs quicksat through a local server
 
 **2026-10-15. Implemented.**

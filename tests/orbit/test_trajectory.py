@@ -143,9 +143,15 @@ def test_a_run_must_lie_inside_and_is_warned_near_the_ends(tle):
     trajectory = sampled(tle, 3600.0)
     with pytest.raises(ValueError, match="does not lie inside the trajectory"):
         trajectory.check_covers(tle.epoch - Q_(1, "s"), tle.epoch + Q_(600, "s"))
-    with pytest.warns(UserWarning, match="within 3 samples"):
-        trajectory.check_covers(tle.epoch + Q_(60, "s"), tle.epoch + Q_(1800, "s"))
-    trajectory.check_covers(tle.epoch + Q_(600, "s"), tle.epoch + Q_(1800, "s"))
+    with pytest.warns(UserWarning, match="within 3 samples of an end of the relay's"):
+        text = trajectory.check_covers(
+            tle.epoch + Q_(60, "s"), tle.epoch + Q_(1800, "s"), label="the relay's"
+        )
+    assert text is not None and "the relay's" in text
+    assert (
+        trajectory.check_covers(tle.epoch + Q_(600, "s"), tle.epoch + Q_(1800, "s"))
+        is None
+    )
 
 
 def test_few_samples_lower_the_degree_and_one_or_falling_times_are_refused(tle):

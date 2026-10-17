@@ -39,6 +39,7 @@ same bytes, and the `id` stays the same.
 import base64
 import hashlib
 import json
+from collections.abc import Callable
 from importlib.resources import files
 from pathlib import Path
 
@@ -66,7 +67,7 @@ from quicksat.utils.intervals import TimeArray
 FORMAT = "quicksat-scenario"
 """The `format` field of the scenario data."""
 
-VERSION = 6
+VERSION = 7
 """The `version` field of the scenario data. It goes up when a field changes.
 Version 2 added `light` to the grid, and `penumbra` and `umbra` to the
 illumination track, in place of `eclipse`. Version 3 added `model`, the
@@ -75,7 +76,10 @@ trajectory file, ECSV or OEM, where `orbit.tle` is null, and renamed
 `orbit.nodal_period_s` to `orbit.period_s`. Version 5 added
 `model.articulations`, the parts of the model that turn, with their angles.
 Version 6 added `orbit_file` and `orbit_text`, the name and text of the file
-the orbit was read from: a TLE, an OMM or a trajectory file."""
+the orbit was read from: a TLE, an OMM or a trajectory file. Version 7 added
+`targets`, the ground and satellite targets with their passes, `target_files`,
+the satellite targets' files, `pointing`, the targets that the attitudes and
+the articulations name, and `orbit_warnings`, the warnings on the orbits."""
 
 DATA_FILE = "scenario.js"
 """Name of the file the scenario data is written to."""
@@ -309,6 +313,112 @@ def _orbit_file(run: ScenarioRun) -> dict:
     return {"orbit_file": path.name, "orbit_text": path.read_text(encoding="utf-8")}
 
 
+def _element_set_label(tle: Tle) -> str:
+    """An element set's name and catalogue number, as the page shows them."""
+    number = tle.satrec.satnum
+    return f"{tle.name} ({number})" if tle.name else f"catalogue number {number}"
+
+
+def _targets_data(run: ScenarioRun, seconds: Callable[[TimeArray], float]) -> dict:
+    """
+    The targets, as the page draws them: where each is, when it is in view, and
+    where a satellite's orbit came from.
+
+    Parameters
+    ----------
+    run : ScenarioRun
+        The run
+    seconds : callable
+        Turns a time into seconds from the start of the run, to 1 ms
+
+    Returns
+    -------
+    data : dict
+        `targets`: each target, the ground ones first, with its `name`, its
+        `kind`, `ground` or `satellite`, and its `passes`, each with `start_s`,
+        `end_s` and `closest_km`, the closest range on the grid, or None. A
+        ground target has its `latitude_deg`, `longitude_deg`, `altitude_km` and
+        `min_elevation_deg`. A satellite has its `min_clearance_km`, its
+        positions on the grid in GCRS, `r_km`, to 0.1 km, and its `source`: the
+        `file`, then the `element_set` and its `epoch`, or the `start` and the
+        `end` of the trajectory. `target_files`: the `name` and the `text` of
+        each satellite target's file, once each. `pointing`: the targets that
+        each attitude names, under `attitudes`, and that each articulation
+        points at, under `articulations`.
+    """
+    scenario = run.scenario
+    table = run.passes
+
+    def passes(name: str) -> list[dict]:
+        closest = table.loc[table["target"] == name, "closest [km]"].tolist()
+        return [
+            {
+                "start_s": seconds(piece.lower),
+                "end_s": seconds(piece.upper),
+                "closest_km": None if np.isnan(near) else round(float(near), 1),
+            }
+            for piece, near in zip(run.in_view[name], closest, strict=True)
+        ]
+
+    targets = [
+        {
+            "name": name,
+            "kind": "ground",
+            "latitude_deg": float(ground.latitude.to_value(u.deg)),
+            "longitude_deg": float(ground.longitude.to_value(u.deg)),
+            "altitude_km": float(ground.altitude.to_value(u.km)),
+            "min_elevation_deg": float(ground.min_elevation.to_value(u.deg)),
+            "passes": passes(name),
+        }
+        for name, ground in scenario.gnd_targets.items()
+    ]
+    held: dict[Path, dict] = {}
+    for name, target in scenario.sat_targets.items():
+        orbit = run.sat_orbits[name]
+        source: dict = {"file": target.file.name}
+        if isinstance(orbit, Tle):
+            source |= {
+                "element_set": _element_set_label(orbit),
+                "epoch": orbit.epoch.utc.isot,
+            }
+        else:
+            source |= {"start": orbit.start.utc.isot, "end": orbit.end.utc.isot}
+        cartesian = run.sat_states[name].cartesian
+        assert isinstance(cartesian, CartesianRepresentation)
+        targets.append(
+            {
+                "name": name,
+                "kind": "satellite",
+                "min_clearance_km": float(target.min_clearance.to_value(u.km)),
+                "r_km": _flat(cartesian.xyz.to_value(u.km).T, 1),
+                "source": source,
+                "passes": passes(name),
+            }
+        )
+        if target.file not in held:
+            held[target.file] = {
+                "name": target.file.name,
+                "text": target.file.read_text(encoding="utf-8"),
+            }
+    names = set(scenario.gnd_targets) | set(scenario.sat_targets)
+    attitudes = {
+        name: used
+        for name, attitude in scenario.attitudes.items()
+        if (used := [d for d in dict.fromkeys(attitude.directions) if d in names])
+    }
+    model = scenario.spacecraft_model
+    articulations = {
+        name: articulation.point[1]
+        for name, articulation in (model.articulations if model else {}).items()
+        if articulation.point[1] in names
+    }
+    return {
+        "targets": targets,
+        "target_files": list(held.values()),
+        "pointing": {"attitudes": attitudes, "articulations": articulations},
+    }
+
+
 def _orbit_data(run: ScenarioRun) -> dict:
     """
     Where the run's orbit comes from, as the page shows it.
@@ -365,8 +475,10 @@ def scenario_data(run: ScenarioRun) -> dict:
         The fields of `scenario.js`. `grid` holds the values at each time step.
         `tracks` holds the three rows of the Gantt chart, and `occurrences` the
         activity table. `model` holds the spacecraft's 3D model and the angles
-        of its articulations, or None. `id` is the first 16 hex digits of the
-        SHA-256 of the JSON text of the other fields.
+        of its articulations, or None. `targets`, `target_files` and `pointing`
+        come from `_targets_data`. `warnings` holds every warning of the run,
+        and `orbit_warnings` those on the orbits alone. `id` is the first 16 hex
+        digits of the SHA-256 of the JSON text of the other fields.
     """
     start: TimeArray = run.times[0]
 
@@ -462,7 +574,9 @@ def scenario_data(run: ScenarioRun) -> dict:
         },
         "tracks": tracks,
         "occurrences": occurrences,
+        **_targets_data(run, seconds),
         "warnings": run.warnings,
+        "orbit_warnings": run.orbit_warnings,
         "attitude": _attitude_data(
             run, rotations, position, velocity.d_xyz.to_value(u.km / u.s).T
         ),

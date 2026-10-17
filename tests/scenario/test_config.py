@@ -382,16 +382,18 @@ def test_a_target_rise_or_set_trigger(text, event, target, offset):
 
 def test_a_rise_or_set_must_name_a_defined_target():
     activities = [["wait", "Svalbard rise", "nadir", "idle"]]
-    with pytest.raises(ValueError, match="names the target 'Svalbard', which targets"):
+    with pytest.raises(
+        ValueError, match="names the target 'Svalbard', which neither gnd_targets nor"
+    ):
         scenario(activities=activities)
-    targets = {"Svalbard": {"latitude": "78.2 deg", "longitude": "15.4 deg"}}
-    read = scenario(activities=activities, targets=targets)
-    assert read.targets["Svalbard"].min_elevation == Q_(5, "deg")
+    gnd_targets = {"Svalbard": {"latitude": "78.2 deg", "longitude": "15.4 deg"}}
+    read = scenario(activities=activities, gnd_targets=gnd_targets)
+    assert read.gnd_targets["Svalbard"].min_elevation == Q_(5, "deg")
 
 
 @pytest.mark.parametrize("min_elevation", ["-1 deg", "90 deg", "5 m"])
 def test_a_minimum_elevation_must_be_an_angle_above_the_horizon(min_elevation):
-    targets = {
+    gnd_targets = {
         "Svalbard": {
             "latitude": "78.2 deg",
             "longitude": "15.4 deg",
@@ -399,16 +401,73 @@ def test_a_minimum_elevation_must_be_an_angle_above_the_horizon(min_elevation):
         }
     }
     with pytest.raises(ValueError, match="min_elevation|angle"):
-        scenario(targets=targets)
+        scenario(gnd_targets=gnd_targets)
 
 
 def test_a_ground_target_reads_and_an_attitude_can_point_at_it():
-    targets = {"Toulouse": {"latitude": "43.6 deg", "longitude": "1.44 deg"}}
+    gnd_targets = {"Toulouse": {"latitude": "43.6 deg", "longitude": "1.44 deg"}}
     track = {"point": ["+z", "Toulouse"], "constrain": ["-y", "orbit normal"]}
-    read = scenario(targets=targets, attitudes=BASE["attitudes"] | {"track": track})
-    target = read.targets["Toulouse"]
+    read = scenario(
+        gnd_targets=gnd_targets, attitudes=BASE["attitudes"] | {"track": track}
+    )
+    target = read.gnd_targets["Toulouse"]
     assert target.latitude == Q_(43.6, "deg")
     assert target.altitude == Q_(0, "m")
+
+
+def test_a_satellite_target_reads_and_an_attitude_and_a_trigger_can_name_it():
+    sat_targets = {
+        "relay": {"tle_file": "relays.tle", "object": "RELAY-03"},
+        "EDRS-C": {"omm_file": "edrs.json", "object": 44475, "min_clearance": "50 km"},
+        "inspector": {"trajectory_file": "inspector.oem"},
+    }
+    track = {"point": ["+z", "relay"], "constrain": ["-y", "orbit normal"]}
+    activities = [["link", "relay set", "track", "idle"]]
+    read = Scenario.from_yaml_text(
+        yaml.safe_dump(
+            BASE
+            | {"sat_targets": sat_targets, "activities": activities}
+            | {"attitudes": BASE["attitudes"] | {"track": track}}
+        ),
+        base_dir="/data",
+    )
+    relay = read.sat_targets["relay"]
+    assert relay.file.as_posix() == "/data/relays.tle"
+    assert relay.satellite == "RELAY-03"
+    assert relay.min_clearance == Q_(100, "km")
+    edrs = read.sat_targets["EDRS-C"]
+    assert (edrs.satellite, edrs.min_clearance) == (44475, Q_(50, "km"))
+    assert read.sat_targets["inspector"].file.name == "inspector.oem"
+
+
+@pytest.mark.parametrize(
+    ("target", "message"),
+    [
+        (
+            {"sso": {"altitude": "510 km", "ltan": "10:30"}},
+            "takes its orbit from a file",
+        ),
+        ({"tle_file": "a.tle", "omm_file": "a.json"}, "exactly one of"),
+        ({"min_clearance": "100 km"}, "exactly one of"),
+        ({"trajectory_file": "a.oem", "object": "A"}, "takes no object"),
+        ({"tle_file": "a.tle", "object": " "}, "must give a satellite's name"),
+        ({"tle_file": "a.tle", "min_clearance": "-1 km"}, "must not be negative"),
+        ({"tle_file": "a.tle", "satellite": "A"}, "satellite\n  Extra inputs"),
+    ],
+)
+def test_a_bad_satellite_target_stops_the_load(target, message):
+    with pytest.raises(ValueError, match=message):
+        scenario(sat_targets={"relay": target})
+
+
+def test_a_target_name_must_be_its_own():
+    place = {"latitude": "0 deg", "longitude": "0 deg"}
+    with pytest.raises(ValueError, match="'relay' is in both gnd_targets and sat"):
+        scenario(
+            gnd_targets={"relay": place}, sat_targets={"relay": {"tle_file": "a.tle"}}
+        )
+    with pytest.raises(ValueError, match="'sun' takes the name of a built-in"):
+        scenario(sat_targets={"sun": {"tle_file": "a.tle"}})
 
 
 TRACK = {"point": ["+z", "Toulouse"], "constrain": ["-y", "orbit normal"]}
@@ -472,11 +531,11 @@ def test_a_bad_attitude_stops_the_load(changes, message):
             "no mode may be named 'slew'",
         ),
         (
-            {"targets": {"sun": {"latitude": "0 deg", "longitude": "0 deg"}}},
+            {"gnd_targets": {"sun": {"latitude": "0 deg", "longitude": "0 deg"}}},
             "target 'sun' takes the name of a built-in direction",
         ),
         (
-            {"targets": {"Toulouse": {"latitude": "95 deg", "longitude": "0 deg"}}},
+            {"gnd_targets": {"Toulouse": {"latitude": "95 deg", "longitude": "0 deg"}}},
             "latitude must be from -90 to 90 deg",
         ),
         (
@@ -544,7 +603,7 @@ orbit:
   sso: {altitude: 510 km, ltan: "13:30", comments: The SSO.}
 start: 2026-10-01T00:00:00
 duration: 1 orbit
-targets:
+gnd_targets:
   comments: All the targets.
   Svalbard: {latitude: 78.2 deg, longitude: 15.4 deg, comments: SvalSat.}
 attitudes:
@@ -573,8 +632,8 @@ def test_every_block_and_the_file_may_hold_comments():
     assert read.slew is not None
     assert read.slew.comments == "The slews."
     # a section's own comments are not an item of it
-    assert list(read.targets) == ["Svalbard"]
-    assert read.targets["Svalbard"].comments == "SvalSat."
+    assert list(read.gnd_targets) == ["Svalbard"]
+    assert read.gnd_targets["Svalbard"].comments == "SvalSat."
     assert list(read.attitudes) == ["nadir"]
     assert read.attitudes["nadir"].comments == "Nadir."
     assert read.activities[0].comments is None

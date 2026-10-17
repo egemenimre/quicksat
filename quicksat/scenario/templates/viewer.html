@@ -199,6 +199,25 @@ button[data-help], select[data-help], input[data-help] { cursor: pointer; }
 .attitude-files p { color: var(--muted); font-size: 11px; margin: 4px 0 0; }
 #attitude-warnings p { color: var(--amber); font-size: 11.5px; margin: 0 0 8px; }
 #attitude-warnings .none { color: var(--muted); }
+/* The Targets page: the timeline and each target's passes, with the targets at
+   the time cursor beside them, and the table of passes and the targets'
+   sources below. It shares the time controls too. */
+#page-targets {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.24fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 0.7fr) auto;
+  gap: 8px; padding: 8px 8px 0;
+}
+#targets-charts { grid-area: 1 / 1; grid-template-rows: auto 96px auto minmax(0, 1fr); }
+#vp-targets-now { grid-area: 1 / 2; }
+#vp-passes { grid-area: 2 / 1; }
+#vp-sources { grid-area: 2 / 2; }
+#page-targets .controls { grid-area: 3 / 1 / 4 / 3; }
+#vp-passes table.list th { top: -34px; background: #050c18; }
+#vp-passes .none, #target-sources .none { color: var(--muted); }
+.source + .source { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.source b { font-weight: 600; }
+.source div { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.source .far { color: var(--amber); }
 /* The current power: a label and a value on each line, the panels indented
    under the total generated */
 .power-now { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 12px; margin: 0; align-items: center; }
@@ -339,6 +358,11 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
   #page-attitude { grid-template-columns: minmax(0, 1fr); grid-template-rows: 640px auto auto; }
   .attitude-side { grid-area: 2 / 1; }
   #page-attitude .controls { grid-area: 3 / 1; }
+  #page-targets { grid-template-columns: minmax(0, 1fr); grid-template-rows: 560px auto 360px 360px auto; }
+  #vp-targets-now { grid-area: 2 / 1; }
+  #vp-passes { grid-area: 3 / 1; }
+  #vp-sources { grid-area: 4 / 1; }
+  #page-targets .controls { grid-area: 5 / 1; }
   .blocks, #inputs { grid-template-columns: minmax(0, 1fr); }
 }
 </style>
@@ -351,6 +375,7 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
     <button class="active" data-page="scenario" data-help="tabScenario">Scenario</button>
     <button data-page="power" data-help="tabPower" hidden>Power</button>
     <button data-page="attitude" data-help="tabAttitude" hidden>Attitude</button>
+    <button data-page="targets" data-help="tabTargets" hidden>Targets</button>
     <button data-page="activities" data-help="tabActivities">Activities</button>
     <button data-page="inputs" data-help="tabInputs">Inputs</button>
     <button data-page="results" data-help="tabResults">Results</button>
@@ -384,6 +409,7 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
       <canvas></canvas>
       <div class="vp-title" id="ground-title" data-help="ground"></div>
       <div class="vp-readout top-right" id="ground-readout" data-help="position"></div>
+      <div class="toggles" id="ground-toggles"></div>
     </div>
     <div class="charts" id="charts">
       <div class="chart-head"><span class="title" data-help="timeline">TIMELINE</span><span class="zooms" id="zooms"></span></div>
@@ -447,6 +473,30 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
         <div class="vp-title" data-help="warnings"><b>Warnings</b></div>
         <div id="attitude-warnings"></div>
       </div>
+    </div>
+  </section>
+
+  <section class="page" id="page-targets">
+    <div class="charts" id="targets-charts">
+      <div class="chart-head"><span class="title" data-help="timeline">TIMELINE</span><span class="zooms" id="targets-zooms"></span></div>
+      <div class="chart-body" id="targets-gantt"></div>
+      <div class="chart-head" id="head-lanes"></div>
+      <div class="chart-body" id="chart-lanes"></div>
+    </div>
+    <div class="data-panel" id="vp-targets-now">
+      <div class="vp-title" data-help="targetsNow"><b>Targets now</b></div>
+      <dl class="power-now" id="targets-now"></dl>
+    </div>
+    <div class="data-panel" id="vp-passes">
+      <div class="vp-title" data-help="passes"><b>Passes</b></div>
+      <table class="list">
+        <thead><tr><th>Target</th><th>From, UTC</th><th>To, UTC</th><th class="num">Length</th><th class="num">Pointed at</th><th class="num">Closest</th></tr></thead>
+        <tbody id="pass-rows"></tbody>
+      </table>
+    </div>
+    <div class="data-panel" id="vp-sources">
+      <div class="vp-title" data-help="targetSources"><b>Sources</b></div>
+      <div id="target-sources"></div>
     </div>
   </section>
 
@@ -585,6 +635,23 @@ const ARTICULATIONS = (MODEL && MODEL.articulations) || [];
 // the slew limits and the files to download. An older scenario.js has none.
 const ATTITUDE = scenario.attitude || null;
 const EXCESSES = ATTITUDE ? excessPieces(T, ATTITUDE, TRACKS.attitude) : [];
+// The ground and satellite targets: each with its passes, and a satellite with
+// its positions at each time of the grid. `pointing` names the targets of each
+// attitude and articulation.
+const TARGETS = scenario.targets;
+const POINTING = scenario.pointing;
+// Every pass of every target, in time order, for the Targets page's table
+const PASSES = TARGETS.flatMap((target) => target.passes.map((pass) => ({ target, ...pass }))).sort(
+  (a, b) => a.start_s - b.start_s,
+);
+// When the body or a part points at each target, by its name
+const POINTED = pointedSpans(POINTING, TRACKS.attitude, TRACKS.mode, ARTICULATIONS);
+// A ground target is pink and a satellite target lime: bright while in view,
+// and dim otherwise
+const TARGET_COLOURS = { ground: ["#f472b6", "#7a4763"], satellite: ["#a3e635", "#567b2a"] };
+const targetColour = (target, inView = true) => TARGET_COLOURS[target.kind][inView ? 0 : 1];
+// The body view draws an arrow to at most this many targets in view, the nearest
+const MOST_ARROWS = 4;
 const AXIS_VECTORS = { "+x": [1, 0, 0], "-x": [-1, 0, 0], "+y": [0, 1, 0], "-y": [0, -1, 0], "+z": [0, 0, 1], "-z": [0, 0, -1] };
 const MONO = getComputedStyle(document.body).fontFamily;
 
@@ -704,6 +771,27 @@ const state = {
   joints: ARTICULATIONS.map(() => 0),
   k: 0,
 };
+// Each target at the time cursor: its position in GCRS, in km, its place on the
+// map, whether it is in view, and its range. A ground target's position is fixed
+// to the Earth. A satellite's point below it is worked out once for each time
+// of the grid, from its position and the Earth's orientation.
+const targetState = TARGETS.map((target) => {
+  const item = { target, r: new THREE.Vector3(), lat: 0, lon: 0, inView: false, range: 0, fixed: null, lats: null, lons: null };
+  if (target.kind === "ground") {
+    item.fixed = new THREE.Vector3(...groundPoint(target.latitude_deg, target.longitude_deg, target.altitude_km));
+    [item.lat, item.lon] = [target.latitude_deg, target.longitude_deg];
+  } else {
+    item.lats = new Float64Array(N);
+    item.lons = new Float64Array(N);
+    for (let k = 0; k < N; k++) {
+      const fixed = earthFixed(Q_EARTH.slice(4 * k, 4 * k + 4), target.r_km.slice(3 * k, 3 * k + 3));
+      [item.lats[k], item.lons[k]] = geodeticOf(fixed);
+    }
+  }
+  return item;
+});
+// The targets that the body and its parts point at, at the time cursor
+state.pointed = new Set();
 const dirty = { orbit: true, body: true, ground: true, charts: true, readouts: true };
 const markAll = () => Object.keys(dirty).forEach((key) => (dirty[key] = true));
 
@@ -723,6 +811,18 @@ function updateState() {
   state.beta = BETA[i] + (BETA[i + 1] - BETA[i]) * f;
   state.light = lightFraction(TRACKS.illumination, T, LIGHT, state.t, i);
   state.k = f < 0.5 ? i : i + 1;
+  for (const item of targetState) {
+    if (item.fixed) {
+      item.r.copy(item.fixed).applyQuaternion(state.qEarth);
+    } else {
+      vectorAt(item.target.r_km, i, f, item.r);
+      item.lat = item.lats[i] + (item.lats[i + 1] - item.lats[i]) * f;
+      item.lon = ((angleBetween(item.lons[i], item.lons[i + 1], f) + 540) % 360) - 180;
+    }
+    item.inView = passAt(item.target.passes, state.t, T_END) !== null;
+    item.range = item.r.distanceTo(state.r);
+  }
+  state.pointed = new Set(pointedTargets(POINTING, TRACKS.attitude, TRACKS.mode, ARTICULATIONS, state.t));
   markAll();
 }
 
@@ -1111,6 +1211,69 @@ const orbitView = (() => {
   world.add(satellite);
   let viewHeight = 600;
 
+  // The targets. A satellite target is a small marker that keeps its size on
+  // screen, with its trajectory over the run as a faint line. A ground target
+  // is a dot on the Earth, which turns with it. It sits on the drawn sphere, as
+  // the coastlines do: on the ellipsoid, it would hide under the sphere near
+  // the poles. Each is bright while in view of the spacecraft, and dim otherwise.
+  // A ground target is pink and a satellite target lime.
+  const satelliteMarks = new THREE.Group();
+  const groundMarks = new THREE.Group();
+  world.add(satelliteMarks);
+  earth.add(groundMarks);
+  const targetMarks = targetState.map((item) => {
+    const mark = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: targetColour(item.target) }));
+    if (item.fixed) {
+      mark.position.copy(item.fixed).setLength(RE * 1.004);
+      groundMarks.add(mark);
+    } else {
+      // the page's three.js has line segments, not lines: each step is one
+      const r = item.target.r_km;
+      const steps = [];
+      for (let k = 0; k + 5 < r.length; k += 3) steps.push(...r.slice(k, k + 6).map((x) => x * MM));
+      satelliteMarks.add(mark, lines(steps, targetColour(item.target), 0.2));
+    }
+    return mark;
+  });
+  // The links: a bright line to each target that the attitude or a part points
+  // at, in view or not, so that a line into the Earth shows a hidden target. A
+  // fainter line goes to each other target in view. Each takes its target's
+  // colour.
+  const links = (opacity) => {
+    const geometry = new THREE.BufferGeometry();
+    const room = 6 * Math.max(TARGETS.length, 1);
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(room), 3));
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(room), 3));
+    const lines = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity }));
+    lines.frustumCulled = false;
+    world.add(lines);
+    return lines;
+  };
+  const pointLinks = links(0.95);
+  const sightLinks = links(0.35);
+  let targetsShown = true;
+  let linksShown = true;
+  const markAt = new THREE.Vector3();
+  const linkColour = new THREE.Color();
+  /** Where the view draws a target, in Mm: a ground target on the drawn sphere. */
+  const drawnAt = (item, out) => {
+    out.copy(item.r).multiplyScalar(MM);
+    return item.fixed ? out.setLength(RE * 1.004) : out;
+  };
+  /** Joins the spacecraft to each of the targets, from the start of the line's buffer. */
+  function joinTo(lines, items) {
+    const { position, color } = lines.geometry.attributes;
+    items.forEach((item, j) => {
+      drawnAt(item, markAt);
+      position.setXYZ(2 * j, state.r.x * MM, state.r.y * MM, state.r.z * MM);
+      position.setXYZ(2 * j + 1, markAt.x, markAt.y, markAt.z);
+      linkColour.set(targetColour(item.target));
+      for (const end of [2 * j, 2 * j + 1]) color.setXYZ(end, linkColour.r, linkColour.g, linkColour.b);
+    });
+    lines.geometry.setDrawRange(0, 2 * items.length);
+    position.needsUpdate = color.needsUpdate = true;
+  }
+
   // The sun's direction and the Earth's shadow
   const sunArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), RE * 2.6, VECTOR_COLOURS.sun, RE * 0.12, RE * 0.06);
   const sunBall = new THREE.Mesh(new THREE.SphereGeometry(1.6, 32, 16), new THREE.MeshBasicMaterial({ color: 0xffd23f }));
@@ -1152,6 +1315,8 @@ const orbitView = (() => {
   const labels = labelLayer(viewport);
   const sunLabel = labels.add("Sun", VECTOR_COLOURS.sun);
   const craftLabel = labels.add("Spacecraft", THEME.text, [0, -16]);
+  // A target's name shows while it is in view
+  const targetLabels = targetState.map((item) => labels.add(item.target.name, targetColour(item.target), [0, -12]));
   let size = { width: 1, height: 1 };
   // True when the Earth stands between the camera and `point`
   const behindEarth = (point) => {
@@ -1185,6 +1350,11 @@ const orbitView = (() => {
   // and 2.6 times the orbit's radius for a higher one, such as GEO
   let orbitRadius = 0;
   for (let i = 0; i < N; i++) orbitRadius = Math.max(orbitRadius, Math.hypot(R[3 * i], R[3 * i + 1], R[3 * i + 2]) * MM);
+  // and every satellite target's, such as a relay in GEO
+  for (const { target } of targetState.filter((item) => item.lats)) {
+    const r = target.r_km;
+    for (let k = 0; k < r.length; k += 3) orbitRadius = Math.max(orbitRadius, Math.hypot(r[k], r[k + 1], r[k + 2]) * MM);
+  }
   camera.position.copy(eye.multiplyScalar(Math.max(RE * 4.8, orbitRadius * 2.6)));
   const home = camera.position.clone();
   if (controls) {
@@ -1202,6 +1372,20 @@ const orbitView = (() => {
     { label: "Grid", on: true, help: "grid", set: (on) => (grid.visible = on) },
     { label: "Coast", on: true, help: "coast", set: (on) => (coast.visible = on) },
     { label: "Shadow", on: true, help: "shadow", set: (on) => (shadow.visible = on) },
+    ...(TARGETS.length
+      ? [
+          {
+            label: "Targets",
+            on: true,
+            help: "targets",
+            set: (on) => {
+              targetsShown = on;
+              satelliteMarks.visible = groundMarks.visible = on;
+            },
+          },
+          { label: "Links", on: true, help: "links", set: (on) => (linksShown = on) },
+        ]
+      : []),
     { label: "Follow", on: false, help: "follow", set: (on) => (follow = on) },
   ].map((item) => ({ ...item, set: (on) => { item.set(on); dirty.orbit = true; } })));
   $("#orbit-toggles").append(
@@ -1252,12 +1436,26 @@ const orbitView = (() => {
       marker.scale.setScalar((6 * 2 * distance * Math.tan((camera.fov * D2R) / 2)) / viewHeight);
       sunLabel.position.copy(state.sun).multiplyScalar(RE * 2.85);
       craftLabel.position.copy(satellite.position);
+      joinTo(pointLinks, linksShown ? targetState.filter((item) => state.pointed.has(item.target.name)) : []);
+      joinTo(sightLinks, linksShown ? targetState.filter((item) => item.inView && !state.pointed.has(item.target.name)) : []);
+      targetState.forEach((item, j) => {
+        const mark = targetMarks[j];
+        drawnAt(item, markAt);
+        if (!item.fixed) mark.position.copy(markAt);
+        mark.material.color.set(targetColour(item.target, item.inView));
+        mark.scale.setScalar((3.5 * 2 * camera.position.distanceTo(markAt) * Math.tan((camera.fov * D2R) / 2)) / viewHeight);
+        targetLabels[j].position.copy(markAt);
+      });
     },
     render() {
       if (!renderer) return;
       renderer.render(world, camera);
       sunLabel.visible = !behindEarth(sunLabel.position);
       craftLabel.visible = !behindEarth(craftLabel.position);
+      targetState.forEach((item, j) => {
+        const label = targetLabels[j];
+        label.visible = targetsShown && item.inView && !behindEarth(label.position);
+      });
       labels.place(camera, size.width, size.height);
     },
   };
@@ -1294,6 +1492,16 @@ const bodyView = (() => {
     orbitNormal: labels.add("Orbit normal", VECTOR_COLOURS.orbitNormal),
     sun: labels.add("Sun", VECTOR_COLOURS.sun),
   };
+  // An arrow to each target in view, the nearest first and at most MOST_ARROWS
+  // of them, and to each target that the body or a part points at, in view or
+  // not. Out of view, the arrow is dim.
+  const targetArrows = targetState.map((item) => {
+    const arrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 1.8, targetColour(item.target), 0.15, 0.075);
+    arrow.visible = false;
+    world.add(arrow);
+    return { item, arrow, label: labels.add(item.target.name, targetColour(item.target)) };
+  });
+  let targetArrowsShown = true;
   // Each panel's name sits just past its normal, at a point that turns with
   // the panel. Each body axis's name sits just past the axis.
   const panelLabels = spacecraft.userData.markers.map(({ anchor }, j) => ({
@@ -1373,7 +1581,14 @@ const bodyView = (() => {
       // The choice then lasts until the page is closed
     }
   });
+  const targetButton = element("button", { class: "toggle on", text: "Targets", "data-help": "bodyTargets" });
+  targetButton.addEventListener("click", () => {
+    targetArrowsShown = !targetArrowsShown;
+    targetButton.classList.toggle("on", targetArrowsShown);
+    dirty.body = true;
+  });
   $("#body-toggles").append(
+    ...(TARGETS.length ? [targetButton] : []),
     ...(PANELS.length ? [panelButton] : []),
     ...frameButtons,
     element("button", { class: "toggle", text: "Reset view", "data-help": "bodyReset", onclick: () => setFrame(frame) }),
@@ -1410,6 +1625,21 @@ const bodyView = (() => {
       // The sun's direction is the last one set
       sunlight.position.copy(direction).multiplyScalar(10);
       sunlight.intensity = 2.4 * state.light;
+      const ranges = {};
+      for (const item of targetState) ranges[item.target.name] = item.range;
+      const inView = targetState.filter((item) => item.inView).map((item) => item.target.name);
+      const drawn = new Set(arrowTargets(inView, ranges, [...state.pointed], MOST_ARROWS));
+      for (const { item, arrow, label } of targetArrows) {
+        const on = targetArrowsShown && drawn.has(item.target.name);
+        arrow.visible = label.visible = on;
+        if (!on) continue;
+        direction.copy(item.r).sub(state.r).normalize().applyQuaternion(toDisplay);
+        arrow.setDirection(direction);
+        const colour = targetColour(item.target, item.inView);
+        arrow.setColor(colour);
+        label.node.style.color = colour;
+        label.position.copy(direction).multiplyScalar(2.05);
+      }
       spacecraft.updateMatrixWorld(true);
       for (const { label, anchor } of panelLabels) anchor.getWorldPosition(label.position);
       for (const { label, local } of axisLabels) label.position.copy(local).applyQuaternion(spacecraft.quaternion);
@@ -1530,6 +1760,59 @@ const groundView = (() => {
     return [sx, sy, sz];
   }
 
+  // The track of each satellite target over its current pass, which is off at first
+  let passesShown = false;
+  if (targetState.some((item) => item.lats)) {
+    addToggles($("#ground-toggles"), [
+      {
+        label: "Passes",
+        on: false,
+        help: "passTracks",
+        set: (on) => {
+          passesShown = on;
+          dirty.ground = true;
+        },
+      },
+    ]);
+  }
+
+  /**
+   * The targets: a satellite target's point below it as a circle, and a ground
+   * target as a square, each filled while in view and hollow otherwise. Each
+   * name shows while in view, and a ground target's always. With Passes on,
+   * each satellite in view has its track over its current pass, from its rise
+   * to its set.
+   */
+  function drawTargets(c) {
+    c.save();
+    c.font = `10px ${MONO}`;
+    c.lineWidth = 1.5;
+    for (const item of targetState) {
+      c.strokeStyle = c.fillStyle = targetColour(item.target, item.inView);
+      if (passesShown && item.inView && item.lats) {
+        const pass = passAt(item.target.passes, state.t, T_END);
+        const from = sampleAt(pass.start_s)[0];
+        const [last, f] = sampleAt(pass.end_s);
+        const to = f > 0 ? last + 1 : last;
+        c.beginPath();
+        for (let k = from; k <= to; k++) {
+          const [x, y] = toPixel(item.lons[k], item.lats[k]);
+          if (k === from || Math.abs(item.lons[k] - item.lons[k - 1]) > 180) c.moveTo(x, y);
+          else c.lineTo(x, y);
+        }
+        c.stroke();
+      }
+      const [x, y] = toPixel(item.lon, item.lat);
+      c.beginPath();
+      if (item.fixed) c.rect(x - 3.5, y - 3.5, 7, 7);
+      else c.arc(x, y, 4, 0, 2 * Math.PI);
+      if (item.inView) c.fill();
+      else c.stroke();
+      if (item.inView || item.fixed) c.fillText(item.target.name, x + 7, y - 6);
+    }
+    c.restore();
+  }
+
   /** The terminator: the great circle at right angles to the sun. */
   function drawTerminator(c, sx, sy, sz) {
     const sun = new THREE.Vector3(sx, sy, sz);
@@ -1589,6 +1872,7 @@ const groundView = (() => {
       c.beginPath();
       c.arc(sunX, sunY, 5, 0, 2 * Math.PI);
       c.fill();
+      drawTargets(c);
       const [x, y] = toPixel(state.lon, state.lat);
       c.lineWidth = 2;
       c.strokeStyle = "#ffffff";
@@ -1967,6 +2251,64 @@ const charts = (() => {
     );
   }
 
+  // The Targets page: the timeline, and when each target is in view, with a
+  // row for each target and a bar for each pass. A thin bar under the passes
+  // shows when the body or a part points at the target, in view or not.
+  if (TARGETS.length) {
+    $("#page-tabs").querySelector('[data-page="targets"]').hidden = false;
+    gantt("#targets-gantt", hiddenX);
+    const rows = TARGETS.length;
+    const drawLanes = (u) =>
+      clipped(u, (c, box) => {
+        const rowHeight = box.height / rows;
+        const bar = (span, top, height) => {
+          const x0 = u.valToPos(span.start_s / 60, "x", true);
+          const x1 = u.valToPos(span.end_s / 60, "x", true);
+          c.fillRect(x0, top, Math.max(px(), x1 - x0), height);
+        };
+        TARGETS.forEach((target, row) => {
+          const top = box.top + (row + 0.12) * rowHeight;
+          c.fillStyle = targetColour(target);
+          for (const pass of target.passes) bar(pass, top, 0.5 * rowHeight);
+          c.fillStyle = THEME.text;
+          const strip = Math.max(2 * px(), 0.12 * rowHeight);
+          for (const span of POINTED[target.name] || []) bar(span, top + 0.62 * rowHeight, strip);
+        });
+      });
+    const lanes = make(
+      "#chart-lanes",
+      {
+        range: () => [0, rows],
+        xAxis: shownX,
+        yAxis: {
+          grid: { show: false },
+          ticks: { show: false },
+          splits: () => TARGETS.map((_, row) => rows - row - 0.5),
+          values: (u, splits) => splits.map((s) => TARGETS[Math.round(rows - 0.5 - s)].name),
+        },
+        series: [{ stroke: "transparent" }],
+        draw: drawLanes,
+      },
+      [MINUTES.map(() => null)],
+    );
+    lanes.over.addEventListener("mousemove", (event) => {
+      const time = lanes.posToVal(event.offsetX, "x") * 60;
+      const row = clamp(Math.floor((event.offsetY / lanes.over.clientHeight) * rows), 0, rows - 1);
+      const target = TARGETS[row];
+      const pass = passAt(target.passes, time, T_END);
+      const pointed = passAt(POINTED[target.name] || [], time, T_END);
+      lanes.over.title = [
+        pass
+          ? `${target.name}: in view from ${clockText(pass.start_s)} to ${clockText(pass.end_s)}, ${numberText((pass.end_s - pass.start_s) / 60, 2)} min`
+          : `${target.name}: out of view`,
+        ...(pointed ? [`pointed at from ${clockText(pointed.start_s)} to ${clockText(pointed.end_s)}`] : []),
+      ].join("\n");
+    });
+    const kinds = ["ground", "satellite"].filter((kind) => TARGETS.some((target) => target.kind === kind));
+    const keys = [...kinds.map((kind) => [kind, TARGET_COLOURS[kind][0]]), ["pointed at", THEME.text]];
+    head("#head-lanes", "IN VIEW", "each target's passes", keys, "lanes");
+  }
+
   function zoom(from, to) {
     list[0].setScale("x", { min: clamp(from, 0, T_END / 60), max: clamp(to, 0, T_END / 60) });
   }
@@ -1976,7 +2318,8 @@ const charts = (() => {
     ["1 orbit", () => zoom(now() - PERIOD / 120, now() + PERIOD / 120), "zoomOrbit"],
     ["30 min", () => zoom(now() - 15, now() + 15), "zoom30"],
   ];
-  for (const target of ["#zooms", ...(power ? ["#power-zooms"] : []), ...(ATTITUDE ? ["#attitude-zooms"] : [])]) {
+  const zoomBars = ["#zooms", ...(power ? ["#power-zooms"] : []), ...(ATTITUDE ? ["#attitude-zooms"] : [])];
+  for (const target of [...zoomBars, ...(TARGETS.length ? ["#targets-zooms"] : [])]) {
     for (const [label, action, help] of zooms) {
       $(target).append(element("button", { class: "toggle", text: label, onclick: action, "data-help": help }));
     }
@@ -2058,6 +2401,20 @@ const readouts = (() => {
   const sunFill = element("span", { class: "fill", style: `background:${VECTOR_COLOURS.sun}` });
   const sunValue = element("span");
   $("#now").append(element("dt", { text: "Sunlight", "data-help": "light" }), element("dd", { "data-help": "light" }, [sunFill, sunValue]));
+  // The targets in view, by name, under the sunlight
+  const inViewValue = element("span");
+  if (TARGETS.length) {
+    $("#now").append(element("dt", { text: "In view", "data-help": "inView" }), element("dd", { "data-help": "inView" }, [inViewValue]));
+  }
+  // The Targets page: each target, whether it is in view, its range, and
+  // whether the body or a part points at it
+  const targetRows = targetState.map((item) => {
+    const fill = element("span", { class: "fill", style: `background:${targetColour(item.target)}` });
+    const value = element("dd");
+    $("#targets-now").append(element("dt", {}, [fill, item.target.name]), value);
+    return { item, fill, value };
+  });
+  const passRows = $("#pass-rows").children; // live, so it sees the rows added later
   // The angle of each articulation, and whether it is parked
   // The Power page's current power: the total generated with each panel under
   // it, the consumed, the net and the battery's charge. Each colour matches
@@ -2144,6 +2501,18 @@ const readouts = (() => {
       const text = `${angle >= 0 ? "+" : ""}${angle.toFixed(1)}°`;
       setText(jointValues[j], joint.park_modes.includes(mode) ? `${text}, parked` : text);
     });
+    if (TARGETS.length) {
+      const seen = targetState.filter((item) => item.inView).map((item) => item.target.name);
+      setText(inViewValue, seen.length ? seen.join(", ") : "none");
+      for (const { item, fill, value } of targetRows) {
+        const pointed = state.pointed.has(item.target.name) ? " · pointed at" : "";
+        setText(value, `${item.inView ? "" : "out of view · "}${Math.round(item.range).toLocaleString("en")} km${pointed}`);
+        fill.style.opacity = item.inView ? "1" : "0.25";
+      }
+      PASSES.forEach((pass, j) => {
+        if (passRows[j]) passRows[j].classList.toggle("current", pass.start_s <= state.t && state.t < pass.end_s);
+      });
+    }
     const occurrence = occurrenceAt(state.t);
     setText(titleValue, occurrence.title || "");
     setText($("#now-activity"), `Activity ${occurrence.number} of repeat ${occurrence.repeat}`);
@@ -2225,6 +2594,70 @@ function showActivities() {
         ],
       ),
     ),
+  );
+}
+
+/** The distance in days of an epoch, in UTC, from the start and the end of the run, and whether either is past 7 days. */
+function epochNote(epoch) {
+  const at = (Date.parse(`${epoch}Z`) - START_MS) / 1000;
+  const from = (seconds, end) => `${numberText(Math.abs(seconds) / 86400, 1)} d ${seconds < 0 ? "before" : "after"} the ${end}`;
+  const far = Math.max(Math.abs(at), Math.abs(at - T_END)) > 7 * 86400;
+  return [`${from(at, "start")}, ${from(at - T_END, "end")}`, far];
+}
+
+/**
+ * The Targets page's tables: every pass, in time order, and where each target
+ * is or where its orbit came from. A click on a pass moves the time cursor to
+ * its start.
+ */
+function showTargets() {
+  if (!TARGETS.length) return;
+  // the time in the pass that the body or a part points at the target
+  const pointedText = (pass) => {
+    const seconds = sharedSeconds(POINTED[pass.target.name] || [], pass.start_s, pass.end_s);
+    return seconds ? `${(seconds / 60).toFixed(2)} min` : "";
+  };
+  $("#pass-rows").replaceChildren(
+    ...PASSES.map((pass) =>
+      element("tr", { title: "Move the time cursor to the start of this pass", onclick: () => setTime(pass.start_s) }, [
+        element("td", {}, [element("span", { class: "dot", style: `background:${targetColour(pass.target)}` }), pass.target.name]),
+        element("td", { text: utcText(pass.start_s) }),
+        element("td", { text: utcText(pass.end_s) }),
+        element("td", { class: "num", text: `${((pass.end_s - pass.start_s) / 60).toFixed(2)} min` }),
+        element("td", { class: "num", text: pointedText(pass) }),
+        element("td", { class: "num", text: pass.closest_km == null ? "" : `${Math.round(pass.closest_km).toLocaleString("en")} km` }),
+      ]),
+    ),
+  );
+  if (!PASSES.length) $("#vp-passes").append(element("p", { class: "none", text: "No target comes into view in the run." }));
+  const line = (text, cls = "") => element("div", { text, title: text, class: cls });
+  $("#target-sources").replaceChildren(
+    ...TARGETS.map((target) => {
+      const seconds = target.passes.reduce((sum, pass) => sum + pass.end_s - pass.start_s, 0);
+      const count = target.passes.length;
+      const spans = POINTED[target.name] || [];
+      const pointed = spans.reduce((sum, span) => sum + span.end_s - span.start_s, 0);
+      const lines = [
+        line(`${count} pass${count === 1 ? "" : "es"}, ${(seconds / 60).toFixed(1)} min in view`),
+        line(spans.length ? `pointed at for ${(pointed / 60).toFixed(1)} min, ${spans.length} time${spans.length === 1 ? "" : "s"}` : "not pointed at"),
+      ];
+      if (target.kind === "ground") {
+        const place = `${Math.abs(target.latitude_deg)}°${target.latitude_deg >= 0 ? "N" : "S"}, ${Math.abs(target.longitude_deg)}°${target.longitude_deg >= 0 ? "E" : "W"}`;
+        lines.unshift(line(`ground, ${place}, ${numberText(target.altitude_km * 1000, 0)} m`), line(`min elevation ${numberText(target.min_elevation_deg)}°`));
+      } else {
+        const source = target.source;
+        const where = [source.file, ...(source.element_set ? [source.element_set] : [])].join(" · ");
+        lines.unshift(line(`satellite, ${where}`), line(`min clearance ${numberText(target.min_clearance_km)} km`));
+        if (source.epoch) {
+          const [note, far] = epochNote(source.epoch);
+          lines.splice(1, 0, line(`epoch ${source.epoch.replace("T", " ").slice(0, 16)} UTC: ${note}`, far ? "far" : ""));
+        } else {
+          lines.splice(1, 0, line(`trajectory from ${source.start.replace("T", " ").slice(0, 16)} to ${source.end.replace("T", " ").slice(0, 16)} UTC`));
+        }
+      }
+      const name = element("b", {}, [element("span", { class: "dot", style: `background:${targetColour(target)}` }), target.name]);
+      return element("div", { class: "source" }, [name, ...lines]);
+    }),
   );
 }
 
@@ -2318,14 +2751,17 @@ function showAttitude() {
 function showInputs() {
   const name = (title, file) => [title, " · ", element("b", { text: file })];
   const orbit = scenario.orbit;
-  // Two columns: the scenario file and the orbit's file on the left; the orbit,
-  // the conventions below it, and the power and consumption files on the right
+  // Two columns: the scenario file and the orbit's file on the left; on the
+  // right, the orbit, the target files, the conventions, and the power and
+  // consumption files
   const column = (blocks) => element("div", { class: "stack" }, blocks);
   // The orbit's file and the consumption file, from version 6 of scenario.js and
   // version 2 of power.js. Neither is YAML, so no line is dimmed, and a long file
   // scrolls in its box.
   const plainText = (text) => element("pre", { class: "file tall", text });
   const orbitFile = scenario.orbit_text != null ? [block(name("Orbit file", scenario.orbit_file), [plainText(scenario.orbit_text)])] : [];
+  // The satellite targets' files, each once
+  const targetFiles = scenario.target_files.map((file) => block(name("Target file", file.name), [plainText(file.text)]));
   const consumptionFile = power && power.consumption_text != null
     ? [block(name("Consumption file", power.consumption_file), [plainText(power.consumption_text)])]
     : [];
@@ -2375,7 +2811,7 @@ function showInputs() {
   const powerFile = power ? [block(name("Power file", power.power_file), [fileText(power.power_text)])] : [];
   $("#inputs").append(
     column([block(name("Scenario file", SCENARIO_FILE), [fileText(scenario.scenario_text || "")]), ...orbitFile]),
-    column([orbitBlock, conventions, ...powerFile, ...consumptionFile]),
+    column([orbitBlock, ...targetFiles, conventions, ...powerFile, ...consumptionFile]),
   );
 }
 
@@ -2427,11 +2863,21 @@ function showResults() {
         ? neverCame.map((o) => `${name(o)}: ${o.trigger} never came, so it runs to the end`).join("\n")
         : "Every event trigger found its event.",
     },
+    {
+      name: "Orbits",
+      status: scenario.orbit_warnings.length ? "warn" : "ok",
+      detail: scenario.orbit_warnings.length
+        ? scenario.orbit_warnings.join("\n")
+        : "No element set is more than 7 days from the run, and no trajectory ends close to it.",
+    },
     ...(power ? power.checks : []),
   ];
   const files = [
     ["scenario.js", `version ${scenario.version}, id ${scenario.id}`],
     ["power.js", power ? `version ${power.version}, for scenario ${power.scenario_id}` : DATA.power ? "not shown" : "not in this folder"],
+    ...(TARGETS.length
+      ? [["Targets", `${TARGETS.filter((target) => target.kind === "ground").length} ground, ${TARGETS.filter((target) => target.kind === "satellite").length} satellite`]]
+      : []),
     ["3D model", MODEL ? `${MODEL.name}, ${Math.round((MODEL.glb_base64.length * 3) / 4 / 1024)} kB` : "none, so a 1 m cube"],
     ...ARTICULATIONS.map((joint) => [
       "Articulation",
@@ -2503,8 +2949,8 @@ const HELP = {
       "The orbit in GCRS, the Earth-centred frame that does not turn with the Earth. The Earth and its " +
       "coastlines turn under the orbit. The track takes its colours from the row chosen in the legend. The " +
       "yellow arrow points at the sun. The Earth's shadow is two dark cones: the umbra, and around it the " +
-      "lighter penumbra. The two part only far from the Earth, as in a high orbit. Drag to turn the view, " +
-      "right-drag to pan, and scroll to zoom.",
+      "lighter penumbra. The two part only far from the Earth, as in a high orbit. The ground targets are " +
+      "pink and the satellite targets lime: bright while in view, and dim otherwise. Drag to turn the view, right-drag to pan, and scroll to zoom.",
   },
   body: {
     title: "Body view",
@@ -2513,14 +2959,17 @@ const HELP = {
       "the nadir, the orbit normal and the sun. The first three are close to the LVLH axes: x along track, " +
       "z nadir, and y minus the orbit normal. The spacecraft is the 3D model that 3d_model names in the " +
       "scenario file, or a 1 m cube without one. It is scaled to fit the view. The parts that the scenario " +
-      "names as articulations, such as solar wings, turn to face the sun.",
+      "names as articulations, such as solar wings, turn toward their direction, such as the sun. An " +
+      "arrow points at each of the nearest targets in view, and at the targets the body or a part points at: " +
+      "pink for a ground target, and lime for a satellite.",
   },
   ground: {
     title: "Ground track",
     text:
       "The point below the spacecraft, in geodetic latitude and longitude. The track has the same colours " +
       "as the orbit view. The dark area is the night side, and the dashed line is the terminator. The " +
-      "yellow dot is the point below the sun, and the red dot is the spacecraft.",
+      "yellow dot is the point below the sun, and the red dot is the spacecraft. A lime circle is the point " +
+      "below a satellite target, and a pink square a ground target, each filled while in view.",
   },
   timeline: {
     title: "Timeline",
@@ -2646,7 +3095,7 @@ const HELP = {
   articulation: {
     title: "Articulation",
     text:
-      "A part of the 3D model that turns about one body axis to face the sun, such as a solar wing. Its " +
+      "A part of the 3D model that turns about one body axis toward a direction, such as a solar wing toward the sun. Its " +
       "angle is zero where the model draws it. In a mode that parks it, it holds a fixed angle instead. " +
       "The scenario file sets them under 3d_model.",
   },
@@ -2739,10 +3188,68 @@ const HELP = {
   },
   warnings: {
     title: "Warnings",
-    text: "Each attitude that turns the body faster, or with more acceleration, than the slew block allows, such as tracking a ground station overhead.",
+    text:
+      "Each orbit far from its element set's epoch, or close to an end of its trajectory. Then each attitude " +
+      "that turns the body faster, or with more acceleration, than the slew block allows, such as tracking a " +
+      "ground station overhead.",
   },
   tabActivities: { title: "Activities", text: "Every occurrence of every activity, with its times, its slew and its statuses." },
-  tabInputs: { title: "Inputs", text: "The scenario file and the power file as written, the orbit, and the conventions." },
+  tabInputs: {
+    title: "Inputs",
+    text: "The scenario file and the power file as written, the orbit and the target files, and the conventions.",
+  },
+  tabTargets: {
+    title: "Targets",
+    text: "When each ground and satellite target is in view, its passes, and where each target is or where its orbit came from.",
+  },
+  lanes: {
+    title: "In view",
+    text:
+      "A row for each target, with a bar for each pass: the time the target is in view. A ground target is in " +
+      "view above its minimum elevation. A satellite target is in view while the line between the two " +
+      "satellites keeps its minimum clearance above the Earth. The thin light bar under the passes is the " +
+      "time the attitude or a part points at the target, in view or not. Every pass is drawn, whether it is " +
+      "used or not. Click to move the time cursor.",
+  },
+  targetsNow: {
+    title: "Targets now",
+    text:
+      "Each target at the time cursor: its range from the spacecraft, whether it is out of view, and whether the " +
+      "attitude or a part points at it.",
+  },
+  passes: {
+    title: "Passes",
+    text:
+      "Every time a target is in view, in time order. A pass under way at the start or the end of the run is " +
+      "cut there. Pointed at is the time in the pass that the attitude or a part points at the target, and is " +
+      "blank for a pass that is not used. The closest range is at the time steps in the pass. Click a pass to " +
+      "move the time cursor to it.",
+  },
+  targetSources: {
+    title: "Sources",
+    text:
+      "Where each ground target is, and where each satellite target's orbit came from: its file, its element " +
+      "set and its epoch, or its trajectory's span. An epoch more than 7 days from either end of the run is " +
+      "amber. Each also has its time in view, and how long and how many times the attitude or a part points at it.",
+  },
+  inView: { title: "In view", text: "The targets in view of the spacecraft at the time cursor. The Targets page has more." },
+  targets: { title: "Targets", text: "Show or hide the targets, and the satellite targets' trajectories." },
+  links: {
+    title: "Links",
+    text:
+      "Show or hide the lines from the spacecraft: a bright one to each target that the attitude or a part " +
+      "points at, in view or not, and a faint one to each other target in view.",
+  },
+  bodyTargets: {
+    title: "Targets",
+    text:
+      "Show or hide the arrows to the targets: the nearest four in view, and each target that the body or a part " +
+      "points at. An arrow to a target out of view is dim.",
+  },
+  passTracks: {
+    title: "Passes",
+    text: "Show the track of each satellite target in view over its current pass, from its rise to its set.",
+  },
   tabResults: { title: "Results", text: "The summary, the checks, and which data files were found." },
 };
 
@@ -2798,11 +3305,11 @@ const HELP = {
 // ---------------------------------------------------------------- Pages and controls
 
 /** The pages with the time controls and the charts. */
-const TIMED_PAGES = ["scenario", "power", "attitude"];
+const TIMED_PAGES = ["scenario", "power", "attitude", "targets"];
 
 function showPage(page) {
   state.page = page;
-  // The Scenario, Power and Attitude pages share the time controls
+  // The Scenario, Power, Attitude and Targets pages share the time controls
   if (TIMED_PAGES.includes(page)) $(`#page-${page}`).append($(".controls"));
   for (const button of $("#page-tabs").querySelectorAll("button")) button.classList.toggle("active", button.dataset.page === page);
   for (const section of document.querySelectorAll(".page")) section.classList.toggle("active", section.id === `page-${page}`);
@@ -2872,6 +3379,7 @@ setupControls();
 showActivities();
 showAttitude();
 showInputs();
+showTargets();
 showResults();
 showPowerSetup();
 trackColours.start();

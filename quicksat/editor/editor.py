@@ -69,6 +69,7 @@ field controls, the file writing, the opening of files in the browser, and the
 page's frame. `templates/shared/editor.css` holds the styles they share."""
 
 SCRIPTS = (
+    "elements.js",
     "project.js",
     "sections.js",
     "checks.js",
@@ -393,7 +394,9 @@ def editor_data(
         otherwise, so that no local path goes into the page. `files`, with
         `scenario`, `power` and `consumption`, each None when missing. `model`,
         the 3D model in base64, and `orbit_file`, an orbit file as text, each
-        None without one. `checks`, what quicksat's loaders said of each file.
+        None without one. `target_files`, the files that the satellite targets
+        name, as text, once each, each with its `name` as the scenario gives it.
+        `checks`, what quicksat's loaders said of each file.
 
     Raises
     ------
@@ -452,6 +455,15 @@ def editor_data(
         if path is not None:
             orbit_file = {"name": str(orbit[key]), "text": path.read_text("utf-8")}
 
+    target_files = {}
+    targets = raw.get("sat_targets")
+    for target in (targets if isinstance(targets, dict) else {}).values():
+        for key in _ORBIT_FILES:
+            name = target.get(key) if isinstance(target, dict) else None
+            path = _referenced(folder, name)
+            if path is not None and str(name) not in target_files:
+                target_files[str(name)] = path.read_text("utf-8")
+
     return {
         "format": FORMAT,
         "version": VERSION,
@@ -460,6 +472,9 @@ def editor_data(
         "files": {"scenario": scenario, "power": power, "consumption": consumption},
         "model": model,
         "orbit_file": orbit_file,
+        "target_files": [
+            {"name": name, "text": text} for name, text in target_files.items()
+        ],
         "checks": checks,
     }
 

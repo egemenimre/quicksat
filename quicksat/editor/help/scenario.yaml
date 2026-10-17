@@ -92,7 +92,7 @@ articulations:
   file: >-
     Parts of the model that turn about one axis until the axis in point is as close to its direction as the turn allows. park holds the part still in a mode.
 
-targets:
+gnd_targets:
   title: Ground targets
   info: |-
     <p>Points on the ground that an attitude can point at, such as a ground station. Each gives two triggers: <code>name rise</code> and <code>name set</code>, when it starts and stops seeing the satellite.</p>
@@ -101,6 +101,17 @@ targets:
     <p>The altitude is above the WGS84 ellipsoid. The minimum elevation sets when the target sees the satellite: 5 deg if left out.</p>
   file: >-
     Ground points that an attitude can point at. Each gives the triggers name rise and name set. The altitude is above the WGS84 ellipsoid.
+
+sat_targets:
+  title: Satellite targets
+  info: |-
+    <p>Other satellites that an attitude or an articulation can point at, such as a data relay. Each gives two triggers: <code>name rise</code> and <code>name set</code>, when it comes into view and goes out of it.</p>
+    <p><b>Add from a file</b> reads a TLE or OMM file, or a trajectory file in ECSV or CCSDS OEM. A file from CelesTrak or Space-Track can hold a group of satellites: the step lists them, to choose the ones to add. The page holds the file, and saves it with the scenario.</p>
+    <span class="k">Options</span>
+    <p><b>Satellite</b> picks one element set from a file that holds several, by its name or its catalogue number. Left empty, the target's own name picks it. A target is in view while the line between the two satellites keeps the <b>minimum clearance</b> above the Earth: 100 km if left out, so that a link does not cross the atmosphere.</p>
+    <p>The epoch of each element set shows against the start. One more than 7 days from the run is amber: SGP4 loses accuracy away from its epoch. The run checks a trajectory's span.</p>
+  file: >-
+    Other satellites that an attitude can point at, each with one orbit file: a TLE or OMM file, or a trajectory file. object picks a satellite from a file that holds several. Each gives the triggers name rise and name set. min_clearance is the line of sight's least height above the Earth, 100 km if left out.
 
 attitudes:
   title: Attitudes

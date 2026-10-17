@@ -69,12 +69,30 @@ function runChecks() {
   }
 
   // Targets and attitudes
-  names("targets", "target", S.targets.items);
-  for (const t of S.targets.items) {
-    if (blank(t.latitude) || Math.abs(t.latitude.v) > 90) add("targets", `target ${t.name}: the latitude must be from -90 to 90 deg`);
-    if (blank(t.longitude)) add("targets", `target ${t.name}: the longitude is missing`);
-    if (!blank(t.min_elevation) && !(t.min_elevation.v >= 0 && t.min_elevation.v < 90)) add("targets", `target ${t.name}: the minimum elevation must be from 0 up to 90 deg`);
-    if (BUILT_IN_DIRECTIONS.includes(t.name)) add("targets", `target ${t.name} has the name of a built-in direction`);
+  names("gnd_targets", "target", S.gnd_targets.items);
+  for (const t of S.gnd_targets.items) {
+    if (blank(t.latitude) || Math.abs(t.latitude.v) > 90) add("gnd_targets", `target ${t.name}: the latitude must be from -90 to 90 deg`);
+    if (blank(t.longitude)) add("gnd_targets", `target ${t.name}: the longitude is missing`);
+    if (!blank(t.min_elevation) && !(t.min_elevation.v >= 0 && t.min_elevation.v < 90)) add("gnd_targets", `target ${t.name}: the minimum elevation must be from 0 up to 90 deg`);
+    if (BUILT_IN_DIRECTIONS.includes(t.name)) add("gnd_targets", `target ${t.name} has the name of a built-in direction`);
+  }
+  names("sat_targets", "target", S.sat_targets.items);
+  const grounds = new Set(S.gnd_targets.items.map((t) => t.name));
+  for (const t of S.sat_targets.items) {
+    if (grounds.has(t.name)) add("sat_targets", `target ${t.name} is a ground target too: a target's name must be its own`);
+    if (BUILT_IN_DIRECTIONS.includes(t.name)) add("sat_targets", `target ${t.name} has the name of a built-in direction`);
+    if (!blank(t.min_clearance) && !(t.min_clearance.v >= 0)) add("sat_targets", `target ${t.name}: the minimum clearance must be 0 or more`);
+    if (t.source === "trajectory" && t.object) add("sat_targets", `target ${t.name}: a trajectory file holds one satellite, so it takes no satellite of its own`);
+    if (!t.file) { add("sat_targets", `target ${t.name}: no file is chosen`); continue; }
+    if (!targetFiles.has(t.file)) { add("sat_targets", `target ${t.name}: this page does not hold ${t.file}, so saving leaves it out: keep it beside the scenario file`, "note"); continue; }
+    const kind = orbitFileKind(t.file, targetFiles.get(t.file));
+    if (kind !== t.source) { add("sat_targets", `target ${t.name}: ${t.file} reads as a ${kind === "trajectory" ? kind : kind.toUpperCase()} file`); continue; }
+    if (kind === "trajectory") continue;
+    const sets = heldSets(t.file);
+    if (!sets) { add("sat_targets", `target ${t.name}: ${t.file} does not read as a ${kind.toUpperCase()} file`); continue; }
+    const picked = pickedElementSet(sets, t.object, t.name);
+    if (!picked.set) add("sat_targets", `target ${t.name}: ${picked.problem}`);
+    else if (epochNote(picked.set.epoch)[1]) add("sat_targets", `target ${t.name}: its epoch is more than 7 days from the run, where SGP4 loses accuracy`, "note");
   }
   names("attitudes", "attitude", S.attitudes.items);
   if (!S.attitudes.items.length) add("attitudes", "there must be at least one attitude");

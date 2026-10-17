@@ -26,26 +26,7 @@ from quicksat.scenario.attitude_files import (
     articulation_file,
     write_attitude_files,
 )
-from quicksat.scenario.config import Scenario
-from quicksat.scenario.run import ScenarioRun, run_scenario
 from quicksat.scenario.viewer import scenario_data
-
-from .conftest import SLEW
-
-MODEL = """3d_model:
-  file: spacecraft.glb
-  articulations:
-    wing +y: {part: Wing +y, axis: +y, point: [-z, sun], park: {downlink: 45 deg}}
-    wing -y: {part: Wing -y, axis: -y, point: [-z, sun], range: [-30 deg, 60 deg]}
-"""
-"""The model block of `articulated_run`: a wing that parks, and one that does not."""
-
-
-@pytest.fixture(scope="module")
-def articulated_run(data_dir) -> ScenarioRun:
-    """Three orbits of `scenario.yaml`, with slews and two articulations."""
-    text = MODEL + (data_dir / "scenario.yaml").read_text() + SLEW
-    return run_scenario(Scenario.from_yaml_text(text, data_dir))
 
 
 def unit_rows(vectors: np.ndarray) -> np.ndarray:

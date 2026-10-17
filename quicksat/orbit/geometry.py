@@ -4,7 +4,8 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The sun, the Earth's shadow, and where the satellite is over the Earth.
+The sun, the Earth's shadow, where the satellite is over the Earth, and whether
+two satellites can see each other.
 
 Everything here takes the satellite's state as one astropy `SkyCoord` in GCRS,
 as `tle_states` gives it. The state carries the positions, the velocities when
@@ -30,6 +31,17 @@ The cones hold up to the tip of the umbra cone, about 1.38 million km behind the
 Earth. Beyond it lies the antumbra, where the sun shows as a ring around the
 Earth. There, the satellite counts as in penumbra, and `light_fraction` gives
 the light of the ring. The atmosphere is left out, and so is the Moon's shadow.
+
+Two satellites see each other when the line between them passes some height
+above the WGS84 ellipsoid, such as 100 km, so that a link does not cross the
+atmosphere. The ellipsoid raised by that height, with both of its semi-axes
+longer by it, lies within 1 m of the true height for heights up to 500 km.
+Stretching along the Earth's pole then turns it into a sphere, and the line's
+closest point to the centre is found in closed form. The ellipsoid turns about
+its pole, so the pole, ITRS's z axis seen in GCRS, is all the test needs of the
+Earth's orientation. It is taken once, at the first time: precession and
+nutation move it by about 1e-5 rad in a month, which changes the heights by less
+than 1 m.
 
 """
 
@@ -494,3 +506,45 @@ def elevations(
     line = _km(cast(CartesianRepresentation, state.cartesian)) - point
     sine = np.sum(line * up, axis=1) / np.linalg.norm(line, axis=1)
     return np.degrees(np.arcsin(np.clip(sine, -1, 1)))
+
+
+def line_of_sight_clear(
+    first: SkyCoord, second: SkyCoord, clearance: Quantity
+) -> np.ndarray:
+    """
+    Whether the line between two satellites passes a height above the Earth, at
+    each time. See the module notes.
+
+    Parameters
+    ----------
+    first, second : SkyCoord
+        The two satellites' positions in GCRS, at the same times. The times come
+        from `first`.
+    clearance : Quantity
+        The least height of the line above the WGS84 ellipsoid, 0 or more
+
+    Returns
+    -------
+    clear : ndarray of bool
+        True where the line keeps at least that height, so that each satellite
+        sees the other
+    """
+    times = cast(TimeArray, first.obstime)
+    pole = earth_rotations(times.ravel()[:1])[0, :, 2]
+    height = clearance.to_value(u.km)
+    radius = EARTH_EQUATORIAL_RADIUS.to_value(u.km) + height
+    polar = EARTH_EQUATORIAL_RADIUS.to_value(u.km) * (1 - EARTH_FLATTENING) + height
+
+    def stretched(state: SkyCoord) -> np.ndarray:
+        # stretching along the pole makes the raised ellipsoid a sphere
+        position = _km(_positions(state))
+        along = position @ pole
+        return position + (radius / polar - 1) * along[:, None] * pole
+
+    start, end = stretched(first), stretched(second)
+    line = end - start
+    length = np.sum(line * line, axis=1)
+    # the fraction along the line of its closest point to the centre
+    fraction = -np.sum(start * line, axis=1) / np.where(length > 0, length, 1.0)
+    closest = start + np.clip(fraction, 0.0, 1.0)[:, None] * line
+    return np.linalg.norm(closest, axis=1) >= radius

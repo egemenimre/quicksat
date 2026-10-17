@@ -32,12 +32,13 @@ function bytesToBase64(bytes) {
 }
 
 /**
- * The files to run, as the server takes them. A model or an orbit file goes by
- * the name the scenario gives it, so that the run finds it there.
+ * The files to run, as the server takes them. A model, an orbit file or a
+ * satellite target's file goes by the name the scenario gives it, so that the
+ * run finds it there.
  */
 function runFiles() {
   const key = ORBIT_KEYS[S.orbit.source];
-  const named = { model: S.model.file, orbit: key ? S.orbit[key] : "" };
+  const named = { model: S.model.file, orbit: key ? S.orbit[key] : "", ...Object.fromEntries(satTargetFiles().map((name) => [targetKind(name), name])) };
   return projectFiles().map((file) => ({
     kind: file.kind,
     name: named[file.kind] || file.path,

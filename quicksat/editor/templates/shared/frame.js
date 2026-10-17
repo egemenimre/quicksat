@@ -34,6 +34,8 @@ const page = {
   describeBinary: (file) => `A binary file of ${(file.bytes.length / 1024).toFixed(1)} kB.`,
   /** What the Files tab shows under its buttons, such as the scenario editor's viewer, or null. */
   filesExtra: () => null,
+  /** The kind of a dropped file that no fixed name gives, such as a satellite target's file, or null. */
+  kindOfFile: () => null,
 };
 
 /** What the page shows: the tab, the Setup step, the open explanations, and more. */
@@ -529,7 +531,9 @@ function fileStates() {
     if (texts[kind] !== savedText[kind]) return "modified";
     return savedBy[kind] === "download" ? "downloaded" : "unchanged";
   };
-  return Object.fromEntries(FILES.map(({ kind }) => [kind, stateOf(kind)]));
+  // the fixed kinds, and any the page saves beyond them, such as a satellite target's file
+  const kinds = new Set([...FILES.map(({ kind }) => kind), ...Object.keys(texts)]);
+  return Object.fromEntries([...kinds].map((kind) => [kind, stateOf(kind)]));
 }
 
 const STATE_TEXT = {
@@ -709,10 +713,14 @@ function openFolderButton() {
 
 // ---------------------------------------------------------------- dropping files
 
-/** The kind of file a name belongs to, if exactly one of the page's files has it. */
+/**
+ * The kind of file a name belongs to, if exactly one of the page's files has it,
+ * or a kind the page's own `kindOfFile` gives it.
+ */
 function kindOfName(name) {
   const kinds = Object.keys(project.names).filter((kind) => OPENERS[kind] && project.names[kind] === name);
-  return kinds.length === 1 ? kinds[0] : null;
+  if (kinds.length === 1) return kinds[0];
+  return page.kindOfFile(name);
 }
 
 /**

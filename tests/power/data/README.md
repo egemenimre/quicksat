@@ -26,7 +26,7 @@ The folder also holds the inputs that the tests read:
 |---|---|
 | `scenario.json` | Inputs, derived orbit values, the whole-orbit window, expected results, and the agreement the astropy prototype reached |
 | `reference_orekit.npz` | Per sample, from Orekit: `cos` (6×N, face order as in `scenario.json`), `lit`, `sun_body` (the sun's unit vector in body axes, 3×N). Also `whole` (the whole-orbit mask) and `flux` |
-| `eclipse_orekit.json` | Entry and exit of every eclipse from Orekit's `EclipseDetector`, in seconds from the epoch, located to 1 µs. Five shadow models: spherical Earth with a point sun, and umbra and penumbra on both a sphere and the WGS84 ellipsoid |
+| `eclipse_orekit.json`, in `tests/orbit/data/` | Entry and exit of every eclipse from Orekit's `EclipseDetector`, in seconds from the epoch, located to 1 µs. Five shadow models: spherical Earth with a point sun, and umbra and penumbra on both a sphere and the WGS84 ellipsoid |
 
 Produced on 2026-09-30 with Orekit 13.1 through orekit_jpype 13.1.8.0. Orekit did its own SGP4, TEME → GCRF transform, sun ephemeris, attitude and eclipse detection, so the data is independent of astropy. The one exception is `flux`, which is L_sun / (4π d²) with d from astropy's `get_sun`: the reference tests geometry, not flux.
 
@@ -54,7 +54,7 @@ These offsets have measured causes:
 How the test holds to the two rules that came with this data:
 
 - **Average over whole orbits.** The test uses the `whole` mask, 14 orbits. Averaging over the full day skews per-face means by up to 3.4%.
-- **Pick the reference that matches the shadow model.** `sphere_point_sun` is the counterpart of a cylindrical shadow. quicksat's shadow has a penumbra on WGS84, so its light differs from `reference_orekit.npz` at the edges, and the whole-orbit means would differ by up to 3.9%, on the nadir face. So the test takes the means with the reference's `lit` flag, which checks the geometry. The shadow is checked against `eclipse_orekit.json` in `tests/orbit/test_geometry.py`.
+- **Pick the reference that matches the shadow model.** `sphere_point_sun` is the counterpart of a cylindrical shadow. quicksat's shadow has a penumbra on WGS84, so its light differs from `reference_orekit.npz` at the edges, and the whole-orbit means would differ by up to 3.9%, on the nadir face. So the test takes the means with the reference's `lit` flag, which checks the geometry. The shadow is checked against `eclipse_orekit.json` in `tests/orbit/test_geometry.py`, which keeps the file in its own data folder.
 
 The module reached these, on 2026-10-11:
 

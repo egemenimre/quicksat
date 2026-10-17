@@ -106,7 +106,7 @@ The scenario sample works the same way, for the timeline alone: [`sample/scenari
 
 | Part | What it gives | Sample | Reference |
 |---|---|---|---|
-| Scenario | The timeline on a real orbit: eclipses, attitudes, slews and ground passes, checked against each activity's needs | [scenario](https://github.com/egemenimre/quicksat/blob/master/sample/scenario/scenario.ipynb) | [scenario](https://github.com/egemenimre/quicksat/blob/master/docs/scenario/scenario_ref.ipynb) |
+| Scenario | The timeline on a real orbit: eclipses, attitudes, slews, and passes over ground stations and relay satellites, checked against each activity's needs | [scenario](https://github.com/egemenimre/quicksat/blob/master/sample/scenario/scenario.ipynb) | [scenario](https://github.com/egemenimre/quicksat/blob/master/docs/scenario/scenario_ref.ipynb) |
 | Power generation | Each solar panel's power, with the wings that turn and the model's own shadows | [generation](https://github.com/egemenimre/quicksat/blob/master/sample/power/power_generation.ipynb) | [generation](https://github.com/egemenimre/quicksat/blob/master/docs/power/power_generation_ref.ipynb) |
 | Power consumption | What the equipment draws in each mode | [consumption](https://github.com/egemenimre/quicksat/blob/master/sample/power/power_consumption.ipynb) | [consumption](https://github.com/egemenimre/quicksat/blob/master/docs/power/power_consumption_ref.ipynb) |
 | Power budget | The battery's charge through the run, and whether each orbit has energy to spare | [budget](https://github.com/egemenimre/quicksat/blob/master/sample/power/power_budget.ipynb) | [budget](https://github.com/egemenimre/quicksat/blob/master/docs/power/power_budget_ref.ipynb) |

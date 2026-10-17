@@ -13,7 +13,8 @@ const TABS = [
   { id: "setup", title: "Setup" },
   { id: "orbit", title: "Orbit and time", sections: ["orbit", "time"], intro: "Trajectory definition and the scenario duration." },
   { id: "spacecraft", title: "Spacecraft", sections: ["model", "articulations", "panels"], intro: "The 3D model, the parts that turn, and the solar panels on it. Select an item to see it in the 3D panel." },
-  { id: "operations", title: "Operations", sections: ["targets", "attitudes", "slew", "modes"], intro: "How the spacecraft points, how fast it turns, and the modes it works in." },
+  { id: "targets", title: "Targets", sections: ["gnd_targets", "sat_targets"], intro: "The places on the ground and the other satellites that the attitudes, the articulations and the triggers can name." },
+  { id: "operations", title: "Operations", sections: ["attitudes", "slew", "modes"], intro: "How the spacecraft points, how fast it turns, and the modes it works in." },
   { id: "activities", title: "Activities", sections: ["activities"], intro: "What the spacecraft does, in order: one repeat of the list, which the run repeats until the duration ends." },
   { id: "power", title: "Power", sections: ["cells", "battery", "conditioning"], intro: "The power system: the cells and their losses, the battery and the power conditioning.", top: powerComments },
   { id: "consumption", title: "Consumption", sections: ["consumption"], intro: "What each equipment draws in each mode, from the consumption file." },
@@ -26,8 +27,9 @@ const STEPS = [
   { title: "Start, duration and step", sections: ["time"] },
   { group: "Spacecraft", title: "3D model", sections: ["model"], needs3d: true },
   { title: "Articulations", sections: ["articulations"], needs3d: true },
-  { group: "Operations", title: "Ground targets", sections: ["targets"] },
-  { title: "Attitudes", sections: ["attitudes"], needs3d: true },
+  { group: "Targets", title: "Ground targets", sections: ["gnd_targets"] },
+  { title: "Satellite targets", sections: ["sat_targets"] },
+  { group: "Operations", title: "Attitudes", sections: ["attitudes"], needs3d: true },
   { title: "Attitude slew performance", sections: ["slew"] },
   { title: "Modes", sections: ["modes"] },
   { title: "Activities", sections: ["activities"] },
@@ -65,7 +67,7 @@ function commentTarget(kind, path) {
     if (second === "articulations") return third != null && item(arts, third) ? [item(arts, third), `articulations › ${third}`, 3] : [arts, "articulations", 2];
     return [S.model, "3d_model", 1];
   }
-  if (first === "targets" || first === "attitudes") {
+  if (["gnd_targets", "sat_targets", "attitudes"].includes(first)) {
     return second != null && item(S[first], second) ? [item(S[first], second), `${first} › ${second}`, 2] : [S[first], first, 1];
   }
   if (first === "slew") return [S.slew, "slew", 1];
@@ -85,10 +87,11 @@ const looksLike = {
 };
 
 /**
- * The 3D model and the orbit file that the scenario names, taken from the picked
- * files when they are there. Returns the kinds of the files it took.
+ * The 3D model, the orbit file and the satellite targets' files that the
+ * scenario names, taken from the picked files when they are there. Returns the
+ * kinds of the files it took.
  */
-async function takeModelAndOrbit(picked) {
+async function takeNamedFiles(picked) {
   const taken = [];
   const glb = pickedFile(picked, S.model.file);
   if (glb) {
@@ -101,6 +104,12 @@ async function takeModelAndOrbit(picked) {
     orbitFile = { name: S.orbit[key], text: await orbit.file.text() };
     taken.push("orbit");
   } else if (!(key && orbitFile && orbitFile.name === S.orbit[key])) orbitFile = null;
+  for (const name of satTargetFiles()) {
+    const entry = pickedFile(picked, name);
+    if (!entry) continue;
+    targetFiles.set(name, await entry.file.text());
+    taken.push(targetKind(name));
+  }
   state.selection = null;
   return taken;
 }
@@ -130,11 +139,12 @@ const OPENERS = {
       const power = await findPicked(picked, "power_system.yaml", (file) => file.data !== undefined && looksLike.power(file.data));
       const consumption = await findPicked(picked, "power_consumption.csv", (file) => Boolean(file.header) && looksLike.consumption(file));
       notices.files = {};
-      DATA = { ...DATA, folder: picked.folder, label: picked.folder, files: { scenario, power, consumption }, model: null, orbit_file: null, checks: [] };
+      DATA = { ...DATA, folder: picked.folder, label: picked.folder, files: { scenario, power, consumption }, model: null, orbit_file: null, target_files: [], checks: [] };
       project = readProject(DATA);
       S = project.scenario;
       P = project.power;
-      await takeModelAndOrbit(picked);
+      targetFiles.clear();
+      await takeNamedFiles(picked);
       state.file = project.names.scenario;
       return ["scenario", "power", "consumption"];
     },
@@ -142,7 +152,7 @@ const OPENERS = {
   scenario: {
     label: "a scenario file",
     pick: { multiple: true },
-    hint: "Pick its 3D model and its orbit file with it, to keep them with the scenario.",
+    hint: "Pick its 3D model, its orbit file and its satellite targets' files with it, to keep them with the scenario.",
     async open(picked) {
       const entry = picked.files.find((e) => /\.ya?ml$/i.test(e.path));
       if (!entry) throw new Error("Pick a scenario file: a YAML file with an orbit and activities.");
@@ -153,7 +163,7 @@ const OPENERS = {
       scenario.modes = collectModes(scenario, consumptionColumns());
       project.scenario = S = scenario;
       project.names.scenario = file.name;
-      return ["scenario", ...(await takeModelAndOrbit(picked))];
+      return ["scenario", ...(await takeNamedFiles(picked))];
     },
   },
   power: {
@@ -166,6 +176,18 @@ const OPENERS = {
       project.hasPower = true;
       project.names.power = file.name;
       return ["power"];
+    },
+  },
+  target: {
+    label: "a satellite target's file",
+    pick: { multiple: true },
+    hint: "A file that a satellite target names, by the same name.",
+    async open(picked) {
+      const names = satTargetFiles();
+      const entries = picked.files.filter((entry) => names.includes(entry.path.split("/").pop()));
+      if (!entries.length) throw new Error(`No satellite target names ${picked.files.map((e) => e.path).join(", ")}. Add it on the Satellite targets step.`);
+      for (const entry of entries) targetFiles.set(entry.path.split("/").pop(), await entry.file.text());
+      return entries.map((entry) => targetKind(entry.path.split("/").pop()));
     },
   },
   consumption: {
@@ -192,6 +214,7 @@ Object.assign(page, {
   onShow: apply3d,
   afterChange: () => view3d.update(),
   filesExtra: () => el("div", { class: "files-viewer" }, el("div", { class: "folder", text: "the viewer" }), viewerPanel()),
+  kindOfFile: (name) => (satTargetFiles().includes(name) ? "target" : null),
   describeBinary: (file) => `A binary GLB file of ${(file.bytes.length / 1024).toFixed(1)} kB, with ${model.parts.length} named parts:\n\n${model.parts.map((p) => "  " + p.name).join("\n")}`,
 });
 
