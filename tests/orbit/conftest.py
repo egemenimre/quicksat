@@ -1,10 +1,11 @@
 """Fixtures for the orbit tests.
 
 The tests read their inputs from `tests/orbit/data/`: the 510 km, 10:30 LTAN
-sun-synchronous TLE, and Orekit's eclipse times for it. Both are copies of files
-in `tests/power/data/` and `sample/scenario/data/`, kept here so that each test
-folder owns its fixtures. The directory is resolved from this file, so the suite
-passes wherever pytest is invoked from.
+sun-synchronous TLE, and Orekit's eclipse times for it. The TLE is a copy of
+the one in `tests/power/data/`, kept here so that each test folder owns its
+fixtures. The eclipse times came with the power tests' Orekit case, which
+`tests/power/data/README.md` describes. The directory is resolved from this
+file, so the suite passes wherever pytest is invoked from.
 
 Two CCSDS OEM files sit there too: the example of figure 5-1 of CCSDS
 502.0-B-2, and an abbreviated ephemeris of SELENE that JAXA wrote as an ODM

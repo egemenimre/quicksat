@@ -9,8 +9,11 @@
 //
 //     node --test "tests/**/*.test.js"
 //
-// The file is loaded as the page loads it, as a plain script. The data is the
-// power sample's own output.
+// The file is loaded as the page loads it, as a plain script. The data in
+// data/ is a copy of the power sample's output, sample/power/output/scenario.js
+// and power.js. The sample changes with its notebook, and this copy changes
+// only with the tests that read it. After a change to the viewer's data format,
+// run the power notebook and copy the two files here again.
 "use strict";
 
 const assert = require("node:assert/strict");
@@ -21,6 +24,7 @@ const vm = require("node:vm");
 
 const ROOT = path.resolve(__dirname, "..", "..", "..");
 const LOGIC = path.join(ROOT, "quicksat", "scenario", "templates", "viewer_logic.js");
+const DATA = path.join(__dirname, "data");
 
 // A script's functions and constants are globals, as in the page. Run in this
 // realm, the arrays they return compare with deepEqual.
@@ -37,12 +41,12 @@ const {
 function readFolder(folder) {
   const window = {};
   for (const name of ["scenario.js", "power.js"]) {
-    new Function("window", fs.readFileSync(path.join(ROOT, folder, name), "utf8"))(window);
+    new Function("window", fs.readFileSync(path.join(folder, name), "utf8"))(window);
   }
   return window.quicksat;
 }
 
-const { scenario, power } = readFolder(path.join("sample", "power", "output"));
+const { scenario, power } = readFolder(DATA);
 const T = scenario.grid.t_s;
 const ILLUMINATION = scenario.tracks.illumination;
 
@@ -182,10 +186,8 @@ test("the steps past the slew limits inside one attitude join into spans", () =>
 });
 
 test("the sample's spans past the limits are its warnings' passes", () => {
-  const { scenario: run } = readFolder(path.join("sample", "power", "output"));
-  if (!run.attitude) return;
-  const spans = excessPieces(run.grid.t_s, run.attitude, run.tracks.attitude);
-  const attitudes = new Set(spans.map((span) => pieceAt(run.tracks.attitude, span.start_s).value));
+  const spans = excessPieces(T, scenario.attitude, scenario.tracks.attitude);
+  const attitudes = new Set(spans.map((span) => pieceAt(scenario.tracks.attitude, span.start_s).value));
   assert.deepEqual([...attitudes], ["track Svalbard"]);
 });
 

@@ -34,7 +34,7 @@ ORBIT_DATA = ROOT / "tests" / "orbit" / "data"
 
 FILES = {
     "sso_510km.tle": ORBIT_DATA / "sso_510km.tle",
-    "relays.tle": ROOT / "docs" / "scenario" / "data" / "relays.tle",
+    "relays.tle": ROOT / "tests" / "scenario" / "data" / "relays.tle",
     "omm_celestrak.json": ORBIT_DATA / "omm_celestrak.json",
     "omm_celestrak.kvn": ORBIT_DATA / "omm_celestrak.kvn",
     "omm_celestrak.xml": ORBIT_DATA / "omm_celestrak.xml",

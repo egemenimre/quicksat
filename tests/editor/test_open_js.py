@@ -80,11 +80,18 @@ AWKWARD = {
 
 
 def yaml_files() -> dict[str, str]:
-    """quicksat's own YAML files: the samples, the docs' and the tests' data."""
+    """
+    quicksat's own YAML files: the samples, the docs' and the tests' data.
+
+    Many files are copies of a sample file, so a text is taken only the first
+    time it comes. A second copy would be a second case with the same answers.
+    """
     texts = {}
     for folder in ("sample", "docs", "tests"):
         for path in sorted((ROOT / folder).rglob("*.yaml")):
-            texts[str(path.relative_to(ROOT))] = path.read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8")
+            if text not in texts.values():
+                texts[str(path.relative_to(ROOT))] = text
     return texts
 
 

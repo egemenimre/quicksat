@@ -136,8 +136,7 @@ def test_a_power_folder_gives_every_file(power_dir):
 def test_the_satellite_targets_files_come_once_each(scenario_dir, tmp_path):
     folder = tmp_path / "relays"
     shutil.copytree(scenario_dir, folder)
-    relays = (TESTS.parent / "docs" / "scenario" / "data" / "relays.tle").read_text()
-    (folder / "relays.tle").write_text(relays)
+    relays = (folder / "relays.tle").read_text()
     with open(folder / "scenario.yaml", "a") as file:
         file.write(
             "sat_targets:\n"

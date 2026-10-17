@@ -8,9 +8,11 @@ change only with the tests that read them:
   the last activity's, which is cut at the end.
 - `problems.yaml` makes each problem happen once: an activity outside its
   constraint, a negative duration, and an event that never comes.
+- `relays.tle` is a copy of `docs/scenario/data/relays.tle`, ten relays in
+  one file. The editor tests read it as a satellite target's file.
 
 `slew_run` is `scenario.yaml` again, with slews at the sizing sample's rate and
-acceleration.
+acceleration. `articulated_run` adds the 3D model and two wings to it.
 
 The runs take about a second each, so each is made once per session. matplotlib
 draws without a display, so the plots can be tested anywhere.
@@ -67,6 +69,32 @@ def slew_run(data_dir) -> ScenarioRun:
         The run
     """
     text = (data_dir / "scenario.yaml").read_text() + SLEW
+    return run_scenario(Scenario.from_yaml_text(text, base_dir=data_dir))
+
+
+ARTICULATED_MODEL = """3d_model:
+  file: spacecraft.glb
+  articulations:
+    wing +y: {part: Wing +y, axis: +y, point: [-z, sun], park: {downlink: 45 deg}}
+    wing -y: {part: Wing -y, axis: -y, point: [-z, sun], range: [-30 deg, 60 deg]}
+"""
+"""The model block added to `scenario.yaml` for `articulated_run`."""
+
+
+@pytest.fixture(scope="session")
+def articulated_run(data_dir) -> ScenarioRun:
+    """Three orbits of `scenario.yaml`, with slews and two articulations.
+
+    `wing +y` tracks the sun and parks in `downlink`. `wing -y` turns about `-y`
+    within a range, so the sign and the clamp are both tested. Its name has a
+    space and a sign, so the name of its attitude file is tested too.
+
+    Returns
+    -------
+    ScenarioRun
+        The run
+    """
+    text = ARTICULATED_MODEL + (data_dir / "scenario.yaml").read_text() + SLEW
     return run_scenario(Scenario.from_yaml_text(text, base_dir=data_dir))
 
 
