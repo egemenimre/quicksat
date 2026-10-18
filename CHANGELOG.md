@@ -12,6 +12,7 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 - `scenario_data(run, designer=True)`, `activity_rows` and `designer_page` give the designer's data, the results of each activity and the page. The editor's server answers `design`, `designer` and `save`.
 - The viewer marks each whole orbit on its timelines. Its current data gives the time and the orbits since the start.
 - A guide, `docs/guides/scenario/plan_the_activities.md`, builds a list of activities in the Activity Designer, from an empty list to a plan for the whole run, and says what to do about each warning. The scenario reference notebook has a section on one pass of the list and on an empty list.
+- A guide, `docs/guides/scenario/prepare_a_3d_model.md`, takes a spacecraft model from CAD or Blender to a GLB file: its axes, units and origin, the parts that turn, the solar panels and the export settings. It checks the model in the Scenario Editor and from Python, and checks the body axes against the attitudes on the editor's Operations tab, so that the imager looks down and the cells face the sun.
 
 ### Changed
 

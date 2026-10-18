@@ -114,7 +114,7 @@ The viewer draws the spacecraft from a GLB file, the binary form of glTF. Put th
 3d_model: spacecraft.glb
 ```
 
-Without it, the viewer draws a 1 m cube. Build the model in body axes and in metres, with its origin at the point the body turns about. Then the model's x, y and z are the body's. In Blender, untick "+Y Up" when you export it, or the axes turn. Export it without Draco or meshopt compression, because the viewer cannot decode them.
+Without it, the viewer draws a 1 m cube. [How to prepare a 3D model](prepare_a_3d_model.md) takes a model from CAD or Blender to this file. Build the model in body axes and in metres, with its origin at the point the body turns about. Then the model's x, y and z are the body's. In Blender, untick "+Y Up" when you export it, or the axes turn. Export it without Draco or meshopt compression, because the viewer cannot decode them.
 
 Parts of the model can turn about one axis, such as solar wings that follow the sun, or an antenna that follows a ground station. Make each such part one node, with its origin on its drive axis and its pieces as children. Then list it under `articulations`, with `file` for the model:
 
