@@ -13,6 +13,8 @@ change only with the tests that read them:
 
 `slew_run` is `scenario.yaml` again, with slews at the sizing sample's rate and
 acceleration. `articulated_run` adds the 3D model and two wings to it.
+`once_run` runs the list of `once_text` once, as the Activity Designer does:
+the wings, and slews whose rate limit nadir passes.
 
 The runs take about a second each, so each is made once per session. matplotlib
 draws without a display, so the plots can be tested anywhere.
@@ -108,3 +110,35 @@ def problem_run(data_dir) -> ScenarioRun:
         The run
     """
     return run_scenario(Scenario.from_yaml_file(data_dir / "problems.yaml"))
+
+
+SLOW = (
+    "slew: {max_rate: 0.05 deg/s, max_acceleration: 0.08 deg/s2, settling_time: 20 s}\n"
+)
+"""A slew block whose rate limit nadir passes, at about the orbit's 0.063 deg/s,
+so that there are turn rate warnings."""
+
+
+@pytest.fixture(scope="session")
+def once_text(data_dir) -> str:
+    """`scenario.yaml` with the two wings, and slews that nadir turns too fast for.
+
+    Returns
+    -------
+    str
+        The scenario file's text
+    """
+    return ARTICULATED_MODEL + (data_dir / "scenario.yaml").read_text() + SLOW
+
+
+@pytest.fixture(scope="session")
+def once_run(once_text, data_dir) -> ScenarioRun:
+    """One pass of the list of `once_text`, read and run as the designer does.
+
+    Returns
+    -------
+    ScenarioRun
+        The run, unplanned after the list's last activity
+    """
+    scenario = Scenario.from_yaml_text(once_text, data_dir, designer=True)
+    return run_scenario(scenario, repeat=False)

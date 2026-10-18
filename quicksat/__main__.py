@@ -87,13 +87,15 @@ To edit and view the power sample with the editor's server:
        python -m quicksat.editor serve {power / "data"} {power / "output"}
   2. The Scenario Editor opens in your browser. If it does not, open the
      address that the server prints.
-  3. Edit the files on the page.
+  3. Edit the files on the page. The Activities tab is the Activity
+     Designer: Generate scenario runs the list, and shows it above the list.
   4. Click Create the viewer, on the Files tab or the last Setup step. It
      writes {power / "output" / "power_viewer.html"}.
   5. Click Open the viewer. After each Update the viewer, click it again, or
      reload the viewer's tab.
-  6. The server does not change the files in data/. To keep your changes,
-     download them from the page and put them back in data/.
+  6. To keep your changes, download them from the page and put them back in
+     data/. On the Activities tab, Save into the folder writes the scenario
+     file there itself. Nothing else on the page changes the files in data/.
   7. Press Ctrl+C in the terminal to stop the server.
 For the scenario sample, give {scenario / "data"} and {scenario / "output"}.
 

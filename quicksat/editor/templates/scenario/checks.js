@@ -98,6 +98,7 @@ function runChecks() {
   if (!S.attitudes.items.length) add("attitudes", "there must be at least one attitude");
   for (const a of S.attitudes.items) {
     if (a.name === SLEW) add("attitudes", 'no attitude can be called "slew": the run uses it while the body turns');
+    if (a.name === UNPLANNED) add("attitudes", 'no attitude can be called "unplanned": the run uses it after the last activity');
     if (a.point[0].slice(1) === a.constrain[0].slice(1)) add("attitudes", `attitude ${a.name}: the two body axes lie on one line`);
     if (a.point[1] === a.constrain[1]) add("attitudes", `attitude ${a.name}: both axes aim at ${a.point[1]}`);
     for (const d of [a.point[1], a.constrain[1], a.fallback].filter(Boolean)) if (!dirs.has(d)) add("attitudes", `attitude ${a.name}: "${d}" is not a direction or a target`);
@@ -124,6 +125,7 @@ function runChecks() {
     if (!attitudeNames().includes(a.attitude)) add("activities", `activity ${n}: no attitude "${a.attitude || "none"}"`);
     if (!a.mode.trim()) add("activities", `activity ${n} has no mode`);
     else if (a.mode === SLEW) add("activities", `activity ${n}: no mode can be called "slew"`);
+    else if (a.mode === UNPLANNED) add("activities", `activity ${n}: no mode can be called "unplanned"`);
     if (a.end.kind === "duration" && !(a.end.value.v > 0)) add("activities", `activity ${n}: the duration must be above zero`);
     if (a.end.kind === "text") add("activities", `activity ${n}: the editor cannot read the trigger "${a.end.text}"; quicksat may`, "note");
     if (["rise", "set"].includes(a.end.kind) && !targetNames().includes(a.end.target)) add("activities", `activity ${n}: no target "${a.end.target || "none"}"`);

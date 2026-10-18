@@ -4,7 +4,7 @@ This guide takes you round the loop of the scenario and power work. You edit the
 
 The loop is the same for a scenario folder and for a power folder. A power folder holds its own copy of the scenario, so its editor edits the scenario, the power system and the consumption together.
 
-There are two ways round the loop. The editor's server runs the files from the page: edit, click **Create the viewer**, and look. Or open a page on disk, save the files, put them back in the folder, and run a command. Step 2 starts either one.
+There are two ways round the loop. The editor's server runs the files from the page: edit, click **Create the viewer**, and look. Its Activity Designer shows the run above the list of activities as you build it. Or open a page on disk, save the files, put them back in the folder, and run a command. Step 2 starts either one.
 
 You need quicksat installed first. The README has the steps. The sizing files have an editor of their own: see [how to edit and run the sizing files](../sizing/edit_the_sizing_files.md). What each field of the files means is in the other two guides: [how to set up and run a scenario](set_up_a_scenario.md) and [how to set up and run a power budget](../power/set_up_a_power_budget.md).
 
@@ -65,6 +65,32 @@ The chip at the top right counts the problems that the page finds: a missing val
 
 The page keeps no draft. Save before you close it or reload it, or your changes are lost.
 
+### Design the activities, with the server
+
+With the server, the Activities tab is the **Activity Designer**. The run sits above the list of activities: the orbit in 3D and the ground track, with the current data beside them, and the timeline with the illumination, the attitude, the mode and each target's passes. A dashed line marks each whole orbit.
+
+**Generate scenario** runs the scenario as it is on the page, and shows the result above the list. It writes nothing. The first run after the server starts takes about 20 s. Later ones take a second or two for the samples. The tab runs once by itself when you first open it.
+
+At first the list runs once, with no repeats. The time after its last activity is unplanned, and grey. The bar above the list gives the run's length and one pass of the list, in time and in orbits. Once the list covers an orbit, tick **Repeat the list**. The list then repeats until the run ends, as it does in the scenario file.
+
+The list may be empty here. So start from nothing, to see the orbit, the eclipses and the passes first. Then add the activities one at a time, and generate after each. For the power sample, a list could start like this:
+
+| # | Title | Ends at | Attitude | Mode | Expects |
+|---|---|---|---|---|---|
+| 1 | idle until eclipse exit | eclipse exit | sun pointing | idle | anything |
+| 2 | idle until Svalbard rise | Svalbard rise | sun pointing | idle | anything |
+| 3 | downlink until Svalbard set | Svalbard set | track Svalbard | downlink | anything |
+| 4 | idle until latitude 45 deg | latitude 45 deg ascending | sun pointing | idle | anything |
+| 5 | image from latitude 45 deg | 8 min | yaw steering | imaging | sunlit |
+
+Under each title, a line says what the last run made of the activity: how many times it came, any problem, and any turn faster than the slew block allows. In the power sample, the downlink tracks Svalbard at up to 0.84 deg/s, past the slew block's 0.7 deg/s. An amber band marks that on the timeline, and the warning shows above the list. A row that you change reads *changed since the last run* until you generate again.
+
+Select a row to see its activity in the run: a box round each of its occurrences on the timeline, and its part of the track thicker and brighter, on the map and on the orbit. A click on the timeline, or on the track, selects the activity under way there, and brings its row into view. Drag the bar between the run and the list to share the height. The browser remembers it.
+
+**Save into the folder** writes the scenario file into the folder that the server reads, after a confirm. It refuses an empty list, and a file that changed on disk since the page read it. Reload the page then, to see the file as it is now. The other files save as step 5 says.
+
+[How to plan the activities](plan_the_activities.md) builds a plan in the designer, step by step, and says what to do about each warning.
+
 ## 4. Move your `#` comments into `comments` fields
 
 Saving rewrites each file. It writes the editor's own help as `#` lines, and drops every other `#` comment. Your notes are kept only in the `comments` fields that every block of a file has.
@@ -79,14 +105,14 @@ Do this before you first save a file that you wrote by hand. The samples' explan
 
 ## 5. Save, and put the files back
 
-With the server, you can skip this step until you want to keep your changes: step 6 runs the files as they are on the page. The server never writes into the folder.
+With the server, you can skip this step until you want to keep your changes: step 6 runs the files as they are on the page. The server writes into the folder only when you click **Save into the folder** on the Activities tab.
 
 Open the Files tab to see each file as it will be written. Then save, from there or from the last Setup step:
 
 - **download the zip** gives the whole folder in one file;
 - **download** next to a file, or on a tab's bar, gives that file alone.
 
-A saved file shows as *downloaded* until you change it again.
+A saved file shows as *downloaded*, or *saved into the folder*, until you change it again.
 
 The browser puts the downloads in its downloads folder. Copy the files over the ones in `my_project/winter/`. Check their names: a browser can add a number, such as `scenario (1).yaml`, to a file it has downloaded before.
 

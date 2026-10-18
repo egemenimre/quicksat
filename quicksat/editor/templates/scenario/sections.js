@@ -584,7 +584,7 @@ const SECTIONS = {
 
   activities: {
     title: "Activities", file: "scenario", wide: true,
-    render(body) {
+    render(body, { setup = false } = {}) {
       const list = S.activities;
       const table = el("table", { class: "items activities" });
       table.append(el("tr", {}, ["#", "title", "ends at", "", "attitude", "mode", "expects", ""].map((h) => el("th", { text: h }))));
@@ -609,7 +609,8 @@ const SECTIONS = {
         detail.addEventListener("change", refresh);
         tr.append(
           el("td", { class: "hint num", text: index + 1 }),
-          el("td", {}, textInput(item, "title", { cls: "name", placeholder: "what it is for" })),
+          // on the Activities tab, the activity's results in the designer's last run
+          el("td", {}, textInput(item, "title", { cls: "name", placeholder: "what it is for" }), setup ? null : rowNote(index)),
           el("td", {}, selectInput(end, "kind", TRIGGERS, { onchange: () => {} })),
           el("td", {}, detail, text),
           el("td", {}, selectInput(item, "attitude", attitudeNames(), { blank: "attitude" })),

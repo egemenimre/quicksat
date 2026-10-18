@@ -10,6 +10,9 @@ The rules of the chain are tested on a made-up run of 100 min, with eclipses fro
 20 to 50 min and from 80 to 100 min. Inside them, the umbra runs from 22 to 48 min
 and from 82 to 100 min, so each penumbra lasts 2 min. Every expected time follows
 from those numbers. The orbit is tested on the runs of the fixture files.
+
+The Activity Designer runs the list once, or an empty list. One pass of the
+fixture's list ends partway through its three orbits, so the rest is unplanned.
 """
 
 import numpy as np
@@ -22,7 +25,9 @@ from quicksat import Q_, u
 from quicksat.orbit.geometry import elevations, geodetic
 from quicksat.orbit.omm import write_omm_file
 from quicksat.orbit.tle import Tle, read_tle_file
-from quicksat.scenario.config import Activity, Scenario
+from quicksat.scenario.attitude import attitude_names, body_rotations
+from quicksat.scenario.attitude_files import attitude_table
+from quicksat.scenario.config import UNPLANNED, Activity, Scenario
 from quicksat.scenario.run import (
     CUT_AT_END,
     EVENT_NEVER_CAME,
@@ -39,6 +44,8 @@ from quicksat.scenario.run import (
 )
 from quicksat.scenario.viewer import scenario_data
 from quicksat.utils.intervals import labels_at, round_time
+
+from .conftest import SLOW
 
 T0 = round_time(Time("2026-10-01T00:00:00", scale="utc"))
 RUN = P.closedopen(T0, round_time(T0 + Q_(100, "min")))
@@ -67,10 +74,11 @@ ABOVE = {30.0: P.closedopen(at(10), at(40)) | P.closedopen(at(70), at(100))}
 and going south at 40 min. No other latitude is ever reached."""
 
 
-def resolve(*fields):
+def resolve(*fields, repeat=True):
     """
     Resolve a list of activities on the made-up run, each given as its fields
-    after the title. Each takes its number as its title.
+    after the title. Each takes its number as its title. Without `repeat`, the
+    list runs once.
     """
     activities = [
         Activity.from_fields([f"activity {number}", *activity])
@@ -81,7 +89,7 @@ def resolve(*fields):
         return ABOVE.get(float(latitude.to_value(u.deg)), P.empty())
 
     events = find_events(activities, RUN, ILLUMINATION, time_above)
-    return resolve_activities(activities, RUN, events, ILLUMINATION)
+    return resolve_activities(activities, RUN, events, ILLUMINATION, repeat)
 
 
 def spans(occurrences):
@@ -224,6 +232,33 @@ def test_a_negative_duration_shows_in_the_table():
 def test_a_list_that_never_moves_on_stops_the_run():
     with pytest.raises(ValueError, match="never moves on"):
         resolve(["eclipse entry - 90 min", "nadir", "a"])
+
+
+def test_one_pass_stops_after_its_last_activity():
+    occurrences = resolve(
+        ["30 min", "nadir", "a"], ["15 min", "nadir", "b"], repeat=False
+    )
+    assert spans(occurrences) == [(0, 30), (30, 45)]
+    assert all(o.statuses == [STATUS_OK] for o in occurrences)
+
+
+def test_one_pass_longer_than_the_run_is_cut_at_its_end():
+    occurrences = resolve(
+        ["60 min", "nadir", "a"], ["60 min", "nadir", "b"], repeat=False
+    )
+    assert spans(occurrences) == [(0, 60), (60, 100)]
+    assert occurrences[-1].statuses == [CUT_AT_END]
+
+
+def test_one_pass_that_never_moves_on_is_not_refused():
+    # the run stops after one pass, so it cannot go on for ever
+    occurrences = resolve(["eclipse entry - 90 min", "nadir", "a"], repeat=False)
+    assert [o.statuses for o in occurrences] == [[NEGATIVE_DURATION]]
+
+
+@pytest.mark.parametrize("repeat", [True, False])
+def test_an_empty_list_gives_no_occurrences(repeat):
+    assert resolve(repeat=repeat) == []
 
 
 def test_next_event_takes_the_first_of_several_intervals():
@@ -521,3 +556,94 @@ def test_the_viewer_data_gives_each_ground_target_and_its_passes(pass_run):
     assert overhead["passes"] == []
     assert data["target_files"] == []
     assert data["pointing"]["attitudes"] == {"track Svalbard": ["Svalbard"]}
+
+
+# ---------------------------------------------------------------- One pass
+
+
+def test_one_pass_leaves_the_rest_of_the_run_unplanned(once_run):
+    assert [o.number for o in once_run.occurrences] == list(range(1, 9))
+    assert {o.repeat for o in once_run.occurrences} == {1}
+    end = once_run.occurrences[-1].end
+    assert end < once_run.interval.upper
+    assert once_run.unplanned == P.closedopen(end, once_run.interval.upper)
+    # the rows still cover the run, the unplanned time included
+    for row in (once_run.illumination, once_run.attitude, once_run.mode):
+        assert row.domain() == once_run.interval
+    assert once_run.mode.find(UNPLANNED) == once_run.unplanned
+
+
+def test_one_pass_takes_as_long_with_repeats_or_without(once_run, run):
+    last = once_run.occurrences[-1]
+    assert once_run.pass_length == (last.end - once_run.interval.lower).to(u.s)
+    # the slews and the wings do not move the activities, so the first pass of
+    # the full run ends at the same time
+    assert run.pass_length == once_run.pass_length
+    assert run.repeat
+    assert not once_run.repeat
+
+
+def test_a_pass_longer_than_the_run_has_no_length(data_dir):
+    text = (data_dir / "scenario.yaml").read_text().replace("3 orbits", "0.5 orbits")
+    run = run_scenario(Scenario.from_yaml_text(text, data_dir))
+    assert run.pass_length is None
+
+
+def test_a_full_run_has_no_unplanned_time(run):
+    assert run.unplanned.empty
+    assert UNPLANNED not in run.attitude.values()
+    run.check_planned("the report")
+
+
+def test_the_body_has_no_orientation_in_the_unplanned_time(once_run):
+    after = once_run.times >= once_run.unplanned.lower
+    names = attitude_names(once_run)
+    assert set(names[after]) == {UNPLANNED}
+    assert UNPLANNED not in set(names[~after])
+    rotations = body_rotations(once_run)
+    assert np.isnan(rotations[after]).all()
+    assert np.isfinite(rotations[~after]).all()
+
+
+def test_one_pass_warns_as_the_same_occurrences_of_a_full_run(
+    once_run, once_text, data_dir
+):
+    full = run_scenario(Scenario.from_yaml_text(once_text, data_dir))
+    first = [e.text for e in full.rate_excesses if e.occurrence.repeat == 1]
+    assert first
+    assert [e.text for e in once_run.rate_excesses] == first
+    assert once_run.warnings == first
+
+
+@pytest.mark.parametrize(
+    "work_out",
+    [
+        lambda run: run.sun_body,
+        lambda run: run.report,
+        lambda run: run.articulations,
+        attitude_table,
+    ],
+    ids=["sun in body axes", "report", "articulations", "attitude file"],
+)
+def test_what_needs_the_whole_run_planned_refuses_one_pass(once_run, work_out):
+    with pytest.raises(
+        ValueError, match="no activity plans the run from .* to its end"
+    ):
+        work_out(once_run)
+
+
+@pytest.mark.parametrize("repeat", [True, False])
+def test_an_empty_list_leaves_the_whole_run_unplanned(data_dir, repeat):
+    text = (data_dir / "scenario.yaml").read_text().split("activities:")[0]
+    text += "activities: []\n" + SLOW
+    run = run_scenario(Scenario.from_yaml_text(text, data_dir, designer=True), repeat)
+    assert run.occurrences == []
+    assert run.slews == []
+    assert run.unplanned == run.interval
+    assert set(run.attitude.values()) == set(run.mode.values()) == {UNPLANNED}
+    assert np.isnan(body_rotations(run)).all()
+    assert run.rate_excesses == []
+    assert run.warnings == []
+    assert run.activity_summary.startswith("Occurrences: 0 in 0 repeats.")
+    assert run.activity_table.empty
+    assert run.pass_length == Q_(0, "s")

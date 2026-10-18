@@ -15,7 +15,10 @@ const TABS = [
   { id: "spacecraft", title: "Spacecraft", sections: ["model", "articulations", "panels"], intro: "The 3D model, the parts that turn, and the solar panels on it. Select an item to see it in the 3D panel." },
   { id: "targets", title: "Targets", sections: ["gnd_targets", "sat_targets"], intro: "The places on the ground and the other satellites that the attitudes, the articulations and the triggers can name." },
   { id: "operations", title: "Operations", sections: ["attitudes", "slew", "modes"], intro: "How the spacecraft points, how fast it turns, and the modes it works in." },
-  { id: "activities", title: "Activities", sections: ["activities"], intro: "What the spacecraft does, in order: one repeat of the list, which the run repeats until the duration ends." },
+  {
+    id: "activities", title: "Activities", sections: ["activities"], top: designerBar,
+    intro: "The Activity Designer. What the spacecraft does, in order: one repeat of the list, which the run repeats until the duration ends. Generate scenario runs the list, and shows the result above it.",
+  },
   { id: "power", title: "Power", sections: ["cells", "battery", "conditioning"], intro: "The power system: the cells and their losses, the battery and the power conditioning.", top: powerComments },
   { id: "consumption", title: "Consumption", sections: ["consumption"], intro: "What each equipment draws in each mode, from the consumption file." },
   { id: "files", title: "Files", sections: ["project"] },
@@ -32,7 +35,7 @@ const STEPS = [
   { group: "Operations", title: "Attitudes", sections: ["attitudes"], needs3d: true },
   { title: "Attitude slew performance", sections: ["slew"] },
   { title: "Modes", sections: ["modes"] },
-  { title: "Activities", sections: ["activities"] },
+  { title: "Activities", sections: ["activities"], top: openDesignerButton },
   { group: "Power", title: "Solar panels", sections: ["panels"], needs3d: true },
   { title: "Cells, losses and shading", sections: ["cells"] },
   { title: "Battery", sections: ["battery"] },
@@ -211,8 +214,14 @@ const OPENERS = {
 // ---------------------------------------------------------------- start
 
 Object.assign(page, {
-  onShow: apply3d,
-  afterChange: () => view3d.update(),
+  onShow: () => {
+    apply3d();
+    showDesigner();
+  },
+  afterChange: () => {
+    view3d.update();
+    designerChanged();
+  },
   filesExtra: () => el("div", { class: "files-viewer" }, el("div", { class: "folder", text: "the viewer" }), viewerPanel()),
   kindOfFile: (name) => (satTargetFiles().includes(name) ? "target" : null),
   describeBinary: (file) => `A binary GLB file of ${(file.bytes.length / 1024).toFixed(1)} kB, with ${model.parts.length} named parts:\n\n${model.parts.map((p) => "  " + p.name).join("\n")}`,

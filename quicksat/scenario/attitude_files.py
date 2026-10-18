@@ -126,7 +126,14 @@ def attitude_table(run: ScenarioRun) -> Table:
         The columns `time` [s], `qx`, `qy`, `qz`, `qw` and `attitude`. Its
         metadata holds the epoch, the time scale, the frame and
         `QUATERNION_NOTES`.
+
+    Raises
+    ------
+    ValueError
+        If part of the run is unplanned, so that the body has no orientation
+        then: see `ScenarioRun.unplanned`
     """
+    run.check_planned("the attitude file")
     meta, seconds = _header(run)
     q = _rounded(quaternions(body_rotations(run)), QUATERNION_DECIMALS)
     parts = {

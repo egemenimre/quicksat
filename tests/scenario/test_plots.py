@@ -19,7 +19,7 @@ from quicksat.scenario.plots import (
     scenario_colours,
 )
 from quicksat.scenario.run import NEGATIVE_DURATION, OUTSIDE_CONSTRAINT
-from quicksat.utils.plot_helpers import ILLUMINATION_COLOURS, MUTED, PALETTE
+from quicksat.utils.plot_helpers import DIM, ILLUMINATION_COLOURS, MUTED, PALETTE
 
 
 @pytest.fixture(autouse=True)  # noqa: V103
@@ -37,16 +37,19 @@ def legend_labels(ax):
 
 def test_each_value_has_one_colour(run):
     colours = scenario_colours(run.scenario)
-    assert list(colours)[:6] == [
+    assert list(colours)[:7] == [
         "sunlit",
         "penumbra",
         "umbra",
         "nadir",
         "sun pointing",
         "slew",
+        "unplanned",
     ]
-    # the slew is grey, outside the palette, so the modes keep their colours
+    # the slew and the unplanned time are grey, outside the palette, so the
+    # modes keep their colours
     assert colours["slew"] == MUTED
+    assert colours["unplanned"] == DIM
     assert {"idle", "imaging", "downlink"} <= set(colours)
     assert len(set(colours.values())) == len(colours)
 

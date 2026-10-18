@@ -337,14 +337,18 @@ function selectable(tr, selection) {
   tr.addEventListener("focusin", () => select(selection));
   tr.addEventListener("click", () => select(selection));
   tr._selection = selection;
+  // a row drawn again keeps its selection
+  if (state.selection && state.selection.item === selection.item) tr.classList.add("selected");
   return tr;
 }
 
 function select(selection) {
+  const before = state.selection;
   state.selection = selection;
   for (const tr of document.querySelectorAll("tr.selected")) tr.classList.remove("selected");
   for (const tr of document.querySelectorAll(".items tr")) {
     if (tr._selection && selection && tr._selection.item === selection.item) tr.classList.add("selected");
   }
   view3d.update();
+  if ((before && before.item) !== (selection && selection.item)) sendSelection();
 }

@@ -68,6 +68,7 @@ from quicksat.scenario.config import (
     ORBIT_NORMAL,
     SLEW,
     SUN,
+    UNPLANNED,
     VELOCITY,
     Scenario,
     Slew,
@@ -525,11 +526,15 @@ def _activity_attitudes(run: "ScenarioRun") -> np.ndarray:
     Returns
     -------
     names : ndarray
-        The attitude names, as an array of objects
+        The attitude names, as an array of objects. A time after the last
+        activity gets `unplanned`.
     """
-    names = labels_at(_attitude_row(run.occurrences), run.times)
-    # the run is open at its end, so the last time takes the last activity's attitude
-    names[-1] = run.occurrences[-1].activity.attitude
+    row = _attitude_row(run.occurrences)
+    unplanned = run.unplanned
+    row[unplanned] = UNPLANNED
+    names = labels_at(row, run.times)
+    # the run is open at its end, so the last time takes the value before the end
+    names[-1] = run.occurrences[-1].activity.attitude if unplanned.empty else UNPLANNED
     return names
 
 
@@ -546,7 +551,8 @@ def body_rotations(run: "ScenarioRun") -> np.ndarray:
     -------
     rotations : ndarray
         Matrices that turn body vectors into GCRS, shape (n, 3, 3), one for each
-        time of the grid. Column i is body axis i, seen in GCRS.
+        time of the grid. Column i is body axis i, seen in GCRS. NaN at a time
+        that no activity plans: see `ScenarioRun.unplanned`.
     """
     attitude = _activity_attitudes(run)
 
@@ -555,7 +561,7 @@ def body_rotations(run: "ScenarioRun") -> np.ndarray:
         return cast(SkyCoord, run.state[rows]), sun
 
     rotations = np.full((len(run.times), 3, 3), np.nan)
-    for name in set(attitude):
+    for name in set(attitude) - {UNPLANNED}:
         rows = attitude == name
         rotations[rows] = attitude_rotations(
             run.scenario, name, *state_at(rows), run.sat_orbits
@@ -589,7 +595,7 @@ def attitude_names(run: "ScenarioRun") -> np.ndarray:
     -------
     names : ndarray
         The attitude names, as an array of objects. A time inside a slew gets
-        `slew`.
+        `slew`, and a time after the last activity `unplanned`.
     """
     names = _activity_attitudes(run)
     for window in run.slews:

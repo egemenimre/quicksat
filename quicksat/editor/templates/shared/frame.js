@@ -466,7 +466,7 @@ function updateBanner() {
 /** The explanation of the table of files and of the buttons, for each page's first step. */
 const FILES_HELP = `<span class="k">The table of files</span>
 <p><b>From</b> says where each file came from: the folder the page was written for, a folder you opened, or a file opened alone. A browser does not tell a page which folder a file opened alone came from.</p>
-<p><b>State</b> says whether the file has changed: <i>unchanged</i> since it was opened, <i>modified</i>, <i>downloaded</i> when saved and not changed since, or <i>new</i> for a file started on the page.</p>
+<p><b>State</b> says whether the file has changed: <i>unchanged</i> since it was opened, <i>modified</i>, <i>downloaded</i> when saved and not changed since, <i>saved into the folder</i> by the Activity Designer, or <i>new</i> for a file started on the page.</p>
 <p><b>Simple check</b> is the page's own: names, units and ranges, run as you type. <b>Full check</b> is quicksat's own loaders, which read the files when Python wrote the page. A file opened since shows <i>not run</i>: write the page again for its full check. On a page that the Scenario Editor's server sends, a reload, or a run that creates the viewer, gives the full check too.</p>
 <span class="k">Opening and saving</span>
 <p><b>Open a folder</b> reads every file of the folder that the page knows, and fills every step. <b>Open</b>, on a row or on a tab, reads one file in place of that one. You can also drop a folder, or its files, on the first Setup step or anywhere on the page, and a file on its tab's bar. <b>download</b> saves one file, and the Files tab saves them all as a zip. Put the files back in the folder yourself: a browser cannot write into it.</p>`;
@@ -494,7 +494,11 @@ const sources = {};
 /** Each file's text, or bytes, as it was last opened or saved: a file that differs has changed. */
 const savedText = {};
 
-/** How each file was last saved, by kind: `download` once the page has saved it, and otherwise not set. */
+/**
+ * How each file was last saved, by kind: `download` once the page has saved it,
+ * `folder` once the editor's server has written it into the folder, and
+ * otherwise not set.
+ */
 const savedBy = {};
 
 /** Each file's text, or bytes, as saving would write it now, by kind. The help lines are always in. */
@@ -508,7 +512,7 @@ function currentTexts() {
   }
 }
 
-/** Note the files of `kinds` as saved, as they are now: opened, or downloaded from the page. */
+/** Note the files of `kinds` as saved, as they are now: opened, downloaded, or saved into the folder. */
 function markSaved(kinds, by = "") {
   const texts = currentTexts();
   for (const kind of kinds) {
@@ -519,9 +523,9 @@ function markSaved(kinds, by = "") {
 }
 
 /**
- * Each file's state, by kind: `unchanged` since it was opened, `downloaded` and not
- * changed since, `modified` since either, `new` for a file never saved, or
- * `absent` for one the page does not save.
+ * Each file's state, by kind: `unchanged` since it was opened, `downloaded` or
+ * `saved` into the folder and not changed since, `modified` since any of them,
+ * `new` for a file never saved, or `absent` for one the page does not save.
  */
 function fileStates() {
   const texts = currentTexts();
@@ -529,7 +533,7 @@ function fileStates() {
     if (!(kind in texts)) return "absent";
     if (!(kind in savedText)) return "new";
     if (texts[kind] !== savedText[kind]) return "modified";
-    return savedBy[kind] === "download" ? "downloaded" : "unchanged";
+    return { download: "downloaded", folder: "saved" }[savedBy[kind]] || "unchanged";
   };
   // the fixed kinds, and any the page saves beyond them, such as a satellite target's file
   const kinds = new Set([...FILES.map(({ kind }) => kind), ...Object.keys(texts)]);
@@ -539,6 +543,7 @@ function fileStates() {
 const STATE_TEXT = {
   unchanged: "unchanged",
   downloaded: "downloaded",
+  saved: "saved into the folder",
   modified: "modified, not saved",
   new: "new, not saved",
   absent: "not in this folder",

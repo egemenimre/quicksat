@@ -25,6 +25,8 @@ const TRIGGERS = [
   ["text", "as written"],
 ];
 const SLEW = "slew";
+/** The attitude and mode rows' value after the last activity, in the Activity Designer's run. */
+const UNPLANNED = "unplanned";
 /** The key that names an orbit's file, for each kind of file. */
 const ORBIT_KEYS = { tle: "tle_file", omm: "omm_file", trajectory: "trajectory_file" };
 

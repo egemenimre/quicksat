@@ -62,6 +62,7 @@ async function checkServer() {
   if (now !== viewer.server) {
     viewer.server = now;
     drawViewerPanels();
+    designerServerChanged();
   }
 }
 

@@ -6,6 +6,32 @@ Newest first. When a decision replaces an earlier one, the earlier one is kept i
 
 ---
 
+## 20. The Activity Designer is the viewer in a frame, served by the editor's server
+
+**2026-10-18. Implemented. Changes 18: the server can now save the scenario file.**
+
+The Scenario Editor's Activities tab shows the run above the list of activities. The user edits the list, presses **Generate scenario**, and sees the ground track and the timeline at once. The user goes round many times, from an empty list to a full one.
+
+**The viewer in a frame.** The viewer reads its data once, at load, into about 60 constants. Redrawing it with new data would mean rewriting a page of 3400 lines. So each run loads the viewer's page again, in a frame, with the run's data inside it. The data's `designer` field turns on the designer mode: no header, no body view, and each target's passes under the timeline. The frame and the editor's page come from the same server, so they share an origin. They tell each other which activity is selected, through messages. The frame also reports its time cursor and its zoom, and the page passes them back in the frame's address at the next run.
+
+**Generate writes nothing.** The run happens in a temporary folder, as for Create the viewer. The server keeps the page in memory for the frame. Create the viewer stays the way to write the viewer. The power is not run, since the designer is about the timeline.
+
+**A single pass and an empty list, in the designer only.** At first the list runs once, so the user sees where it ends against the orbit. The time after it is unplanned. The attitude and mode rows give it as `unplanned`, a name that no attitude or mode may take. The body has no orientation then, and the turn rate check looks only at the planned time. Whatever needs the whole run planned refuses such a run: the sun in body axes, and so the power, the articulations, the attitude files, the report and the normal viewer's data. An empty list is read only with `designer=True`. It also skips the check that each park mode is one the activities have, since a list being built may not have it yet. A saved file, the command line and the notebooks still need at least one activity.
+
+**The orbit in 3D, and no body view.** The map is at most twice as wide as it is high, so beside it, the orbit view takes width that the map would leave empty. The user asked for it on 2026-10-18, once that width was measured: at 1440 by 900 pixels, the map took 356 of 1131. The map keeps its height. The body view has no room, so the designer's data leaves out the body's orientation, the roll, pitch and yaw, the joint angles and the model, which keeps each run's page smaller. The orbit view then shows the spacecraft as its marker alone. The data keeps the turn rates, for the amber bands on the timeline. The body view may come back later.
+
+**Saving through the server.** **Save into the folder** writes the scenario file into the input folder, after a confirm. The designer is used round many times, and a download each time would break the loop. Before, decision 18 said: "It does not save the files into the folder. The run takes the files as they are on the page, saved or not, in a temporary folder that it then deletes. Saving is still a download. Saving rewrites every `#` comment, so the user reviews those first." The save keeps that review: the confirm counts the `#` comments written by hand that saving would drop. It refuses:
+
+- a path outside the folder;
+- a file whose bytes on disk differ from those the page last read or saved, by SHA-256. Another program or page changed it since. The server works out the hashes when it writes the page, since the page holds the scenario as data, not as its text;
+- an empty list, and a scenario that the page did not get from the server's folder.
+
+It writes to a temporary file in the same folder, then renames it, so a failure leaves the old file whole. It takes the same key, `Host` and `Origin` checks as a run.
+
+**Measured on the power sample:** one pass takes 1.6 s, and the run with repeats 3.3 s. The first run after the server starts takes about 20 s more, while astropy loads its tables. So a run waits for the button, and does not follow each key press.
+
+---
+
 ## 19. Other satellites are targets, in a block of their own
 
 **2026-10-16. Implemented. Renames `targets` to `gnd_targets`.**
@@ -36,7 +62,7 @@ A target can be another satellite, such as a relay of a constellation, as well a
 
 **What the server does not do.**
 
-- **It does not save the files into the folder.** The run takes the files as they are on the page, saved or not, in a temporary folder that it then deletes. Saving is still a download. Saving rewrites every `#` comment, so the user reviews those first.
+- **It does not save the files into the folder.** The run takes the files as they are on the page, saved or not, in a temporary folder that it then deletes. Saving is still a download. Saving rewrites every `#` comment, so the user reviews those first. Changed by 20: the Activity Designer saves the scenario file into the folder.
 - **It serves the Scenario Editor only.** The Sizing Editor works out its budgets on the page, and needs no run.
 
 **How the server keeps to its user.**

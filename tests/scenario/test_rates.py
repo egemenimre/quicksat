@@ -23,10 +23,7 @@ from quicksat.scenario.config import Scenario
 from quicksat.scenario.run import run_scenario
 from quicksat.scenario.viewer import scenario_data
 
-SLOW = (
-    "slew: {max_rate: 0.05 deg/s, max_acceleration: 0.08 deg/s2, settling_time: 20 s}\n"
-)
-"""A slew block whose rate limit nadir passes."""
+from .conftest import SLOW
 
 
 def test_a_steady_spin_has_its_rate_and_no_acceleration():
@@ -46,6 +43,22 @@ def test_a_change_of_axis_counts_as_acceleration():
     rates, accelerations = body_rates(rotations, np.array([0.0, 10.0, 20.0]))
     assert np.degrees(rates) == pytest.approx([0.5, 0.5])
     assert np.degrees(accelerations) == pytest.approx([0.5 * np.sqrt(2) / 10])
+
+
+def test_a_time_with_no_orientation_has_no_rate_next_to_it():
+    seconds = np.arange(0.0, 60.0, 10.0)
+    rotations = Rotation.from_rotvec(np.outer(np.radians(0.5) * seconds, [0, 0, 1]))
+    matrices = rotations.as_matrix()
+    matrices[4:] = np.nan
+    rates, accelerations = body_rates(matrices, seconds)
+    assert np.degrees(rates[:3]) == pytest.approx(np.full(3, 0.5))
+    assert np.isnan(rates[3:]).all()
+    assert accelerations[:2] == pytest.approx(np.zeros(2), abs=1e-15)
+    assert np.isnan(accelerations[2:]).all()
+    # with no orientation at all, there is no rate at all
+    rates, accelerations = body_rates(np.full((6, 3, 3), np.nan), seconds)
+    assert np.isnan(rates).all()
+    assert np.isnan(accelerations).all()
 
 
 def test_within_the_limits_there_is_no_warning(slew_run, run):

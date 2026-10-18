@@ -56,6 +56,37 @@ main.with-3d { grid-template-columns: minmax(0, 1fr) minmax(320px, 38%); }
 
 .vp-message { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 20px; text-align: center; }
 
+/* The Activity Designer: with the editor's server, the run in a frame above the
+   list of activities, and a divider to drag between them. The list scrolls on
+   its own, so the run stays in view. */
+#page-activities { grid-template-rows: minmax(0, 1fr); }
+#page-activities .designer-frame, #page-activities .designer-divider { display: none; }
+#page-activities.designing { grid-template-rows: var(--frame-height, 58%) 7px minmax(0, 1fr); }
+#page-activities.designing .designer-frame { display: block; position: relative; min-height: 0; background: #08111f; }
+#page-activities.designing .designer-divider {
+  display: block; cursor: row-resize; background: var(--panel);
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+#page-activities.designing .designer-divider:hover { background: var(--line-2); }
+.designer-frame iframe { width: 100%; height: 100%; border: 0; display: block; }
+.designer-frame.running iframe { opacity: 0.45; transition: opacity 0.2s; }
+#page-activities.dragging iframe { pointer-events: none; }
+.designer-bar { max-width: none; margin-bottom: 10px; }
+.designer-bar .check { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.designer-bar .run-status.ok, .designer-bar .saved.ok { color: var(--green); }
+.designer-bar .run-status.warn { color: var(--amber); }
+.designer-bar .run-status.bad, .designer-bar .saved.bad { color: var(--red); }
+.designer-bar .period, .designer-bar .saved { margin: 0; }
+.designer-bar .run-warnings p { margin: 0 0 4px; }
+/* Under each title, what the last run made of the activity: a line for the count,
+   and one for each warning or failure, labelled as such */
+.items .run-text { font-size: 11px; margin-top: 5px; color: var(--muted); max-width: 340px; }
+.items .run-text:empty { display: none; }
+.items .run-text .run-warn { color: var(--amber); }
+.items .run-text .run-fail { color: var(--red); }
+.items .run-text b { font-weight: 600; }
+.items .run-text.changed { color: var(--dim); font-style: italic; }
+
 /* The 3D panel */
 .panel3d { border-left: 1px solid var(--line); display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto auto; min-height: 0; min-width: 0; overflow: hidden; background: #0a1424; }
 main:not(.with-3d) .panel3d { display: none; }
@@ -112,7 +143,11 @@ main:not(.with-3d) .panel3d { display: none; }
     <section class="page" id="page-spacecraft"><div class="sheet" id="sheet-spacecraft"></div></section>
     <section class="page" id="page-targets"><div class="sheet" id="sheet-targets"></div></section>
     <section class="page" id="page-operations"><div class="sheet" id="sheet-operations"></div></section>
-    <section class="page" id="page-activities"><div class="sheet" id="sheet-activities"></div></section>
+    <section class="page" id="page-activities">
+      <div class="designer-frame" id="designer-frame"></div>
+      <div class="designer-divider" id="designer-divider" title="Drag to share the height between the run and the list"></div>
+      <div class="sheet" id="sheet-activities"></div>
+    </section>
     <section class="page" id="page-power"><div class="sheet" id="sheet-power"></div></section>
     <section class="page" id="page-consumption"><div class="sheet" id="sheet-consumption"></div></section>
     <section class="page" id="page-files">

@@ -224,22 +224,28 @@ def body_rates(
     ----------
     rotations : ndarray
         Rotation matrices that turn body vectors into an inertial frame, one for
-        each time, shape (n, 3, 3)
+        each time, shape (n, 3, 3). A time with no orientation is NaN.
     seconds : ndarray
         The times, in seconds, rising, shape (n,)
 
     Returns
     -------
     rates : ndarray
-        The turn rate over each step, in rad/s, shape (n - 1,)
+        The turn rate over each step, in rad/s, shape (n - 1,). NaN over a step
+        that starts or ends at a time with no orientation.
     accelerations : ndarray
-        The angular acceleration between each two steps, in rad/s2, shape (n - 2,)
+        The angular acceleration between each two steps, in rad/s2, shape
+        (n - 2,). NaN next to a step with no rate.
     """
-    turns = Rotation.from_matrix(rotations[:-1]).inv() * Rotation.from_matrix(
-        rotations[1:]
-    )
+    known = np.isfinite(rotations).all(axis=(1, 2))
+    both = known[:-1] & known[1:]
     steps = np.diff(seconds)
-    omega = turns.as_rotvec() / steps[:, None]
+    omega = np.full((len(steps), 3), np.nan)
+    if both.any():
+        turns = Rotation.from_matrix(rotations[:-1][both]).inv() * Rotation.from_matrix(
+            rotations[1:][both]
+        )
+        omega[both] = turns.as_rotvec() / steps[both, None]
     middles = (seconds[:-1] + seconds[1:]) / 2
     accelerations = np.linalg.norm(np.diff(omega, axis=0), axis=1) / np.diff(middles)
     return np.linalg.norm(omega, axis=1), accelerations

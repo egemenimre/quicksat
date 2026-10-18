@@ -320,7 +320,7 @@ input.short { width: 100px; }
 }
 .file-bar .file-name { color: var(--text); font-weight: 600; }
 .file-state[data-value="unchanged"] { color: var(--muted); }
-.file-state[data-value="downloaded"] { color: var(--green); }
+.file-state[data-value="downloaded"], .file-state[data-value="saved"] { color: var(--green); }
 .file-state[data-value="modified"] { color: var(--amber); }
 .file-state[data-value="new"] { color: var(--accent); }
 .file-state[data-value="absent"] { color: var(--dim); }

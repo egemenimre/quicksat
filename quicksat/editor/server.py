@@ -22,6 +22,13 @@ the files as they are on the page, saved or not. It does not change the files
 in the input folder. The server also serves the output folder, so the page can
 open the viewer it wrote.
 
+**Generate scenario**, in the Activity Designer, sends the files in the same way.
+`design_files` runs the scenario alone, once or with repeats, and writes
+nothing. The server keeps the viewer page with the run's data inside, and sends
+it to the designer's frame. **Save into the folder** sends the files that
+changed, and `save_files` writes them into the input folder. It refuses a file
+that changed on disk since the page was written.
+
 The server is for one user, on one computer:
 
 - It listens on 127.0.0.1, which other computers cannot reach.
@@ -36,15 +43,19 @@ The server is for one user, on one computer:
 
 import base64
 import binascii
+import hashlib
 import json
+import os
 import posixpath
 import secrets
+import shutil
 import sys
 import tempfile
 import threading
 import time
 import traceback
 import webbrowser
+from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PureWindowsPath
@@ -61,7 +72,12 @@ from quicksat.scenario import SCENARIO_FILE
 from quicksat.scenario.config import Scenario
 from quicksat.scenario.run import run_scenario
 from quicksat.scenario.viewer import PAGE_FILE as SCENARIO_PAGE
-from quicksat.scenario.viewer import write_scenario_viewer
+from quicksat.scenario.viewer import (
+    activity_rows,
+    designer_page,
+    scenario_data,
+    write_scenario_viewer,
+)
 
 HOST = "127.0.0.1"
 """The address the server listens on: this computer only."""
@@ -74,8 +90,8 @@ PORTS_TRIED = 20
 """How many ports from `PORT` on the server tries, before any free one."""
 
 PREFIX = "/quicksat/"
-"""The start of every address the server answers: `editor`, `status`, `run` and
-`viewer/` follow it."""
+"""The start of every address the server answers: `editor`, `status`, `run`,
+`design`, `designer`, `save` and `viewer/` follow it."""
 
 MAX_BODY = 200 * 1024 * 1024
 """The largest run request the server reads, in bytes. The 3D model is the
@@ -94,6 +110,12 @@ _ROLES = {
     "consumption": PowerConsumption.from_csv,
 }
 """The files that quicksat reads, by their kind, with their loaders."""
+
+_DESIGN_ROLES = {
+    "scenario": lambda path: Scenario.from_yaml_file(path, designer=True),
+}
+"""The files that the Activity Designer reads, with their loaders. It runs the
+scenario alone, so it leaves the power files out."""
 
 
 def _label(path: Path) -> str:
@@ -187,6 +209,75 @@ def _write_inputs(root: Path, files: list[dict]) -> tuple[Path, dict]:
     return base, names
 
 
+def _run_inputs(
+    files: list[dict], roles: dict, work: Callable[[Path, dict], dict]
+) -> dict:
+    """
+    Write the page's files into a temporary folder, check them, and run them.
+
+    The folder is deleted after the run. quicksat's loaders read each file that
+    `roles` names. If they all read, `work` runs on the folder.
+
+    Parameters
+    ----------
+    files : list of dict
+        The page's files, as `_write_inputs` takes them
+    roles : dict
+        The loader of each kind of file to check, by the kind
+    work : callable
+        Runs the files, given the folder of the scenario and the names of the
+        files by kind. It gives the result's own fields.
+
+    Returns
+    -------
+    result : dict
+        `ok`, and `checks`, what the loaders said of each file. When `ok`, the
+        fields from `work`, and `seconds`, the time taken. Otherwise `error`,
+        the reason, with no temporary path in it.
+    """
+    start = time.perf_counter()
+    if not any(file.get("kind") == "scenario" for file in files):
+        return {"ok": False, "error": "The page holds no scenario file.", "checks": []}
+    with tempfile.TemporaryDirectory(prefix="quicksat_run_") as tmp:
+        root = Path(tmp)
+
+        def clean(text: str) -> str:
+            return (
+                text.replace(f"{base}/", "")
+                .replace(str(base), "the folder")
+                .replace(str(root), "")
+            )
+
+        try:
+            base, names = _write_inputs(root, files)
+        except (ValueError, binascii.Error) as error:
+            return {"ok": False, "error": str(error), "checks": []}
+        checks = []
+        for kind, loader in roles.items():
+            if kind in names:
+                path = base / names[kind]
+                check = _check(names[kind], lambda read=loader, path=path: read(path))
+                checks.append({**check, "message": clean(check["message"])})
+        refused = [check for check in checks if not check["ok"]]
+        if refused:
+            listed = ", ".join(check["file"] for check in refused)
+            return {
+                "ok": False,
+                "error": f"quicksat cannot read {listed}, so it did not run the files.",
+                "checks": checks,
+            }
+        try:
+            result = work(base, names)
+        except (OSError, ValueError) as error:
+            return {"ok": False, "error": clean(str(error)), "checks": checks}
+    return {
+        "ok": True,
+        **result,
+        "checks": checks,
+        "seconds": round(time.perf_counter() - start, 1),
+    }
+
+
 def run_files(files: list[dict], output: str | Path) -> dict:
     """
     Run the editor's files, and write the viewer.
@@ -217,57 +308,158 @@ def run_files(files: list[dict], output: str | Path) -> dict:
         `seconds`, the time taken. Otherwise `error`, the reason, with no
         temporary path in it.
     """
-    start = time.perf_counter()
-    if not any(file.get("kind") == "scenario" for file in files):
-        return {"ok": False, "error": "The page holds no scenario file.", "checks": []}
-    with tempfile.TemporaryDirectory(prefix="quicksat_run_") as tmp:
-        root = Path(tmp)
 
-        def clean(text: str) -> str:
-            return (
-                text.replace(f"{base}/", "")
-                .replace(str(base), "the folder")
-                .replace(str(root), "")
+    def work(base: Path, names: dict) -> dict:
+        if "power" in names and "consumption" in names:
+            budget = run_folder(
+                base, names["scenario"], names["power"], names["consumption"]
             )
+            return {
+                "page": write_power_viewer(budget, output).name,
+                "report": summary(budget),
+            }
+        run = run_scenario(Scenario.from_yaml_file(base / names["scenario"]))
+        return {"page": write_scenario_viewer(run, output).name, "report": run.report}
 
-        try:
-            base, names = _write_inputs(root, files)
-        except (ValueError, binascii.Error) as error:
-            return {"ok": False, "error": str(error), "checks": []}
-        checks = []
-        for kind, loader in _ROLES.items():
-            if kind in names:
-                path = base / names[kind]
-                check = _check(names[kind], lambda read=loader, path=path: read(path))
-                checks.append({**check, "message": clean(check["message"])})
-        refused = [check for check in checks if not check["ok"]]
-        if refused:
-            listed = ", ".join(check["file"] for check in refused)
+    return _run_inputs(files, _ROLES, work)
+
+
+def design_files(files: list[dict], repeat: bool) -> dict:
+    """
+    Run the editor's scenario for the Activity Designer, and write nothing.
+
+    The files go in a temporary folder, as for `run_files`. The scenario is read
+    as the designer reads it, so its list of activities may be empty. The power
+    files are left out, and the scenario runs alone.
+
+    Parameters
+    ----------
+    files : list of dict
+        The page's files, as `run_files` takes them
+    repeat : bool
+        Whether to repeat the list of activities until the run ends, or run it
+        once
+
+    Returns
+    -------
+    result : dict
+        `ok`, `checks` and `seconds`, or `error`, as from `run_files`. When `ok`:
+        `data`, the viewer's data from `scenario_data` for the designer, and
+        `id`, its id. `rows`, the results of each activity from
+        `activity_rows`, and `warnings`, the run's warnings. `duration_s`, the
+        run's length, `period_s`, the orbit's period, and `pass_s`, the length
+        of one pass of the list, or None. `max_rate_deg_s` and
+        `max_acceleration_deg_s2`, the slew block's limits, or None.
+    """
+    files = [file for file in files if file.get("kind") not in ("power", "consumption")]
+
+    def work(base: Path, names: dict) -> dict:
+        path = base / names["scenario"]
+        run = run_scenario(Scenario.from_yaml_file(path, designer=True), repeat)
+        data = scenario_data(run, designer=True)
+        attitude = data["attitude"]
+        return {
+            "data": data,
+            "id": data["id"],
+            "rows": activity_rows(run),
+            "warnings": data["warnings"],
+            "duration_s": data["grid"]["t_s"][-1],
+            "period_s": data["orbit"]["period_s"],
+            "pass_s": data["designer"]["pass_s"],
+            "max_rate_deg_s": attitude["max_rate_deg_s"],
+            "max_acceleration_deg_s2": attitude["max_acceleration_deg_s2"],
+        }
+
+    return _run_inputs(files, _DESIGN_ROLES, work)
+
+
+def file_hash(path: Path) -> str:
+    """
+    The SHA-256 of a file's bytes, as the page and the server compare it.
+
+    Parameters
+    ----------
+    path : Path
+        The file
+
+    Returns
+    -------
+    sha256 : str
+        64 hex digits
+    """
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def save_files(folder: str | Path, files: list[dict]) -> dict:
+    """
+    Write the page's files into the input folder, unless one changed on disk.
+
+    Each file names the SHA-256 of the file as the page last read or saved it. A
+    file whose bytes on disk no longer match was changed since, by another
+    program or another page, so none of the files is written. Each file goes
+    in a temporary file in the same folder first, which then takes its place.
+    So a failure leaves the old file whole.
+
+    Parameters
+    ----------
+    folder : str | Path
+        The input folder
+    files : list of dict
+        Each with `name`, its path from the folder, `text`, and `sha256`, the
+        hash of the file as the page last read or saved it, or None for a file
+        the folder did not have
+
+    Returns
+    -------
+    result : dict
+        `ok`, and `files`, each file's `name` and the `sha256` of its new
+        bytes, for the page's next save. Otherwise `error`, the reason, and
+        nothing is written.
+    """
+    folder = Path(folder).resolve()
+    targets = []
+    for file in files:
+        name, text = file.get("name"), file.get("text")
+        if not isinstance(name, str) or not isinstance(text, str):
+            return {"ok": False, "error": "The page sent a file with no name or text."}
+        target = (folder / name).resolve()
+        if _relative(name) is None or not target.is_relative_to(folder):
             return {
                 "ok": False,
-                "error": f"quicksat cannot read {listed}, so it did not run the files.",
-                "checks": checks,
+                "error": f"Cannot save {name}: it is outside the folder.",
             }
+        if target.is_dir():
+            return {"ok": False, "error": f"Cannot save {name}: it is a folder."}
+        loaded = file.get("sha256")
+        now = file_hash(target) if target.is_file() else None
+        if now != loaded:
+            return {
+                "ok": False,
+                "error": f"{name} changed on disk since this page last read or "
+                "saved it, so nothing was saved. Reload the page to see the file as "
+                "it is now, or save your work as a download.",
+            }
+        targets.append((target, text.encode("utf-8")))
+    saved = []
+    for target, body in targets:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        handle, temporary = tempfile.mkstemp(dir=target.parent, prefix=".quicksat_")
         try:
-            if "power" in names and "consumption" in names:
-                budget = run_folder(
-                    base, names["scenario"], names["power"], names["consumption"]
-                )
-                report = summary(budget)
-                page = write_power_viewer(budget, output)
-            else:
-                run = run_scenario(Scenario.from_yaml_file(base / names["scenario"]))
-                report = run.report
-                page = write_scenario_viewer(run, output)
-        except (OSError, ValueError) as error:
-            return {"ok": False, "error": clean(str(error)), "checks": checks}
-    return {
-        "ok": True,
-        "page": page.name,
-        "report": report,
-        "checks": checks,
-        "seconds": round(time.perf_counter() - start, 1),
-    }
+            with os.fdopen(handle, "wb") as out:
+                out.write(body)
+            if target.is_file():
+                shutil.copymode(target, temporary)
+            os.replace(temporary, target)
+        except OSError:
+            Path(temporary).unlink(missing_ok=True)
+            raise
+        saved.append(
+            {
+                "name": target.relative_to(folder).as_posix(),
+                "sha256": hashlib.sha256(body).hexdigest(),
+            }
+        )
+    return {"ok": True, "files": saved}
 
 
 class EditorServer(ThreadingHTTPServer):
@@ -308,6 +500,9 @@ class EditorServer(ThreadingHTTPServer):
         # 12 characters, 72 bits: a guess costs a request to this computer
         self.key = secrets.token_urlsafe(9)
         self.run_lock = threading.Lock()
+        self.save_lock = threading.Lock()
+        # the Activity Designer's last run, as the page its frame shows
+        self.design_page: str | None = None
         ports = [port] if port is not None else [*range(PORT, PORT + PORTS_TRIED), 0]
         for number in ports:
             try:
@@ -331,8 +526,18 @@ class EditorServer(ThreadingHTTPServer):
         ]
 
     def page(self) -> str:
-        """The editor's page, written from the folder as it is now."""
+        """
+        The editor's page, written from the folder as it is now.
+
+        The page holds the SHA-256 of each file it was written from, so that a
+        save can tell whether the file changed on disk since.
+        """
         data = editor_data(self.folder, *self.names)
+        hashes = {
+            name: file_hash(self.folder / name)
+            for name in self.names
+            if (self.folder / name).is_file()
+        }
         data["server"] = {
             "base": PREFIX,
             "key": self.key,
@@ -342,6 +547,7 @@ class EditorServer(ThreadingHTTPServer):
             "command": f"python -m quicksat.editor serve {_argument(self.folder)} "
             f"{_argument(self.output)}",
             "viewers": self.viewer_pages(),
+            "sha256": hashes,
         }
         return editor_page(data)
 
@@ -350,9 +556,24 @@ _STRANGER = """<!doctype html><meta charset="utf-8"><title>quicksat</title>
 <p>This is the quicksat editor's server. Open the address that the server printed
 when it started. It ends with a key, <code>?key=</code>, that this address lacks.</p>"""
 
+_NO_DESIGN = """<!doctype html><meta charset="utf-8"><title>quicksat</title>
+<body style="background:#08111f;color:#c9d6e8;font:14px sans-serif">
+<p>Press <b>Generate scenario</b> to see the run here.</p>"""
+"""The Activity Designer's frame before its first run."""
+
+_REQUESTS = {
+    "run": "a run",
+    "design": "a run of the Activity Designer",
+    "save": "a save",
+}
+"""What each address of a POST request takes, for the message that refuses one."""
+
 
 class _Handler(BaseHTTPRequestHandler):
-    """Answers the page: the editor, its status, its runs and the viewer's files."""
+    """
+    Answers the page: the editor, its status, its runs, the Activity Designer's
+    runs and saves, and the viewer's files.
+    """
 
     server: EditorServer
 
@@ -419,6 +640,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(
                 HTTPStatus.OK, {"ok": True, "viewers": self.server.viewer_pages()}
             )
+        elif route == "designer":
+            page = self.server.design_page or _NO_DESIGN
+            self._send(HTTPStatus.OK, page.encode("utf-8"), "text/html; charset=utf-8")
         elif route.startswith("viewer/"):
             self._viewer_file(route.removeprefix("viewer/"))
         else:
@@ -448,33 +672,39 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(HTTPStatus.OK, body, kind)
 
     def do_POST(self):  # noqa: N802
-        """A run: the page's files in, the viewer out."""
+        """A run, a run of the Activity Designer, or a save of the page's files."""
         if not self._own("Host") or (
             "Origin" in self.headers and not self._own("Origin", "http://")
         ):
             self._send(HTTPStatus.FORBIDDEN, b"Not this server's page.", "text/plain")
             return
-        if self._route() != "run":
+        route = self._route()
+        if route not in _REQUESTS:
             self._send(HTTPStatus.NOT_FOUND, b"Not found.", "text/plain")
             return
+        refused = {"ok": False, "error": f"The request is not {_REQUESTS[route]}."}
         length = int(self.headers.get("Content-Length") or 0)
         if (
             not self.headers.get("Content-Type", "").startswith("application/json")
             or length > MAX_BODY
         ):
-            self._json(
-                HTTPStatus.BAD_REQUEST,
-                {"ok": False, "error": "The request is not a run.", "checks": []},
-            )
+            self._json(HTTPStatus.BAD_REQUEST, {**refused, "checks": []})
             return
         try:
-            files = json.loads(self.rfile.read(length))["files"]
+            request = json.loads(self.rfile.read(length))
+            files = request["files"]
+            if not isinstance(files, list):
+                raise TypeError("files is not a list")
         except (ValueError, KeyError, TypeError):
-            self._json(
-                HTTPStatus.BAD_REQUEST,
-                {"ok": False, "error": "The request is not a run.", "checks": []},
-            )
+            self._json(HTTPStatus.BAD_REQUEST, {**refused, "checks": []})
             return
+        if route == "save":
+            self._save(files)
+        else:
+            self._run(route, files, bool(request.get("repeat", False)))
+
+    def _run(self, route: str, files: list, repeat: bool) -> None:
+        """A run of the page's files: the viewer, or the Activity Designer's run."""
         if not self.server.run_lock.acquire(blocking=False):
             self._json(
                 HTTPStatus.CONFLICT,
@@ -485,11 +715,16 @@ class _Handler(BaseHTTPRequestHandler):
                 },
             )
             return
+        design = route == "design"
         try:
-            print(
-                f"{time.strftime('%H:%M:%S')}  running the page's files ...", flush=True
-            )
-            result = run_files(files, self.server.output)
+            doing = "generating the scenario" if design else "running the page's files"
+            print(f"{time.strftime('%H:%M:%S')}  {doing} ...", flush=True)
+            if design:
+                result = design_files(files, repeat)
+                if result["ok"]:
+                    self.server.design_page = designer_page(result.pop("data"))
+            else:
+                result = run_files(files, self.server.output)
         except Exception as error:  # a fault in quicksat: show it, and keep serving
             traceback.print_exc()
             result = {
@@ -499,15 +734,32 @@ class _Handler(BaseHTTPRequestHandler):
             }
         finally:
             self.server.run_lock.release()
-        if result["ok"]:
-            print(
-                f"{time.strftime('%H:%M:%S')}  wrote {self.server.output / result['page']} in {result['seconds']} s",
-                flush=True,
-            )
+        now = time.strftime("%H:%M:%S")
+        if not result["ok"]:
+            missing = "no scenario" if design else "no viewer"
+            print(f"{now}  {missing}: {result['error']}", flush=True)
+        elif design:
+            print(f"{now}  generated in {result['seconds']} s", flush=True)
         else:
             print(
-                f"{time.strftime('%H:%M:%S')}  no viewer: {result['error']}", flush=True
+                f"{now}  wrote {self.server.output / result['page']} in {result['seconds']} s",
+                flush=True,
             )
+        self._json(HTTPStatus.OK, result)
+
+    def _save(self, files: list) -> None:
+        """A save of the page's files into the input folder."""
+        with self.server.save_lock:
+            try:
+                result = save_files(self.server.folder, files)
+            except OSError as error:
+                result = {"ok": False, "error": f"Cannot save: {error}"}
+        now = time.strftime("%H:%M:%S")
+        if result["ok"]:
+            names = ", ".join(file["name"] for file in result["files"])
+            print(f"{now}  saved {names} in {_label(self.server.folder)}", flush=True)
+        else:
+            print(f"{now}  nothing saved: {result['error']}", flush=True)
         self._json(HTTPStatus.OK, result)
 
 

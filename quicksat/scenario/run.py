@@ -13,6 +13,11 @@ target with the line between the two above its minimum clearance. It repeats the
 list of activities until the duration ends and checks each constraint. All the
 results come back in one `ScenarioRun`.
 
+The Activity Designer can run the list once, with no repeats, or run an empty
+list. The time after the last activity is then unplanned. The attitude and mode
+rows give it as `unplanned`, and the body has no orientation then. Whatever
+needs the whole run planned refuses such a run.
+
 Each orbit is checked against the run before it is used. An element set more
 than 7 days from either end of the run gets a warning, and so does a trajectory
 whose ends come close to the run's. A trajectory that does not cover the run
@@ -66,6 +71,7 @@ from quicksat.scenario.config import (
     RISE,
     SET,
     SLEW,
+    UNPLANNED,
     Activity,
     OrbitCount,
     Scenario,
@@ -555,6 +561,7 @@ def resolve_activities(
     interval: P.Interval,
     events: Events,
     allowed: dict[str, P.Interval],
+    repeat: bool = True,
 ) -> list[Occurrence]:
     """
     Repeat the list of activities until the run ends, and check the constraints.
@@ -574,33 +581,42 @@ def resolve_activities(
     A constraint holds when the activity spends no more than `CONSTRAINT_TOLERANCE`
     outside the intervals that the constraint allows.
 
+    Without repeats, the list runs once. It stops after its last activity, or at
+    the end of the run if that comes first. The time after it has no occurrence.
+
     Parameters
     ----------
     activities : list of Activity
-        One repeat of the list
+        One repeat of the list. It may be empty, which gives no occurrences.
     interval : portion.Interval
         The run, closed at its start and open at its end
     events : dict
         The events of the run, from `find_events`
     allowed : dict
         The intervals that each constraint allows, by the name of the constraint
+    repeat : bool, optional
+        Whether to repeat the list until the run ends, as by default, or run it
+        once
 
     Returns
     -------
     occurrences : list of Occurrence
-        Every occurrence, in order, from the start of the run to its end
+        Every occurrence, in order, from the start of the run to its end, or to
+        the end of the single pass
 
     Raises
     ------
     ValueError
-        If no activity in the list ends after it starts. The run would then never
-        move on.
+        If the list repeats and no activity in it ends after it starts. The run
+        would then never move on.
     """
+    if not activities:
+        return []
     run_end: TimeArray = interval.upper
     occurrences = []
     start: TimeArray = interval.lower
     repeat_start = start
-    index, repeat = 0, 1
+    index, repeat_number = 0, 1
     while start < run_end:
         activity = activities[index]
         trigger = activity.trigger
@@ -623,7 +639,7 @@ def resolve_activities(
             outside = duration(P.closedopen(start, end) - allowed[activity.constraint])
         occurrences.append(
             Occurrence(
-                repeat, index + 1, activity, start, end, outside, never_came, cut
+                repeat_number, index + 1, activity, start, end, outside, never_came, cut
             )
         )
 
@@ -631,6 +647,8 @@ def resolve_activities(
         start = max(start, end)
         index += 1
         if index == len(activities):
+            if not repeat:
+                break
             if start == repeat_start:
                 raise ValueError(
                     "No activity in the list ends after it starts, so the run never "
@@ -638,7 +656,7 @@ def resolve_activities(
                     "offset that takes its end back to its start or before it. "
                     "Shorten the offsets."
                 )
-            index, repeat, repeat_start = 0, repeat + 1, start
+            index, repeat_number, repeat_start = 0, repeat_number + 1, start
     return occurrences
 
 
@@ -712,7 +730,7 @@ def activity_summary(occurrences: list[Occurrence]) -> str:
         duration, are outside their constraint, saw an event that never came, were
         cut at the end, or have a slew that starts early
     """
-    repeats = occurrences[-1].repeat
+    repeats = occurrences[-1].repeat if occurrences else 0
     early = sum(occurrence.negative_duration for occurrence in occurrences)
     failed = sum(occurrence.failed for occurrence in occurrences)
     never_came = sum(occurrence.event_never_came for occurrence in occurrences)
@@ -737,7 +755,8 @@ def gantt_rows(
     Build the three rows of the Gantt chart.
 
     Each row has exactly one value at any time of the run. Touching pieces with
-    the same value merge into one.
+    the same value merge into one. The attitude and mode rows give the time after
+    the last occurrence, if any, as `unplanned`.
 
     Parameters
     ----------
@@ -754,10 +773,12 @@ def gantt_rows(
     illumination : portion.IntervalDict
         `sunlit`, `penumbra` and `umbra`
     attitude : portion.IntervalDict
-        The attitude names, and `slew` while the body turns or settles
+        The attitude names, `slew` while the body turns or settles, and
+        `unplanned` after the last occurrence
     mode : portion.IntervalDict
-        The mode names, and `slew` while the body turns or settles. A slew takes
-        the end of the activity before it, so the payload is not at its task then.
+        The mode names, `slew` while the body turns or settles, and `unplanned`
+        after the last occurrence. A slew takes the end of the activity before
+        it, so the payload is not at its task then.
     """
     row = P.IntervalDict()
     for state in ("sunlit", "penumbra", "umbra"):
@@ -767,6 +788,11 @@ def gantt_rows(
     for occurrence in occurrences:
         attitude[occurrence.interval] = occurrence.activity.attitude
         mode[occurrence.interval] = occurrence.activity.mode
+    # the illumination covers the whole run, so what is left of it is unplanned
+    unplanned = row.domain() - attitude.domain()
+    if not unplanned.empty:
+        attitude[unplanned] = UNPLANNED
+        mode[unplanned] = UNPLANNED
     for window in slews:
         attitude[window.interval] = SLEW
         mode[window.interval] = SLEW
@@ -862,7 +888,8 @@ class ScenarioRun:
     illumination, attitude, mode : portion.IntervalDict
         The three rows of the Gantt chart
     occurrences : list of Occurrence
-        Every activity as it happens in the run
+        Every activity as it happens in the run. In a run of the list once, or
+        of an empty list, they stop before the end: see `unplanned`.
     slews : list of SlewWindow
         Every slew between attitudes, in time order. Empty when the scenario has
         no slews.
@@ -877,6 +904,9 @@ class ScenarioRun:
     orbit_warnings : list of str
         The warnings on the orbits, from `orbit_warnings`: an element set far
         from the run, or a trajectory whose ends come close to it
+    repeat : bool
+        Whether the list of activities repeats until the run ends, as it does
+        but in the Activity Designer
     """
 
     scenario: Scenario
@@ -903,6 +933,68 @@ class ScenarioRun:
     sat_states: dict[str, SkyCoord] = field(default_factory=dict)
     in_view: dict[str, P.Interval] = field(default_factory=dict)
     orbit_warnings: list[str] = field(default_factory=list)
+    repeat: bool = True
+
+    @property
+    def unplanned(self) -> P.Interval:
+        """
+        The time after the last activity, which no activity plans.
+
+        Returns
+        -------
+        unplanned : portion.Interval
+            Empty, unless the list ran once and ended before the run, or was
+            empty
+        """
+        return self.attitude.find(UNPLANNED)
+
+    @property
+    def pass_length(self) -> Quantity | None:
+        """
+        How long one pass of the list of activities takes, from the start of the
+        run, as the Activity Designer shows it.
+
+        Returns
+        -------
+        length : Quantity or None
+            In seconds. Zero for an empty list. None when the pass does not end
+            in the run: the run ends first, or an event that never comes stops
+            the list.
+        """
+        count = len(self.scenario.activities)
+        if count == 0:
+            return Q_(0.0, "s")
+        last = next(
+            (o for o in self.occurrences if o.repeat == 1 and o.number == count), None
+        )
+        if last is None or last.cut_at_end or last.event_never_came:
+            return None
+        # an activity with a negative duration ends where it starts
+        end = max(last.start, last.end)
+        return (end - self.interval.lower).to(u.s)
+
+    def check_planned(self, what: str) -> None:
+        """
+        Refuse to work out something that needs the activities to fill the run.
+
+        Parameters
+        ----------
+        what : str
+            What would be worked out, such as "the report", for the message
+
+        Raises
+        ------
+        ValueError
+            If part of the run is unplanned: see `unplanned`
+        """
+        if self.unplanned.empty:
+            return
+        start = cast(TimeArray, self.unplanned.lower)
+        raise ValueError(
+            f"Cannot work out {what}: no activity plans the run from "
+            f"{start.utc.isot} to its end. Run the list with repeats, and with at "
+            "least one activity."
+        )
 
     @cached_property
     def articulations(self) -> dict[str, Quantity]:
@@ -973,7 +1065,14 @@ class ScenarioRun:
         -------
         suns : ndarray
             Unit vectors, shape (n, 3), one for each time of the grid
+
+        Raises
+        ------
+        ValueError
+            If part of the run is unplanned, so that the body has no orientation
+            then
         """
+        self.check_planned("the direction to the sun in body axes")
         cartesian = self.state.cartesian
         assert isinstance(cartesian, CartesianRepresentation)
         to_sun = self.sun.xyz.to_value(u.km).T - cartesian.xyz.to_value(u.km).T
@@ -1003,7 +1102,13 @@ class ScenarioRun:
             The summary line, a table of the occurrences whose status is not
             `ok`, if any, a line for each target with its passes and its time in
             view, and the warnings, one line each
+
+        Raises
+        ------
+        ValueError
+            If part of the run is unplanned
         """
+        self.check_planned("the report")
         table = self.activity_table
         problems = table[table["status"] != STATUS_OK]
         lines = [self.activity_summary]
@@ -1110,7 +1215,7 @@ def target_visibility(
     return found
 
 
-def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
+def run_scenario(scenario: Scenario, repeat: bool = True) -> ScenarioRun:  # noqa: V103
     """
     Run a scenario.
 
@@ -1127,6 +1232,10 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
     ----------
     scenario : Scenario
         The scenario, from `Scenario.from_yaml_file`
+    repeat : bool, optional
+        Whether to repeat the list of activities until the run ends, as by
+        default, or run it once, as the Activity Designer does at first. The
+        time after a single pass is unplanned.
 
     Returns
     -------
@@ -1184,7 +1293,7 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
         in_view.__getitem__,
     )
     occurrences = resolve_activities(
-        scenario.activities, interval, events, illumination
+        scenario.activities, interval, events, illumination, repeat
     )
     slews = []
     if scenario.slew is not None:
@@ -1234,4 +1343,5 @@ def run_scenario(scenario: Scenario) -> ScenarioRun:  # noqa: V103
         sat_states=sat_states,
         in_view=in_view,
         orbit_warnings=warnings,
+        repeat=repeat,
     )
