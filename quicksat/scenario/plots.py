@@ -23,12 +23,13 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 from quicksat import u
-from quicksat.scenario.config import SLEW, Scenario
+from quicksat.scenario.config import SLEW, UNPLANNED, Scenario
 from quicksat.scenario.run import NEGATIVE_DURATION, OUTSIDE_CONSTRAINT, ScenarioRun
 from quicksat.utils.intervals import TimeArray, labels_at
 from quicksat.utils.plot_helpers import (
     AXIS,
     CRITICAL,
+    DIM,
     ILLUMINATION_COLOURS,
     INK,
     MUTED,
@@ -60,7 +61,8 @@ def scenario_colours(scenario: Scenario) -> dict[str, str]:
     hue from light to dark, from `ILLUMINATION_COLOURS`. The attitudes, then the
     modes in the order the activities name them, take the palette's colours in a
     fixed order. A `slew` between attitudes is always grey, so it takes no colour
-    from the palette either.
+    from the palette either. So is the `unplanned` time after the last activity,
+    in a darker grey.
 
     Parameters
     ----------
@@ -75,11 +77,13 @@ def scenario_colours(scenario: Scenario) -> dict[str, str]:
     attitudes = list(scenario.attitudes)
     modes = [activity.mode for activity in scenario.activities]
     colours = value_colours([*attitudes, *modes])
-    # the slew sits after the attitudes, in the order the legends show the values
+    # the slew and the unplanned time sit after the attitudes, in the order the
+    # legends show the values
     ordered = dict(ILLUMINATION_COLOURS) | {
         value: colours[value] for value in attitudes
     }
     ordered[SLEW] = MUTED
+    ordered[UNPLANNED] = DIM
     return ordered | {value: colours[value] for value in modes}
 
 

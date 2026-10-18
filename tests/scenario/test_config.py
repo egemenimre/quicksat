@@ -517,6 +517,17 @@ def test_a_bad_attitude_stops_the_load(changes, message):
             "no mode may be named 'slew'",
         ),
         (
+            {
+                "attitudes": BASE["attitudes"]
+                | {"unplanned": BASE["attitudes"]["nadir"]}
+            },
+            "no attitude may be named 'unplanned'",
+        ),
+        (
+            {"activities": [["wait", "10 min", "nadir", "unplanned"]]},
+            "no mode may be named 'unplanned'",
+        ),
+        (
             {"gnd_targets": {"sun": {"latitude": "0 deg", "longitude": "0 deg"}}},
             "target 'sun' takes the name of a built-in direction",
         ),
@@ -533,6 +544,25 @@ def test_a_bad_attitude_stops_the_load(changes, message):
 def test_bad_attitude_names_or_targets_stop_the_load(changes, message):
     with pytest.raises(ValueError, match=message):
         scenario(**changes)
+
+
+@pytest.mark.parametrize("empty", [[], None])
+def test_only_the_designer_reads_an_empty_list_of_activities(empty):
+    # the editor writes an empty list as the key with no value, which YAML reads as null
+    text = yaml.safe_dump(BASE | {"activities": empty})
+    with pytest.raises(ValueError, match="a list of at least one activity"):
+        Scenario.from_yaml_text(text)
+    assert Scenario.from_yaml_text(text, designer=True).activities == []
+
+
+def test_the_designer_keeps_the_other_checks_on_the_activities():
+    text = yaml.safe_dump(BASE | {"activities": [["a", "10 min", "nowhere", "idle"]]})
+    with pytest.raises(ValueError, match="attitude 'nowhere' is not defined"):
+        Scenario.from_yaml_text(text, designer=True)
+    with pytest.raises(ValueError, match="a list of at least one activity"):
+        Scenario.from_yaml_text(
+            yaml.safe_dump(BASE | {"activities": "none"}), designer=True
+        )
 
 
 def test_a_wrong_activity_is_named_by_its_number():

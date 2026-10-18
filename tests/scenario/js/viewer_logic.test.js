@@ -32,11 +32,11 @@ vm.runInThisContext(fs.readFileSync(LOGIC, "utf8"), { filename: LOGIC });
 const NAMES =
   "PAGE_VERSION, POWER_VERSION, scenarioProblem, checkPower, joinEclipses, pieceAt, stepAt, attitudeFraction, jointAngle, " +
   "lightFraction, excessPieces, passAt, earthFixed, geodeticOf, groundPoint, pointedTargets, arrowTargets, pointedSpans, " +
-  "sharedSeconds";
+  "sharedSeconds, occurrenceAt, occurrencesOf, orbitMarks, viewFromHash";
 const {
   PAGE_VERSION, POWER_VERSION, scenarioProblem, checkPower, joinEclipses, pieceAt, stepAt, attitudeFraction, jointAngle,
   lightFraction, excessPieces, passAt, earthFixed, geodeticOf, groundPoint, pointedTargets, arrowTargets, pointedSpans,
-  sharedSeconds,
+  sharedSeconds, occurrenceAt, occurrencesOf, orbitMarks, viewFromHash,
 } = vm.runInThisContext(`({ ${NAMES} })`);
 
 /** The data a viewer folder gives the page, from its scenario.js and power.js. */
@@ -306,4 +306,55 @@ test("the sample's downlink points the body at Svalbard", () => {
   const span = passAt(spans, middle, T[T.length - 1]);
   assert.ok(pass.end_s < span.end_s && span.end_s < downlink.end_s - 100);
   assert.ok(sharedSeconds(spans, pass.start_s, pass.end_s) > 0.99 * (pass.end_s - pass.start_s));
+});
+
+// ---------------------------------------------------------------- The Activity Designer
+
+// One pass of a list of three activities in a run of 100 s: the second has a
+// negative duration, and the time after 60 s is unplanned
+const ONE_PASS = [
+  { repeat: 1, number: 1, start_s: 0, end_s: 30 },
+  { repeat: 1, number: 2, start_s: 30, end_s: 20 },
+  { repeat: 1, number: 3, start_s: 30, end_s: 60 },
+];
+
+test("the occurrence at a time is null where no activity plans the run", () => {
+  assert.equal(occurrenceAt(ONE_PASS, 0, 100).number, 1);
+  assert.equal(occurrenceAt(ONE_PASS, 29.9, 100).number, 1);
+  // the negative duration takes no time, so the third is under way from 30 s
+  assert.equal(occurrenceAt(ONE_PASS, 30, 100).number, 3);
+  assert.equal(occurrenceAt(ONE_PASS, 59.9, 100).number, 3);
+  assert.equal(occurrenceAt(ONE_PASS, 60, 100), null);
+  assert.equal(occurrenceAt(ONE_PASS, 100, 100), null);
+  assert.equal(occurrenceAt([], 10, 100), null);
+  // in a planned run, the end of the run belongs to the last occurrence
+  const full = [...ONE_PASS.slice(0, 2), { repeat: 1, number: 3, start_s: 30, end_s: 100 }];
+  assert.equal(occurrenceAt(full, 100, 100).number, 3);
+});
+
+test("the occurrences of one activity leave out those that take no time", () => {
+  const repeated = [...ONE_PASS, { repeat: 2, number: 1, start_s: 60, end_s: 90 }];
+  assert.deepEqual(occurrencesOf(repeated, 1).map((o) => o.start_s), [0, 60]);
+  assert.deepEqual(occurrencesOf(repeated, 2), []);
+  assert.deepEqual(occurrencesOf(repeated, 4), []);
+});
+
+test("the orbit marks fall on each whole orbit up to the end of the run", () => {
+  assert.deepEqual(orbitMarks(5691.055, 17073.164), [
+    { time_s: 5691.055, label: "1 orbit" },
+    { time_s: 11382.11, label: "2 orbits" },
+    // three periods pass the end by 1 ms of rounding, so the mark sits on the end
+    { time_s: 17073.164, label: "3 orbits" },
+  ]);
+  assert.deepEqual(orbitMarks(5691.055, 5000), []);
+  assert.deepEqual(orbitMarks(0, 5000), []);
+  assert.deepEqual(orbitMarks(null, 5000), []);
+});
+
+test("the view comes back from the address's hash, or null", () => {
+  assert.deepEqual(viewFromHash("#t=1200.5&zoom=600,4200"), { t: 1200.5, zoom: [600, 4200] });
+  assert.deepEqual(viewFromHash("#t=30"), { t: 30, zoom: null });
+  assert.deepEqual(viewFromHash(""), { t: null, zoom: null });
+  assert.deepEqual(viewFromHash("#t=x&zoom=9,3"), { t: null, zoom: null });
+  assert.deepEqual(viewFromHash("#t=&zoom=1,2,3"), { t: null, zoom: null });
 });

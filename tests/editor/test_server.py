@@ -9,12 +9,13 @@ server answers and refuses.
 
 The runs use the power and scenario test folders, sent as the page sends them,
 and write the viewer into a temporary folder. The server runs in a thread, on a
-free port.
+free port. The saves write into a copy of the power test folder.
 """
 
 import base64
 import http.client
 import json
+import shutil
 import threading
 from pathlib import Path
 
@@ -28,6 +29,8 @@ from quicksat.editor.server import (
     PREFIX,
     EditorServer,
     _write_inputs,
+    design_files,
+    file_hash,
     run_files,
 )
 
@@ -245,7 +248,9 @@ def test_without_the_key(server, path):
     assert b"key" in body
 
 
-@pytest.mark.parametrize("name", ["editor", "status", "viewer/power_viewer.html"])
+@pytest.mark.parametrize(
+    "name", ["editor", "status", "designer", "viewer/power_viewer.html"]
+)
 def test_wrong_key(server, name):
     status, body, _ = ask(server, "GET", at(server, name, "k3Xq9vTzR2mA"))
     assert status == 404
@@ -368,3 +373,248 @@ def test_serve_needs_a_scenario(tmp_path):
     with pytest.raises(SystemExit) as exit_info:
         main(["serve", str(tmp_path), str(tmp_path / "output"), "--no-browser"])
     assert exit_info.value.code == 1
+
+
+# ---------------------------------------------------------------- the Activity Designer
+
+
+def page_data(page: bytes) -> dict:
+    """The run's data inside the designer's page."""
+    script = page.decode("utf-8").split("<script>window.quicksat = {scenario: ")[1]
+    return json.loads(script.split("};</script>")[0])
+
+
+def design_request(files, repeat=False) -> tuple[bytes, dict]:
+    return json.dumps({"files": files, "repeat": repeat}).encode("utf-8"), {
+        "Content-Type": "application/json"
+    }
+
+
+def test_design_runs_the_scenario_once_without_the_power():
+    files = page_files(POWER)
+    result = design_files(files, repeat=False)
+    assert result["ok"], result.get("error")
+    assert [c["file"] for c in result["checks"]] == ["scenario.yaml"]
+    data = result["data"]
+    assert data["designer"]["repeat"] is False
+    assert result["id"] == data["id"]
+    assert result["pass_s"] == data["designer"]["pass_s"] < result["duration_s"]
+    assert result["duration_s"] == data["grid"]["t_s"][-1]
+    assert result["period_s"] == data["orbit"]["period_s"]
+    assert result["warnings"] == data["warnings"]
+    assert result["max_rate_deg_s"] == data["attitude"]["max_rate_deg_s"]
+    activities = yaml.safe_load(files[0]["text"])["activities"]
+    assert [row["number"] for row in result["rows"]] == list(
+        range(1, len(activities) + 1)
+    )
+    assert data["tracks"]["mode"][-1]["value"] == "unplanned"
+
+
+def test_design_with_repeats_plans_the_whole_run():
+    result = design_files(page_files(SCENARIO, ("scenario",)), repeat=True)
+    assert result["ok"], result.get("error")
+    assert result["data"]["designer"]["repeat"] is True
+    assert result["pass_s"] < result["duration_s"]
+    tracks = result["data"]["tracks"]
+    assert all(p["value"] != "unplanned" for p in tracks["attitude"] + tracks["mode"])
+    assert max(row["count"] for row in result["rows"]) > 1
+
+
+def test_design_an_empty_list():
+    files = page_files(SCENARIO, ("scenario",))
+    files[0]["text"] = files[0]["text"].split("activities:")[0] + "activities: []\n"
+    result = design_files(files, repeat=False)
+    assert result["ok"], result.get("error")
+    assert result["rows"] == []
+    assert result["pass_s"] == 0
+    assert [p["value"] for p in result["data"]["tracks"]["attitude"]] == ["unplanned"]
+
+
+def test_design_refused():
+    files = page_files(SCENARIO, ("scenario",))
+    files[0]["text"] += "\nno_such_key: 1\n"
+    result = design_files(files, repeat=False)
+    assert not result["ok"]
+    assert "no_such_key" in result["checks"][0]["message"]
+
+
+def test_design_and_view(server):
+    """The designer's run writes nothing, and its frame then shows it."""
+    status, page, _ = ask(server, "GET", at(server, "designer"))
+    assert status == 200
+    assert b"Generate scenario" in page
+    body, headers = design_request(page_files(POWER))
+    status, answer, _ = ask(server, "POST", at(server, "design"), body, headers)
+    assert status == 200
+    result = json.loads(answer)
+    assert result["ok"], result.get("error")
+    assert "data" not in result
+    assert not server.output.exists()
+    status, page, response = ask(server, "GET", at(server, "designer"))
+    assert status == 200
+    assert response.getheader("Content-Type", "").startswith("text/html")
+    assert response.getheader("Cache-Control") == "no-store"
+    assert page_data(page)["id"] == result["id"]
+
+
+def test_design_from_another_page(server):
+    body, headers = design_request(page_files(POWER))
+    status, _, _ = ask(
+        server,
+        "POST",
+        at(server, "design"),
+        body,
+        {**headers, "Origin": "https://example.com"},
+    )
+    assert status == 403
+    assert server.design_page is None
+
+
+def test_one_design_at_a_time(server):
+    """A design and a run share the lock, so one goes at a time."""
+    body, headers = design_request(page_files(POWER))
+    with server.run_lock:
+        status, answer, _ = ask(server, "POST", at(server, "design"), body, headers)
+    assert status == 409
+    assert "going already" in json.loads(answer)["error"]
+
+
+@pytest.fixture
+def copy_server(tmp_path):
+    """The editor of a copy of the power test folder, served in a thread."""
+    folder = tmp_path / "data"
+    shutil.copytree(POWER, folder)
+    server = EditorServer(folder, tmp_path / "output")
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield server
+    server.shutdown()
+    server.server_close()
+
+
+def page_hashes(server) -> dict:
+    """The hashes of the files that the editor's page was written from."""
+    _, body, _ = ask(server, "GET", at(server, "editor"))
+    data = json.loads(
+        body.decode("utf-8")
+        .split('<script id="project" type="application/json">')[1]
+        .split("</script>")[0]
+    )
+    return data["server"]["sha256"]
+
+
+def save(server, files, headers=None) -> tuple[int, dict]:
+    """A save request: the status, and the answer when the server takes it."""
+    body = json.dumps({"files": files}).encode("utf-8")
+    status, answer, _ = ask(
+        server,
+        "POST",
+        at(server, "save"),
+        body,
+        {"Content-Type": "application/json", **(headers or {})},
+    )
+    return status, json.loads(answer) if status == 200 else {}
+
+
+def test_the_page_holds_the_hash_of_each_file(copy_server):
+    assert page_hashes(copy_server) == {
+        name: file_hash(copy_server.folder / name) for name in NAMES.values()
+    }
+
+
+def test_save_writes_the_file_and_gives_its_new_hash(copy_server):
+    folder = copy_server.folder
+    before = sorted(path.name for path in folder.iterdir())
+    hashes = page_hashes(copy_server)
+    path = folder / "scenario.yaml"
+    text = path.read_text() + "# saved from the page\n"
+    file = {"name": "scenario.yaml", "text": text, "sha256": hashes["scenario.yaml"]}
+    status, result = save(copy_server, [file])
+    assert status == 200
+    assert result["ok"], result.get("error")
+    assert path.read_text() == text
+    assert result["files"] == [{"name": "scenario.yaml", "sha256": file_hash(path)}]
+    # no temporary file is left behind
+    assert sorted(path.name for path in folder.iterdir()) == before
+    # the new hash lets the page save again
+    file = {**file, "text": text + "# again\n", "sha256": result["files"][0]["sha256"]}
+    status, result = save(copy_server, [file])
+    assert result["ok"], result.get("error")
+
+
+def test_save_refuses_a_file_changed_on_disk(copy_server):
+    """A file changed since the page was written stops the save of every file."""
+    folder = copy_server.folder
+    hashes = page_hashes(copy_server)
+    power = folder / "power_system.yaml"
+    power.write_text(power.read_text() + "# changed by another program\n")
+    scenario_text = (folder / "scenario.yaml").read_text()
+    files = [
+        {
+            "name": "scenario.yaml",
+            "text": "changed",
+            "sha256": hashes["scenario.yaml"],
+        },
+        {
+            "name": "power_system.yaml",
+            "text": "changed",
+            "sha256": hashes["power_system.yaml"],
+        },
+    ]
+    status, result = save(copy_server, files)
+    assert status == 200
+    assert not result["ok"]
+    assert "power_system.yaml changed on disk" in result["error"]
+    assert (folder / "scenario.yaml").read_text() == scenario_text
+    assert power.read_text().endswith("# changed by another program\n")
+
+
+def test_save_a_new_file_only_where_there_is_none(copy_server):
+    folder = copy_server.folder
+    status, result = save(
+        copy_server, [{"name": "notes.yaml", "text": "a: 1\n", "sha256": None}]
+    )
+    assert result["ok"], result.get("error")
+    assert (folder / "notes.yaml").read_text() == "a: 1\n"
+    # a file the page did not know of is not overwritten
+    status, result = save(
+        copy_server, [{"name": "notes.yaml", "text": "b: 2\n", "sha256": None}]
+    )
+    assert not result["ok"]
+    assert (folder / "notes.yaml").read_text() == "a: 1\n"
+
+
+@pytest.mark.parametrize(
+    "name", ["../outside.yaml", "sub/../../outside.yaml", "/tmp/outside.yaml", "."]
+)
+def test_save_refuses_a_path_outside_the_folder(copy_server, name):
+    status, result = save(copy_server, [{"name": name, "text": "x", "sha256": None}])
+    assert status == 200
+    assert not result["ok"]
+    assert not (copy_server.folder.parent / "outside.yaml").exists()
+
+
+def test_save_needs_the_key_and_this_page(copy_server):
+    path = copy_server.folder / "scenario.yaml"
+    text = path.read_text()
+    file = {"name": "scenario.yaml", "text": "x", "sha256": file_hash(path)}
+    body = json.dumps({"files": [file]}).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    status, _, _ = ask(copy_server, "POST", "/quicksat/save", body, headers)
+    assert status == 404
+    status, _ = save(copy_server, [file], {"Origin": "https://example.com"})
+    assert status == 403
+    assert path.read_text() == text
+
+
+@pytest.mark.parametrize("route", ["design", "save"])
+def test_not_a_design_or_a_save(server, route):
+    status, answer, _ = ask(
+        server,
+        "POST",
+        at(server, route),
+        b'{"files": 1}',
+        {"Content-Type": "application/json"},
+    )
+    assert status == 400
+    assert not json.loads(answer)["ok"]

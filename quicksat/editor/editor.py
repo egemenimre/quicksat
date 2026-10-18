@@ -76,6 +76,7 @@ SCRIPTS = (
     "checks.js",
     "write.js",
     "run.js",
+    "designer.js",
     "view3d.js",
     "views.js",
 )

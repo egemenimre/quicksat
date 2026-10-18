@@ -137,6 +137,17 @@ SLEW = "slew"
 """The value of the attitude row while the body turns or settles. No attitude may
 take this name."""
 
+UNPLANNED = "unplanned"
+"""The value of the attitude and mode rows after the last activity, in a run of
+the list once or of an empty list. No attitude and no mode may take this name."""
+
+_RESERVED = {
+    SLEW: "the run gives the attitude and mode rows that name while the body turns",
+    UNPLANNED: "the run gives the attitude and mode rows that name after the last "
+    "activity",
+}
+"""The names that no attitude and no mode may take, with the reason."""
+
 DEFAULT_STEP = Q_(10, "s")
 """The time step, when the scenario does not give one."""
 
@@ -1166,11 +1177,9 @@ class Activity(Commented):
                 raise ValueError(
                     f"the {name} must be text that is not empty, got {value!r}"
                 )
-        if fields[3].strip() == SLEW:
-            raise ValueError(
-                f"no mode may be named '{SLEW}': the run gives the mode row that "
-                "name while the body turns"
-            )
+        mode = fields[3].strip()
+        if mode in _RESERVED:
+            raise ValueError(f"no mode may be named '{mode}': {_RESERVED[mode]}")
         return cls(
             title=fields[0].strip(),
             trigger=parse_trigger(fields[1]),
@@ -1478,10 +1487,11 @@ class Scenario(Commented):
         in both blocks.
     attitudes : dict of str to Attitude
         The attitudes the activities can name, by a name of your choice. At
-        least one, and none named `slew`.
+        least one, and none named `slew` or `unplanned`.
     activities : list of Activity
-        One repeat of the activities. The run repeats the list until the duration
-        ends, and cuts the last activity there.
+        One repeat of the activities, at least one. The run repeats the list
+        until the duration ends, and cuts the last activity there. The Activity
+        Designer reads a scenario with `designer`, which allows an empty list.
     slew : Slew, optional
         How the body turns between attitudes. Without it, attitude changes are
         instant.
@@ -1542,7 +1552,9 @@ class Scenario(Commented):
         return self._source_text
 
     @classmethod
-    def from_yaml_file(cls, file_path: str | Path) -> "Scenario":
+    def from_yaml_file(
+        cls, file_path: str | Path, designer: bool = False
+    ) -> "Scenario":
         """
         Initialise the scenario from a YAML file.
 
@@ -1552,6 +1564,8 @@ class Scenario(Commented):
         ----------
         file_path : str | Path
             Filepath containing the scenario (YAML)
+        designer : bool, optional
+            Read the file as the Activity Designer does: see `from_yaml_text`
 
         Returns
         -------
@@ -1565,13 +1579,18 @@ class Scenario(Commented):
         else:
             path = Path(file_path)
             with open(path, "rt") as file:
-                scenario = cls.from_yaml_text(file.read(), base_dir=path.parent)
+                scenario = cls.from_yaml_text(
+                    file.read(), base_dir=path.parent, designer=designer
+                )
             scenario._source_file = path
             return scenario
 
     @classmethod
     def from_yaml_text(
-        cls, yaml_text: str, base_dir: str | Path | None = None
+        cls,
+        yaml_text: str,
+        base_dir: str | Path | None = None,
+        designer: bool = False,
     ) -> "Scenario":
         """
         Initialise the scenario from YAML text.
@@ -1583,6 +1602,10 @@ class Scenario(Commented):
         base_dir : str | Path, optional
             The folder a relative TLE path is taken from. Without it, the path
             stays relative to the working directory.
+        designer : bool, optional
+            Read the text as the Activity Designer does, for a list of activities
+            still being built. The list may then be empty, and a park mode need
+            not be one that the activities have yet. Every other check stays.
 
         Returns
         -------
@@ -1594,7 +1617,9 @@ class Scenario(Commented):
         data = yaml.safe_load(yaml_text)
         if not isinstance(data, dict):
             raise ValueError("A scenario file must be a mapping of keys to values.")
-        scenario = cls.model_validate(data, context={"base_dir": base_dir})
+        scenario = cls.model_validate(
+            data, context={"base_dir": base_dir, "designer": designer}
+        )
         scenario._source_text = yaml_text
         return scenario
 
@@ -1644,21 +1669,24 @@ class Scenario(Commented):
         for name in attitudes:
             if not name.strip():
                 raise ValueError("an attitude's name must not be empty")
-            if name == SLEW:
+            if name in _RESERVED:
                 raise ValueError(
-                    f"no attitude may be named '{SLEW}': the attitude row uses it "
-                    "while the body turns"
+                    f"no attitude may be named '{name}': {_RESERVED[name]}"
                 )
         return attitudes
 
     @field_validator("activities", mode="before")
     @classmethod
-    def _read_activities(cls, value):
+    def _read_activities(cls, value, info: ValidationInfo):
         """
         Reads every activity, in the list form or the map form, and names it by
-        its number in the list on an error.
+        its number in the list on an error. The list may be empty only in the
+        Activity Designer, where a key with no value is an empty list too.
         """
-        if not isinstance(value, list) or not value:
+        designer = (info.context or {}).get("designer", False)
+        if designer and value is None:
+            value = []
+        if not isinstance(value, list) or (not value and not designer):
             raise ValueError("activities must be a list of at least one activity")
         activities, problems = [], []
         for number, fields in enumerate(value, start=1):
@@ -1756,10 +1784,11 @@ class Scenario(Commented):
         ]
 
     @model_validator(mode="after")
-    def _check_together(self):
+    def _check_together(self, info: ValidationInfo):
         """
         Checks what spans fields: the step against the duration, the names and
-        the directions, and the park modes.
+        the directions, and the park modes. The Activity Designer skips the park
+        modes, as its list may not have them yet.
 
         A duration in orbits is checked against the step only when the run
         starts, once the nodal period is known.
@@ -1770,7 +1799,9 @@ class Scenario(Commented):
                 f"step must be shorter than duration, got '{self.step}' "
                 f"and '{self.duration}'"
             )
-        problems += self._direction_problems() + self._park_problems()
+        problems += self._direction_problems()
+        if not (info.context or {}).get("designer", False):
+            problems += self._park_problems()
         if problems:
             raise ValueError("\n".join(problems))
         return self

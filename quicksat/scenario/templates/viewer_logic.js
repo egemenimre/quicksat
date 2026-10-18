@@ -325,3 +325,54 @@ function pointedSpans(pointing, attitudeTrack, modeTrack, articulations) {
 function sharedSeconds(spans, start, end) {
   return spans.reduce((sum, span) => sum + Math.max(0, Math.min(end, span.end_s) - Math.max(start, span.start_s)), 0);
 }
+
+// ---------------------------------------------------------------- The Activity Designer
+
+/**
+ * The occurrence under way at `time`, or null in the time that no activity
+ * plans, after the last one. Each occurrence holds its start and not its end,
+ * and the end of the run, `runEnd`, counts as inside the one that reaches it.
+ * An occurrence with a negative duration takes no time, so the next one, which
+ * starts with it, is the one under way.
+ */
+function occurrenceAt(occurrences, time, runEnd) {
+  if (!occurrences.length) return null;
+  const occurrence = pieceAt(occurrences, time);
+  const end = Math.max(occurrence.start_s, occurrence.end_s);
+  const inside = occurrence.start_s <= time && (time < end || (time === runEnd && end === runEnd));
+  return inside ? occurrence : null;
+}
+
+/** The occurrences of the activity with this number in the list, each that takes time. */
+function occurrencesOf(occurrences, number) {
+  return occurrences.filter((occurrence) => occurrence.number === number && occurrence.end_s > occurrence.start_s);
+}
+
+/**
+ * A mark at each whole orbit from the start, up to the end of the run: its
+ * time in seconds, and its label, such as "1 orbit" and "2 orbits". Both the
+ * period and the end are rounded to 1 ms, so a mark may pass the end by that
+ * much for each orbit.
+ */
+function orbitMarks(period, runEnd) {
+  const marks = [];
+  if (!(period > 0)) return marks;
+  for (let k = 1; k * period <= runEnd + 0.001 * k; k++) {
+    marks.push({ time_s: Math.min(k * period, runEnd), label: `${k} orbit${k === 1 ? "" : "s"}` });
+  }
+  return marks;
+}
+
+/**
+ * The view that the Activity Designer passes on from one run to the next, in
+ * the address's hash, such as `#t=1200&zoom=600,4200`: the time cursor, and the
+ * start and end of the timeline's zoom, in seconds. Each is null when the hash
+ * lacks it, or holds something else.
+ */
+function viewFromHash(hash) {
+  const fields = new URLSearchParams(String(hash || "").replace(/^#/, ""));
+  const number = (text) => (text !== null && text.trim() !== "" && Number.isFinite(Number(text)) ? Number(text) : null);
+  const zoom = (fields.get("zoom") || "").split(",").map(number);
+  const ordered = zoom.length === 2 && zoom[0] !== null && zoom[1] !== null && zoom[0] < zoom[1];
+  return { t: number(fields.get("t")), zoom: ordered ? zoom : null };
+}

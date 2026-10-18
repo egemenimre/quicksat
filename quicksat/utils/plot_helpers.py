@@ -40,6 +40,11 @@ SECONDARY = "#52514e"
 MUTED = "#898781"
 """Colour of a value past the end of the palette."""
 
+DIM = "#5c5b56"
+"""Colour of the time that no activity plans: a grey darker than `MUTED`, so that
+it differs from a slew. It stays clear of both a white background and the
+viewer's dark one."""
+
 GRID = "#e1e0d9"
 """Colour of grid lines."""
 

@@ -183,6 +183,20 @@ def test_a_bad_articulation_stops_the_load(text, data_dir, fields, message):
         Scenario.from_yaml_text(wing(fields) + text, data_dir)
 
 
+def test_only_the_designer_skips_the_park_check(text, data_dir):
+    # a list being built may not have the parked mode yet
+    model = wing("part: Wing +y, axis: +y, point: [-z, sun], park: {safe: 0 deg}")
+    with pytest.raises(ValueError, match="park names the mode 'safe'"):
+        Scenario.from_yaml_text(model + text, data_dir)
+    scenario = Scenario.from_yaml_text(model + text, data_dir, designer=True)
+    assert scenario.spacecraft_model is not None
+    assert list(scenario.spacecraft_model.articulations["wing"].park) == ["safe"]
+    # every other check on the articulations stays
+    with pytest.raises(ValueError, match="'moon' is not a direction"):
+        moon = wing("part: Wing +y, axis: +y, point: [-z, moon]")
+        Scenario.from_yaml_text(moon + text, data_dir, designer=True)
+
+
 # ---------------------------------------------------------------- The run
 
 

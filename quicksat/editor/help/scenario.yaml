@@ -151,6 +151,10 @@ activities:
     <p>A duration, or the next event after the activity starts: a shadow edge, a node, a latitude crossing, or a target's rise or set. An event can take an offset, such as <code>eclipse entry + 2 min</code>.</p>
     <span class="k">Consequences</span>
     <p>The <b>expects</b> column is the illumination the activity needs. The run reports any time spent outside it. Only the run can tell whether a trigger ever comes, so this page cannot check that.</p>
+    <span class="k">The Activity Designer</span>
+    <p>With the editor's server, the Activities tab shows the run above the list: the orbit in 3D, the ground track, and the timeline with the eclipses, the attitudes, the modes and each target's passes. <b>Generate scenario</b> runs the scenario as it is on the page, and writes nothing. At first the list runs once, so the time after its last activity is unplanned, in grey. <b>Repeat the list</b> repeats it until the run ends, as the scenario file does. An amber band marks a turn faster than the slew block allows. The list may be empty here, to see the orbit and the passes first, but a saved file needs at least one activity.</p>
+    <p>Select a row to see its occurrences in the run. A click on the timeline or on the track selects the activity under way there. Under each title is what the last run made of it: how many times it came, and any problem. Drag the bar between the run and the list to share the height.</p>
+    <p><b>Save into the folder</b> writes the scenario file into the folder that the server reads, after a confirm. It refuses a file that changed on disk since the page was written: reload the page to see it as it is now.</p>
   file: >-
     One repeat of the list. Each activity starts where the one before ends, and ends at its trigger: [title, trigger, attitude, mode, expected illumination]. An activity with comments is written as a map, with the same fields named.
 

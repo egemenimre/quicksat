@@ -34,6 +34,11 @@ same reason it cannot read JSON.
 The file holds no time stamps. So the same inputs and the same code write the
 same bytes, and the `id` stays the same.
 
+The Activity Designer shows the same page, with no 3D views, and the editor's
+server sends it with the data inside: see `designer_page`. Its data leaves out
+what only the 3D views and the Attitude page show, and the run may stop before
+its end. The attitude and mode tracks then give the rest as `unplanned`.
+
 """
 
 import base64
@@ -46,6 +51,7 @@ from pathlib import Path
 import numpy as np
 import portion as P
 from astropy.coordinates import CartesianDifferential, CartesianRepresentation
+from astropy.units import Quantity, UnitBase
 
 from quicksat import R_EARTH, u
 from quicksat.orbit.attitude import (
@@ -58,9 +64,9 @@ from quicksat.orbit.geometry import earth_rotations
 from quicksat.orbit.tle import Tle
 from quicksat.scenario.attitude import SlewWindow, attitude_names, body_rotations
 from quicksat.scenario.attitude_files import attitude_file_texts
-from quicksat.scenario.config import SLEW
+from quicksat.scenario.config import SLEW, UNPLANNED
 from quicksat.scenario.plots import scenario_colours
-from quicksat.scenario.run import ScenarioRun
+from quicksat.scenario.run import STATUS_OK, ScenarioRun
 from quicksat.scenario.spacecraft import node_index, read_glb_json
 from quicksat.utils.intervals import TimeArray
 
@@ -81,6 +87,9 @@ PAGE_FILE = "scenario_viewer.html"
 _PACKAGE = files("quicksat")
 _TEMPLATES = _PACKAGE / "scenario" / "templates"
 _VENDOR = _TEMPLATES / "vendor"
+
+_DATA_TAGS = ('<script src="scenario.js"></script>', '<script src="power.js"></script>')
+"""The template's tags that load the run's data, which `designer_page` replaces."""
 
 _PAGE_PARTS = {
     "/*@uplot-css@*/": (_VENDOR / "uPlot.min.css", None),
@@ -135,7 +144,11 @@ def _with_gaps(values: np.ndarray, decimals: int) -> list[float | None]:
 
 
 def _attitude_data(
-    run: ScenarioRun, rotations: np.ndarray, position: np.ndarray, velocity: np.ndarray
+    run: ScenarioRun,
+    rotations: np.ndarray,
+    position: np.ndarray,
+    velocity: np.ndarray,
+    designer: bool = False,
 ) -> dict:
     """
     The body's attitude, as the page's Attitude tab shows it.
@@ -148,6 +161,10 @@ def _attitude_data(
         The body's orientation at each time of the grid, from `body_rotations`
     position, velocity : ndarray
         The states in GCRS, in km and km/s, shape (n, 3)
+    designer : bool, optional
+        Whether the data is for the Activity Designer, which has no Attitude
+        page. The angles and the files are then None. The rates stay, for the
+        turn rate bands on the timeline.
 
     Returns
     -------
@@ -158,10 +175,10 @@ def _attitude_data(
         steps, None at both ends. Both are None across an attitude change with no
         slew, which is instant. `max_rate_deg_s` and `max_acceleration_deg_s2`,
         the `slew` block's limits, or None. `files`, the text of each file of
-        `attitude_file_texts`, by its name.
+        `attitude_file_texts`, by its name. The rates are None where the body has
+        no orientation, after the last activity.
     """
     n = len(rotations)
-    angles = np.degrees(roll_pitch_yaw(rotations, lvlh_rotations(position, velocity)))
     seconds = np.asarray((run.times - run.times[0]).to_value(u.s))
     rates, accelerations = body_rates(rotations, seconds)
     names = attitude_names(run)
@@ -176,10 +193,20 @@ def _attitude_data(
     slew = run.scenario.slew
     max_rate = None if slew is None else slew.max_rate
     max_acceleration = None if slew is None else slew.max_acceleration
+    shown = {"roll_deg": None, "pitch_deg": None, "yaw_deg": None, "files": None}
+    if not designer:
+        angles = roll_pitch_yaw(rotations, lvlh_rotations(position, velocity))
+        angles = np.degrees(angles)
+        shown = {
+            "roll_deg": _flat(angles[:, 0], 3),
+            "pitch_deg": _flat(angles[:, 1], 3),
+            "yaw_deg": _flat(angles[:, 2], 3),
+            "files": attitude_file_texts(run),
+        }
     return {
-        "roll_deg": _flat(angles[:, 0], 3),
-        "pitch_deg": _flat(angles[:, 1], 3),
-        "yaw_deg": _flat(angles[:, 2], 3),
+        "roll_deg": shown["roll_deg"],
+        "pitch_deg": shown["pitch_deg"],
+        "yaw_deg": shown["yaw_deg"],
         "rate_deg_s": _with_gaps(rate, 5),
         "acceleration_deg_s2": _with_gaps(acceleration, 6),
         "max_rate_deg_s": (
@@ -190,7 +217,7 @@ def _attitude_data(
             if max_acceleration is None
             else float(max_acceleration.to_value(u.deg / u.s**2))
         ),
-        "files": attitude_file_texts(run),
+        "files": shown["files"],
     }
 
 
@@ -232,17 +259,19 @@ def _attitudes_between_slews(run: ScenarioRun) -> P.IntervalDict:
     Returns
     -------
     row : portion.IntervalDict
-        Time intervals mapped to attitude names, with the slews cut out
+        Time intervals mapped to attitude names, with the slews cut out, and
+        `unplanned` after the last activity
     """
     row = P.IntervalDict()
     for occurrence in run.occurrences:
         row[occurrence.interval] = occurrence.activity.attitude
+    row[run.unplanned] = UNPLANNED
     for window in run.slews:
         del row[window.interval]
     return row
 
 
-def _model_data(run: ScenarioRun) -> dict | None:
+def _model_data(run: ScenarioRun, designer: bool = False) -> dict | None:
     """
     The spacecraft's 3D model, as the page reads it.
 
@@ -250,6 +279,10 @@ def _model_data(run: ScenarioRun) -> dict | None:
     ----------
     run : ScenarioRun
         The run, whose scenario may name a model
+    designer : bool, optional
+        Whether the data is for the Activity Designer, which draws no model. The
+        file's bytes and the angles are then None. The rest stays, since the
+        page finds when a part points at a target from its park modes.
 
     Returns
     -------
@@ -264,10 +297,11 @@ def _model_data(run: ScenarioRun) -> dict | None:
     if model is None:
         return None
     gltf = read_glb_json(model.file)
-    angles = run.articulations
+    angles = {} if designer else run.articulations
+    glb = None if designer else base64.b64encode(model.file.read_bytes())
     return {
         "name": model.file.name,
-        "glb_base64": base64.b64encode(model.file.read_bytes()).decode("ascii"),
+        "glb_base64": None if glb is None else glb.decode("ascii"),
         "articulations": [
             {
                 "name": name,
@@ -275,7 +309,11 @@ def _model_data(run: ScenarioRun) -> dict | None:
                 "node": node_index(gltf, articulation.part),
                 "axis": articulation.axis,
                 "park_modes": sorted(articulation.park),
-                "angle_deg": _flat(np.asarray(angles[name].to_value(u.deg)), 3),
+                "angle_deg": (
+                    None
+                    if designer
+                    else _flat(np.asarray(angles[name].to_value(u.deg)), 3)
+                ),
             }
             for name, articulation in model.articulations.items()
         ],
@@ -451,7 +489,7 @@ def _orbit_data(run: ScenarioRun) -> dict:
     return data
 
 
-def scenario_data(run: ScenarioRun) -> dict:
+def scenario_data(run: ScenarioRun, designer: bool = False) -> dict:
     """
     Everything the viewer shows of a run, as plain numbers and text.
 
@@ -459,6 +497,11 @@ def scenario_data(run: ScenarioRun) -> dict:
     ----------
     run : ScenarioRun
         The run
+    designer : bool, optional
+        Whether the data is for the Activity Designer. It then leaves out what
+        only the 3D views and the Attitude page show: `grid.q_body`, the roll,
+        pitch and yaw, the attitude files, and the model's bytes and angles are
+        None. The run may then stop before its end, which a normal run may not.
 
     Returns
     -------
@@ -469,8 +512,19 @@ def scenario_data(run: ScenarioRun) -> dict:
         of its articulations, or None. `targets`, `target_files` and `pointing`
         come from `_targets_data`. `warnings` holds every warning of the run,
         and `orbit_warnings` those on the orbits alone. `id` is the first 16 hex
-        digits of the SHA-256 of the JSON text of the other fields.
+        digits of the SHA-256 of the JSON text of the other fields. The
+        designer's data has `designer` too: `repeat`, whether the list repeats,
+        and `pass_s`, the length of one pass of the list, from
+        `ScenarioRun.pass_length`, or None.
+
+    Raises
+    ------
+    ValueError
+        If part of a run for the normal viewer is unplanned: see
+        `ScenarioRun.unplanned`
     """
+    if not designer:
+        run.check_planned("the viewer's data")
     start: TimeArray = run.times[0]
 
     def seconds(time: TimeArray) -> float:
@@ -550,7 +604,7 @@ def scenario_data(run: ScenarioRun) -> dict:
         "earth_radius_km": R_EARTH.to_value(u.km),
         "orbit": _orbit_data(run),
         "colours": scenario_colours(run.scenario),
-        "model": _model_data(run),
+        "model": _model_data(run, designer),
         "grid": {
             "t_s": _flat((run.times - start).to_value(u.s), 3),
             "r_km": _flat(position, 3),
@@ -560,7 +614,7 @@ def scenario_data(run: ScenarioRun) -> dict:
             "lon_deg": _flat(run.longitude.to(u.deg).value, 4),
             "beta_deg": _flat(run.beta.to(u.deg).value, 4),
             "light": _flat(run.light, 6),
-            "q_body": _flat(quaternions(rotations), 6),
+            "q_body": None if designer else _flat(quaternions(rotations), 6),
             "q_earth": _flat(quaternions(earth_rotations(run.times)), 6),
         },
         "tracks": tracks,
@@ -569,13 +623,81 @@ def scenario_data(run: ScenarioRun) -> dict:
         "warnings": run.warnings,
         "orbit_warnings": run.orbit_warnings,
         "attitude": _attitude_data(
-            run, rotations, position, velocity.d_xyz.to_value(u.km / u.s).T
+            run, rotations, position, velocity.d_xyz.to_value(u.km / u.s).T, designer
         ),
     }
+    if designer:
+        length = run.pass_length
+        content["designer"] = {
+            "repeat": run.repeat,
+            "pass_s": None if length is None else round(float(length.value), 3),
+        }
     header = {"format": FORMAT, "version": VERSION}
     text = json.dumps(header | content, allow_nan=False, separators=(",", ":"))
     data_id = hashlib.sha256(text.encode()).hexdigest()[:16]
     return header | {"id": data_id} | content
+
+
+def _most(values: list[Quantity], unit: UnitBase, decimals: int) -> float | None:
+    """The largest of some quantities in a unit, rounded, or None if there are none."""
+    if not values:
+        return None
+    return round(max(float(value.to(unit).value) for value in values), decimals)
+
+
+def activity_rows(run: ScenarioRun) -> list[dict]:
+    """
+    The results of each activity of the list, as the Activity Designer shows
+    them beside it.
+
+    Parameters
+    ----------
+    run : ScenarioRun
+        The run
+
+    Returns
+    -------
+    rows : list of dict
+        One for each activity of the list, in its order, each with:
+
+        - `number`, from 1, and `count`, how many times it occurs in the run.
+        - `statuses`: how many of its occurrences have each status other than
+          `ok`, by the status.
+        - `outside_s`, the most time outside its constraint of any occurrence,
+          or None without a constraint. `slew_s`, the longest slew into it, or
+          None without one.
+        - `excesses`, how many occurrences turn faster than the slew block
+          allows, with `peak_rate_deg_s` and `peak_acceleration_deg_s2`, the
+          highest of them. Both are None without an excess.
+    """
+    rows = []
+    for number in range(1, len(run.scenario.activities) + 1):
+        occurrences = [o for o in run.occurrences if o.number == number]
+        statuses: dict[str, int] = {}
+        for occurrence in occurrences:
+            for status in occurrence.statuses:
+                if status != STATUS_OK:
+                    statuses[status] = statuses.get(status, 0) + 1
+        outside = [o.outside for o in occurrences if o.outside is not None]
+        slews = [o.slew for o in occurrences if o.slew is not None]
+        excesses = [e for e in run.rate_excesses if e.occurrence.number == number]
+        rows.append(
+            {
+                "number": number,
+                "count": len(occurrences),
+                "statuses": statuses,
+                "outside_s": _most(outside, u.s, 3),
+                "slew_s": _most(slews, u.s, 3),
+                "excesses": len(excesses),
+                "peak_rate_deg_s": _most(
+                    [e.peak_rate for e in excesses], u.deg / u.s, 5
+                ),
+                "peak_acceleration_deg_s2": _most(
+                    [e.peak_acceleration for e in excesses], u.deg / u.s**2, 6
+                ),
+            }
+        )
+    return rows
 
 
 def write_scenario_js(
@@ -648,6 +770,42 @@ def viewer_page() -> str:
         if "</script" in text.lower():
             raise ValueError(f"{source.name} holds '</script', which ends its tag")
         page = page.replace(placeholder, text)
+    return page
+
+
+def designer_page(data: dict) -> str:
+    """
+    The viewer page with a run's data inside it, as the Activity Designer shows
+    it.
+
+    The editor's server sends this page, so it loads no `scenario.js` and no
+    `power.js`. The data goes in a script of the page instead.
+
+    Parameters
+    ----------
+    data : dict
+        The run's data, from `scenario_data` with `designer`
+
+    Returns
+    -------
+    page : str
+        The page, as HTML text
+
+    Raises
+    ------
+    ValueError
+        If the template does not load each data file once
+    """
+    page = viewer_page()
+    # every < of the JSON is inside a string, where \u003c is the same
+    # character, so no text from the scenario file can end the script early
+    text = json.dumps(data, allow_nan=False, separators=(",", ":"))
+    text = text.replace("<", "\\u003c")
+    script = f"<script>window.quicksat = {{scenario: {text}}};</script>"
+    for tag, replacement in zip(_DATA_TAGS, (script, ""), strict=True):
+        if page.count(tag) != 1:
+            raise ValueError(f"{tag} must appear once in the viewer template")
+        page = page.replace(tag, replacement)
     return page
 
 

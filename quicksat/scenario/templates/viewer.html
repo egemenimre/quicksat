@@ -361,6 +361,38 @@ table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
   #page-targets .controls { grid-area: 5 / 1; }
   .blocks, #inputs { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* The Activity Designer: the orbit and the map, with the current data beside
+   them, then the timeline across the full width, with each target's passes
+   under it, then the time controls. No header and no body view. The map is
+   at most twice as wide as it is high, so the orbit takes width that the map
+   would leave empty, and the map keeps its height. */
+body.designer { grid-template-rows: minmax(0, 1fr); overflow: hidden; height: 100%; }
+body.designer > .top, body.designer #vp-body { display: none; }
+body.designer #page-scenario {
+  grid-template-columns: minmax(0, 0.35fr) minmax(0, 1fr) minmax(200px, 0.25fr);
+  grid-template-rows: minmax(0, 1.2fr) minmax(0, 1fr) auto;
+}
+body.designer #vp-orbit { grid-area: 1 / 1; }
+body.designer #vp-ground { grid-area: 1 / 2; }
+body.designer #vp-data { grid-area: 1 / 3; }
+body.designer #charts { grid-area: 2 / 1 / 3 / 4; }
+body.designer .controls { grid-area: 3 / 1 / 4 / 4; flex-wrap: nowrap; }
+body.designer #vp-ground .legend { top: auto; bottom: 8px; }
+/* The orbit is small here, so its toggles keep their first state, and only
+   Reset view, the last button, shows */
+body.designer #orbit-toggles > :not(:last-child) { display: none; }
+/* The map's 3D Orbit View toggle hides the orbit, and gives its width to the
+   map, for a narrow screen */
+body.designer.no-orbit #vp-orbit { display: none; }
+body.designer.no-orbit #page-scenario { grid-template-columns: minmax(0, 1fr) minmax(200px, 0.25fr); }
+body.designer.no-orbit #vp-ground { grid-area: 1 / 1; }
+body.designer.no-orbit #vp-data { grid-area: 1 / 2; }
+body.designer.no-orbit #charts { grid-area: 2 / 1 / 3 / 3; }
+body.designer.no-orbit .controls { grid-area: 3 / 1 / 4 / 3; }
+.charts.designer { grid-template-rows: auto minmax(0, 1fr); }
+.charts.designer.lanes { grid-template-rows: auto minmax(0, 3fr) auto minmax(0, 2fr); }
+.charts.designer > #head-net, .charts.designer > #chart-net, .charts.designer > #head-soc, .charts.designer > #chart-soc { display: none; }
 </style>
 </head>
 <body>
@@ -551,6 +583,12 @@ const DATA = window.quicksat || {};
 const scenario = DATA.scenario;
 if (scenarioProblem(scenario)) stop(scenarioProblem(scenario));
 const [power, powerNote] = checkPower(DATA.power, scenario);
+// The Activity Designer's page, which the editor's server sends with the run's
+// data inside, or null for the normal viewer. Its data has no body
+// orientation, no roll, pitch and yaw, and no joint angles, so the page draws
+// the orbit, the map and the timeline only, with no body view. The run may
+// stop before its end.
+const DESIGNER = scenario.designer || null;
 
 const THEME = {
   accent: "#22d3ee",
@@ -744,6 +782,18 @@ function lvlhMatrix(r, v, out) {
   return out.makeBasis(x, y, z);
 }
 
+// The designer's layout: the track colours move to the map, and each target's
+// passes to the timeline, before the views and the charts are built
+if (DESIGNER) {
+  document.body.classList.add("designer");
+  $("#vp-ground").append($("#orbit-legend"));
+  $("#charts").classList.add("designer");
+  if (TARGETS.length) {
+    $("#charts").classList.add("lanes");
+    $("#charts").append($("#head-lanes"), $("#chart-lanes"));
+  }
+}
+
 // ---------------------------------------------------------------- State
 
 const state = {
@@ -752,6 +802,8 @@ const state = {
   speed: 300,
   page: "scenario",
   colourBy: "mode",
+  // the number of the activity that the designer's list has selected, or null
+  selected: null,
   r: new THREE.Vector3(),
   v: new THREE.Vector3(),
   sun: new THREE.Vector3(),
@@ -794,12 +846,15 @@ function updateState() {
   vectorAt(R, i, f, state.r);
   vectorAt(V, i, f, state.v);
   vectorAt(S, i, f, state.sun).normalize();
-  // instant attitude changes and parking parts happen at once, not across the step
-  quaternionAt(Q_BODY, i, attitudeFraction(TRACKS.attitude, T, i, f, state.t), state.qBody);
   quaternionAt(Q_EARTH, i, f, state.qEarth);
-  ARTICULATIONS.forEach((joint, j) => {
-    state.joints[j] = jointAngle(joint, TRACKS.mode, T, i, f, state.t);
-  });
+  // the designer's data has no body orientation and no joint angles
+  if (!DESIGNER) {
+    // instant attitude changes and parking parts happen at once, not across the step
+    quaternionAt(Q_BODY, i, attitudeFraction(TRACKS.attitude, T, i, f, state.t), state.qBody);
+    ARTICULATIONS.forEach((joint, j) => {
+      state.joints[j] = jointAngle(joint, TRACKS.mode, T, i, f, state.t);
+    });
+  }
   state.lat = LAT[i] + (LAT[i + 1] - LAT[i]) * f;
   state.lon = ((angleBetween(LON[i], LON[i + 1], f) + 540) % 360) - 180;
   state.beta = BETA[i] + (BETA[i + 1] - BETA[i]) * f;
@@ -823,10 +878,55 @@ function updateState() {
 function setTime(time) {
   state.t = clamp(time, 0, T_END);
   updateState();
+  reportView();
 }
 
 const lightAt = (time) => pieceAt(TRACKS.illumination, time).value;
-const occurrenceAt = (time) => pieceAt(OCCURRENCES, time);
+// The occurrence under way, or null in the time after the last one
+const activityAt = (time) => occurrenceAt(OCCURRENCES, time, T_END);
+
+// ---------------------------------------------------------------- The Activity Designer
+
+/**
+ * Send a message to the editor's page, which holds the designer in a frame.
+ * Both pages come from the editor's server, so they share an origin.
+ */
+function tellEditor(type, fields = {}) {
+  if (!DESIGNER || window.parent === window) return;
+  window.parent.postMessage({ source: "quicksat-designer", type, ...fields }, location.origin);
+}
+
+/** Select an activity of the list by its number, or none with null. Its occurrences stand out. */
+function select(number) {
+  state.selected = number;
+  groundView.retrack();
+  orbitView.retrack();
+  dirty.charts = true;
+}
+
+/**
+ * A click on the timeline or on the track: the time cursor moves there, and the
+ * activity under way then is selected, here and in the editor's list.
+ */
+function pick(time) {
+  setTime(time);
+  const occurrence = activityAt(state.t);
+  select(occurrence ? occurrence.number : null);
+  tellEditor("pick", { number: state.selected });
+}
+
+// The time cursor and the charts' zoom go to the editor a moment after they
+// stop changing. The editor passes them back in the address of the next run,
+// so that the view stays where it was.
+let viewTimer = null;
+function reportView() {
+  if (!DESIGNER) return;
+  clearTimeout(viewTimer);
+  viewTimer = setTimeout(() => {
+    const [from, to] = charts.shown();
+    tellEditor("view", { t: state.t, zoom: [from, to] });
+  }, 300);
+}
 
 // ---------------------------------------------------------------- Spacecraft model
 
@@ -997,7 +1097,8 @@ let modelProblem = "";
 
 /** The 3D model's scene, once decoded, or null without a model or when it cannot be read. */
 const modelScene = new Promise((resolve) => {
-  if (!MODEL) return resolve(null);
+  // the designer draws no model, and its data does not hold it
+  if (!MODEL || DESIGNER) return resolve(null);
   const failed = (error) => {
     modelProblem = `${MODEL.name} could not be read: ${(error && error.message) || error}`;
     console.warn(modelProblem);
@@ -1170,20 +1271,48 @@ const orbitView = (() => {
   starGeometry.setAttribute("position", new THREE.Float32BufferAttribute(starPoints, 3));
   world.add(new THREE.Points(starGeometry, new THREE.PointsMaterial({ color: 0x9fb4d6, size: 1.3, sizeAttenuation: false })));
 
-  // The orbit, coloured by the chosen row
+  // The orbit, coloured by the chosen row. In the designer, the occurrences of
+  // the activity selected in the list are drawn again over it, twice as thick,
+  // and the rest of the track dims, as on the map.
   const trackGeometry = new THREE.LineGeometry();
   trackGeometry.setPositions(R.map((x) => x * MM));
   const trackMaterial = new THREE.LineMaterial({ linewidth: 2.2, vertexColors: true, worldUnits: false });
   const track = new THREE.Line2(trackGeometry, trackMaterial);
-  world.add(track);
+  const selectedMaterial = new THREE.LineMaterial({ linewidth: 4.4, vertexColors: true, worldUnits: false });
+  const selectedTrack = new THREE.Group();
+  selectedTrack.renderOrder = 1;
+  world.add(track, selectedTrack);
+  const background = new THREE.Color(0x050c18);
   function colourTrack() {
+    const selected = state.selected === null ? [] : occurrencesOf(OCCURRENCES, state.selected);
+    const colourAt = (k, colour) => colour.set(colourOf(pieceAt(TRACKS[state.colourBy], T[k]).value));
     const colours = [];
     const colour = new THREE.Color();
     for (let i = 0; i < N; i++) {
-      colour.set(colourOf(pieceAt(TRACKS[state.colourBy], T[i]).value));
+      colourAt(i, colour);
+      if (selected.length) colour.lerp(background, 0.65);
       colours.push(colour.r, colour.g, colour.b);
     }
     trackGeometry.setColors(colours);
+    for (const line of selectedTrack.children) line.geometry.dispose();
+    selectedTrack.clear();
+    for (const occurrence of selected) {
+      const from = sampleAt(occurrence.start_s)[0];
+      const [i, f] = sampleAt(occurrence.end_s);
+      const to = f > 0 ? i + 1 : i;
+      if (to <= from) continue;
+      const positions = [];
+      const pieceColours = [];
+      for (let k = from; k <= to; k++) {
+        positions.push(R[3 * k] * MM, R[3 * k + 1] * MM, R[3 * k + 2] * MM);
+        colourAt(k, colour);
+        pieceColours.push(colour.r, colour.g, colour.b);
+      }
+      const geometry = new THREE.LineGeometry();
+      geometry.setPositions(positions);
+      geometry.setColors(pieceColours);
+      selectedTrack.add(new THREE.Line2(geometry, selectedMaterial));
+    }
     dirty.orbit = true;
   }
   trackColours.onChange(colourTrack);
@@ -1201,7 +1330,8 @@ const orbitView = (() => {
     dirty.orbit = true;
   });
   const marker = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: 0xff4d4d }));
-  satellite.add(model, marker);
+  // the designer's data has no body orientation, so it shows the marker alone
+  satellite.add(...(DESIGNER ? [] : [model]), marker);
   world.add(satellite);
   let viewHeight = 600;
 
@@ -1362,7 +1492,7 @@ const orbitView = (() => {
   const lastSatellite = new THREE.Vector3();
   const Y = new THREE.Vector3(0, 1, 0);
   const toggles = addToggles($("#orbit-toggles"), [
-    { label: "Track", on: true, help: "track", set: (on) => (track.visible = on) },
+    { label: "Track", on: true, help: "track", set: (on) => (track.visible = selectedTrack.visible = on) },
     { label: "Grid", on: true, help: "grid", set: (on) => (grid.visible = on) },
     { label: "Coast", on: true, help: "coast", set: (on) => (coast.visible = on) },
     { label: "Shadow", on: true, help: "shadow", set: (on) => (shadow.visible = on) },
@@ -1401,20 +1531,25 @@ const orbitView = (() => {
   );
 
   return {
+    /** Draw the track again, after the selected activity changes. */
+    retrack: colourTrack,
     resize(width, height) {
       if (!renderer) return;
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       trackMaterial.resolution.set(width, height);
+      selectedMaterial.resolution.set(width, height);
       viewHeight = height;
       size = { width, height };
     },
     update() {
       earth.quaternion.copy(state.qEarth);
       satellite.position.copy(state.r).multiplyScalar(MM);
-      model.quaternion.copy(state.qBody);
-      turnJoints(model);
+      if (!DESIGNER) {
+        model.quaternion.copy(state.qBody);
+        turnJoints(model);
+      }
       sunlight.position.copy(state.sun).multiplyScalar(100);
       sunArrow.setDirection(state.sun);
       sunBall.position.copy(state.sun).multiplyScalar(300);
@@ -1457,7 +1592,7 @@ const orbitView = (() => {
 
 // ---------------------------------------------------------------- Body view
 
-const bodyView = (() => {
+const bodyView = DESIGNER ? null : (() => {
   const viewport = $("#vp-body");
   const renderer = makeRenderer(viewport);
   const world = new THREE.Scene();
@@ -1717,21 +1852,36 @@ const groundView = (() => {
     }
     // The track, coloured by the chosen row, and broken where it crosses the
     // date line. Each piece runs from the step before its start to the step
-    // after its end, so that the pieces join.
+    // after its end, so that the pieces join. In the designer, the occurrences
+    // of the selected activity are brighter, and the rest of the track dim.
+    const selected = state.selected === null ? [] : occurrencesOf(OCCURRENCES, state.selected);
     c.lineWidth = 2;
-    for (const piece of TRACKS[state.colourBy]) {
-      const from = sampleAt(piece.start_s)[0];
-      const [i, f] = sampleAt(piece.end_s);
-      const to = f > 0 ? i + 1 : i;
-      c.strokeStyle = colourOf(piece.value);
-      c.beginPath();
-      for (let k = from; k <= to; k++) {
-        const [x, y] = toPixel(LON[k], LAT[k]);
-        if (k === from || Math.abs(LON[k] - LON[k - 1]) > 180) c.moveTo(x, y);
-        else c.lineTo(x, y);
+    c.globalAlpha = selected.length ? 0.3 : 1;
+    for (const piece of TRACKS[state.colourBy]) strokeTrack(c, piece.start_s, piece.end_s, colourOf(piece.value));
+    c.globalAlpha = 1;
+    c.lineWidth = 3;
+    for (const occurrence of selected) {
+      for (const piece of TRACKS[state.colourBy]) {
+        const from = Math.max(piece.start_s, occurrence.start_s);
+        const to = Math.min(piece.end_s, occurrence.end_s);
+        if (from < to) strokeTrack(c, from, to, colourOf(piece.value));
       }
-      c.stroke();
     }
+  }
+
+  /** The track from one time to another, in one colour. */
+  function strokeTrack(c, start, end, colour) {
+    const from = sampleAt(start)[0];
+    const [i, f] = sampleAt(end);
+    const to = f > 0 ? i + 1 : i;
+    c.strokeStyle = colour;
+    c.beginPath();
+    for (let k = from; k <= to; k++) {
+      const [x, y] = toPixel(LON[k], LAT[k]);
+      if (k === from || Math.abs(LON[k] - LON[k - 1]) > 180) c.moveTo(x, y);
+      else c.lineTo(x, y);
+    }
+    c.stroke();
   }
   trackColours.onChange(() => {
     if (cssSize) drawOverlay();
@@ -1752,6 +1902,33 @@ const groundView = (() => {
     }
     nightContext.putImageData(nightImage, 0, 0);
     return [sx, sy, sz];
+  }
+
+  // In the designer, a toggle that shows the orbit beside the map, or hides it
+  // to give the map its width. The browser remembers the choice, where it can.
+  if (DESIGNER) {
+    let shown = true;
+    try {
+      shown = localStorage.getItem("quicksat-designer-orbit") !== "0";
+    } catch {
+      // No storage, as in some private windows: the orbit shows
+    }
+    addToggles($("#ground-toggles"), [
+      {
+        label: "3D Orbit View",
+        on: shown,
+        help: "orbitShown",
+        set: (on) => {
+          document.body.classList.toggle("no-orbit", !on);
+          markAll();
+          try {
+            localStorage.setItem("quicksat-designer-orbit", on ? "1" : "0");
+          } catch {
+            // The choice then lasts until the page is loaded again
+          }
+        },
+      },
+    ]);
   }
 
   // The track of each satellite target over its current pass, which is off at first
@@ -1807,6 +1984,23 @@ const groundView = (() => {
     c.restore();
   }
 
+  // In the designer, a click near the track moves the time cursor there, and
+  // tells the editor which activity is under way then
+  if (DESIGNER) {
+    canvas.addEventListener("click", (event) => {
+      const box = canvas.getBoundingClientRect();
+      const [cx, cy] = [event.clientX - box.left, event.clientY - box.top];
+      let nearest = -1;
+      let best = 10 * 10; // within 10 px
+      for (let k = 0; k < N; k++) {
+        const [x, y] = toPixel(LON[k], LAT[k]);
+        const distance = (x - cx) ** 2 + (y - cy) ** 2;
+        if (distance < best) [nearest, best] = [k, distance];
+      }
+      if (nearest >= 0) pick(T[nearest]);
+    });
+  }
+
   /** The terminator: the great circle at right angles to the sun. */
   function drawTerminator(c, sx, sy, sz) {
     const sun = new THREE.Vector3(sx, sy, sz);
@@ -1837,6 +2031,11 @@ const groundView = (() => {
   }
 
   return {
+    /** Draw the track again, after the selected activity changes. */
+    retrack() {
+      if (cssSize) drawOverlay();
+      dirty.ground = true;
+    },
     resize(width, height) {
       cssSize = { width, height };
       ratio = Math.min(window.devicePixelRatio, 2);
@@ -1882,7 +2081,8 @@ const groundView = (() => {
 // ---------------------------------------------------------------- Charts
 
 const charts = (() => {
-  if (!power) $("#charts").classList.add("no-power");
+  // the designer hides the power charts in its own layout
+  if (!power && !DESIGNER) $("#charts").classList.add("no-power");
   const eclipses = ECLIPSES;
   const AXIS_SIZE = 96; // the same on every chart, so that their plots line up
   const list = [];
@@ -1960,6 +2160,18 @@ const charts = (() => {
         c.setLineDash(outside ? [] : [5 * px(), 3 * px()]);
         c.strokeRect(x0 + px(), box.top + px(), x1 - x0 - 2 * px(), box.height - 2 * px());
       }
+      // In the designer, a box in the accent colour marks each occurrence of
+      // the activity selected in the list
+      if (state.selected !== null) {
+        c.strokeStyle = THEME.accent;
+        c.lineWidth = 2 * px();
+        c.setLineDash([]);
+        for (const occurrence of occurrencesOf(OCCURRENCES, state.selected)) {
+          const x0 = u.valToPos(occurrence.start_s / 60, "x", true);
+          const x1 = u.valToPos(occurrence.end_s / 60, "x", true);
+          c.strokeRect(x0 + px(), box.top + px(), x1 - x0 - 2 * px(), box.height - 2 * px());
+        }
+      }
       // A negative duration takes no time, so it is a dashed line at its
       // start, with a triangle on top, as in the notebook
       c.strokeStyle = c.fillStyle = THEME.critical;
@@ -1981,6 +2193,56 @@ const charts = (() => {
       c.setLineDash([]);
     });
 
+  // A thin line at each whole orbit from the start. On a timeline, each label
+  // sits in a strip above the rows, where it covers no bar, if there is room
+  // for it between the marks.
+  const MARKS = orbitMarks(PERIOD, T_END);
+  const LABEL_STRIP = 13; // CSS pixels
+  const markOrbits = (labelled) => (u) => {
+    const at = (mark) => Math.round(u.valToPos(mark.time_s / 60, "x", true)) + 0.5;
+    clipped(u, (c, box) => {
+      c.strokeStyle = "rgba(205, 217, 234, 0.55)";
+      c.lineWidth = px();
+      c.setLineDash([3 * px(), 3 * px()]);
+      for (const mark of MARKS) {
+        c.beginPath();
+        c.moveTo(at(mark), box.top);
+        c.lineTo(at(mark), box.top + box.height);
+        c.stroke();
+      }
+      c.setLineDash([]);
+    });
+    if (!labelled) return;
+    const c = u.ctx;
+    const box = u.bbox;
+    c.save();
+    c.beginPath();
+    c.rect(box.left, 0, box.width, box.top);
+    c.clip();
+    c.font = `${9.5 * px()}px ${MONO}`;
+    c.fillStyle = THEME.muted;
+    c.textAlign = "left";
+    c.textBaseline = "bottom";
+    const spacing = MARKS.length > 1 ? at(MARKS[1]) - at(MARKS[0]) : Infinity;
+    for (const mark of MARKS) {
+      if (c.measureText(mark.label).width + 10 * px() > spacing) break;
+      c.fillText(mark.label, at(mark) + 3 * px(), box.top - 1.5 * px());
+    }
+    c.restore();
+  };
+
+  // Where the rate or the acceleration passes the slew block's limit: an amber
+  // band, under the lines of the Attitude page's charts and over the bars of
+  // the designer's timeline
+  const shadeExcesses = (u) =>
+    clipped(u, (c, box) => {
+      c.fillStyle = THEME.excessBand;
+      for (const piece of EXCESSES) {
+        const x0 = u.valToPos(piece.start_s / 60, "x", true);
+        c.fillRect(x0, box.top, Math.max(u.valToPos(piece.end_s / 60, "x", true) - x0, 1), box.height);
+      }
+    });
+
   const cursorLine = (u) =>
     clipped(u, (c, box) => {
       const x = u.valToPos(state.t / 60, "x", true);
@@ -1999,6 +2261,8 @@ const charts = (() => {
         width: Math.max(host.clientWidth, 300),
         height: Math.max(host.clientHeight, 40),
         legend: { show: false },
+        // a fixed top padding leaves room for labels above the plot, and null keeps the rest automatic
+        ...(options.padding ? { padding: options.padding } : {}),
         cursor: { sync: { key: "scenario" }, drag: { x: true, y: false }, y: false, points: { show: false } },
         scales: { x: { time: false }, y: { range: options.range } },
         axes: [options.xAxis, { ...axis, size: AXIS_SIZE, ...options.yAxis }],
@@ -2012,6 +2276,7 @@ const charts = (() => {
               syncing = true;
               for (const other of list) if (other !== u) other.setScale("x", { min: u.scales.x.min, max: u.scales.x.max });
               syncing = false;
+              reportView();
             },
           ],
         },
@@ -2023,7 +2288,11 @@ const charts = (() => {
     let downAt = null;
     chart.over.addEventListener("mousedown", (event) => (downAt = event.clientX));
     chart.over.addEventListener("mouseup", (event) => {
-      if (downAt !== null && Math.abs(event.clientX - downAt) < 3) setTime(chart.posToVal(event.offsetX, "x") * 60);
+      if (downAt !== null && Math.abs(event.clientX - downAt) < 3) {
+        const time = chart.posToVal(event.offsetX, "x") * 60;
+        if (DESIGNER) pick(time);
+        else setTime(time);
+      }
       downAt = null;
     });
     new ResizeObserver(() => {
@@ -2046,8 +2315,9 @@ const charts = (() => {
   }
 
   // The Gantt chart, with one row for each track. The Scenario page has one,
-  // and the Power page another.
-  function gantt(target, xAxis) {
+  // and the Power page another. Each has the orbit marks, and the designer's
+  // has the turn rate bands over its bars.
+  function gantt(target, xAxis, overlays = []) {
     const chart = make(
       target,
       {
@@ -2060,7 +2330,8 @@ const charts = (() => {
           values: (u, splits) => splits.map((s) => ROWS[Math.round(ROWS.length - 0.5 - s)][1]),
         },
         series: [{ stroke: "transparent" }],
-        draw: drawTracks,
+        padding: [LABEL_STRIP, null, null, null],
+        draw: (u) => [drawTracks, ...overlays, markOrbits(true)].forEach((draw) => draw(u)),
       },
       [MINUTES.map(() => null)],
     );
@@ -2068,15 +2339,19 @@ const charts = (() => {
       const time = chart.posToVal(event.offsetX, "x") * 60;
       const row = clamp(Math.floor((event.offsetY / chart.over.clientHeight) * ROWS.length), 0, ROWS.length - 1);
       const piece = pieceAt(TRACKS[ROWS[row][0]], time);
-      const occurrence = occurrenceAt(time);
+      const occurrence = activityAt(time);
       chart.over.title =
         `${pieceText(piece)}: ${clockText(piece.start_s)} to ${clockText(piece.end_s)}\n` +
-        `Activity ${occurrence.number} of repeat ${occurrence.repeat}${occurrence.title ? `, ${occurrence.title}` : ""}: ` +
-        `until ${occurrence.trigger} · ${occurrence.statuses.join(", ")}`;
+        (occurrence
+          ? `Activity ${occurrence.number} of repeat ${occurrence.repeat}${occurrence.title ? `, ${occurrence.title}` : ""}: ` +
+            `until ${occurrence.trigger} · ${occurrence.statuses.join(", ")}`
+          : "Unplanned: no activity, after the last one");
     });
     return chart;
   }
-  gantt("#chart-gantt", power ? hiddenX : shownX);
+  // The designer's timeline has each target's passes under it, with the time axis
+  const lanesBelow = DESIGNER && TARGETS.length;
+  gantt("#chart-gantt", power || lanesBelow ? hiddenX : shownX, DESIGNER ? [shadeExcesses] : []);
 
   // Round a chart's range out to the next 50 W, with some room
   const roundOut = (value) => (value >= 0 ? Math.ceil((value * 1.1) / 50) * 50 : Math.floor((value * 1.1) / 50) * 50);
@@ -2183,71 +2458,69 @@ const charts = (() => {
 
   // The Attitude page: the timeline, the roll, pitch and yaw against LVLH,
   // the body rate and its acceleration. Where the rate or the acceleration
-  // passes the slew block's limit, an amber band crosses all three charts.
-  gantt("#attitude-gantt", hiddenX);
-  const shadeExcesses = (u) =>
-    clipped(u, (c, box) => {
-      c.fillStyle = THEME.excessBand;
-      for (const piece of EXCESSES) {
-        const x0 = u.valToPos(piece.start_s / 60, "x", true);
-        c.fillRect(x0, box.top, Math.max(u.valToPos(piece.end_s / 60, "x", true) - x0, 1), box.height);
-      }
-    });
-  // a jump across ±180 deg is a wrap, not a turn: leave a gap there
-  const unwrapped = (values) => values.map((value, k) => (k > 0 && Math.abs(value - values[k - 1]) > 180 ? null : value));
-  const angles = [
-    ["Roll", ATTITUDE.roll_deg, AXIS_COLOURS[0]],
-    ["Pitch", ATTITUDE.pitch_deg, AXIS_COLOURS[1]],
-    ["Yaw", ATTITUDE.yaw_deg, AXIS_COLOURS[2]],
-  ];
-  make(
-    "#chart-angles",
-    {
-      range: () => [-180, 180],
-      xAxis: hiddenX,
-      yAxis: { splits: () => [-180, -90, 0, 90, 180] },
-      series: angles.map(([, , colour]) => ({ stroke: colour, width: 1.3 })),
-      drawClear: shadeExcesses,
-    },
-    angles.map(([, values]) => unwrapped(values)),
-  );
-  head("#head-angles", "ROLL, PITCH, YAW", "deg, against LVLH", angles.map(([label, , colour]) => [label, colour]), "attitudeAngles").forEach(
-    (value) => value.remove(),
-  );
-  // the rate and the acceleration, each with its limit as a dashed line
-  function rateChart(target, headTarget, title, unit, values, limit, help, last) {
-    const top = Math.max(limit || 0, ...values.filter((v) => v !== null)) * 1.15 || 1;
+  // passes the slew block's limit, an amber band crosses all three charts. The
+  // designer has no Attitude page.
+  if (!DESIGNER) {
+    gantt("#attitude-gantt", hiddenX);
+    // a jump across ±180 deg is a wrap, not a turn: leave a gap there
+    const unwrapped = (values) => values.map((value, k) => (k > 0 && Math.abs(value - values[k - 1]) > 180 ? null : value));
+    const angles = [
+      ["Roll", ATTITUDE.roll_deg, AXIS_COLOURS[0]],
+      ["Pitch", ATTITUDE.pitch_deg, AXIS_COLOURS[1]],
+      ["Yaw", ATTITUDE.yaw_deg, AXIS_COLOURS[2]],
+    ];
     make(
-      target,
+      "#chart-angles",
       {
-        range: () => [0, top],
-        xAxis: last ? shownX : hiddenX,
-        yAxis: {},
-        series: [
-          { stroke: THEME.accent, fill: THEME.socFill, paths: uPlot.paths.stepped({ align: 1 }) },
-          { stroke: THEME.limit, dash: [6, 4], width: 1.2 },
-        ],
+        range: () => [-180, 180],
+        xAxis: hiddenX,
+        yAxis: { splits: () => [-180, -90, 0, 90, 180] },
+        series: angles.map(([, , colour]) => ({ stroke: colour, width: 1.3 })),
         drawClear: shadeExcesses,
       },
-      [values, values.map(() => limit)],
+      angles.map(([, values]) => unwrapped(values)),
     );
-    const keys = [["Body", THEME.accent], ...(limit === null ? [] : [["Slew limit", THEME.limit]])];
-    const [bodyValue, limitValue] = head(headTarget, title, unit, keys, help);
-    bodyValue.remove();
-    if (limitValue) limitValue.textContent = `${numberText(limit, 4)} ${unit}`;
+    head("#head-angles", "ROLL, PITCH, YAW", "deg, against LVLH", angles.map(([label, , colour]) => [label, colour]), "attitudeAngles").forEach(
+      (value) => value.remove(),
+    );
+    // the rate and the acceleration, each with its limit as a dashed line
+    function rateChart(target, headTarget, title, unit, values, limit, help, last) {
+      const top = Math.max(limit || 0, ...values.filter((v) => v !== null)) * 1.15 || 1;
+      make(
+        target,
+        {
+          range: () => [0, top],
+          xAxis: last ? shownX : hiddenX,
+          yAxis: {},
+          series: [
+            { stroke: THEME.accent, fill: THEME.socFill, paths: uPlot.paths.stepped({ align: 1 }) },
+            { stroke: THEME.limit, dash: [6, 4], width: 1.2 },
+          ],
+          drawClear: shadeExcesses,
+        },
+        [values, values.map(() => limit)],
+      );
+      const keys = [["Body", THEME.accent], ...(limit === null ? [] : [["Slew limit", THEME.limit]])];
+      const [bodyValue, limitValue] = head(headTarget, title, unit, keys, help);
+      bodyValue.remove();
+      if (limitValue) limitValue.textContent = `${numberText(limit, 4)} ${unit}`;
+    }
+    rateChart("#chart-rate", "#head-rate", "BODY RATE", "deg/s", ATTITUDE.rate_deg_s, ATTITUDE.max_rate_deg_s, "bodyRate", false);
+    rateChart(
+      "#chart-acceleration", "#head-acceleration", "ACCELERATION", "deg/s²",
+      ATTITUDE.acceleration_deg_s2, ATTITUDE.max_acceleration_deg_s2, "bodyAcceleration", true,
+    );
   }
-  rateChart("#chart-rate", "#head-rate", "BODY RATE", "deg/s", ATTITUDE.rate_deg_s, ATTITUDE.max_rate_deg_s, "bodyRate", false);
-  rateChart(
-    "#chart-acceleration", "#head-acceleration", "ACCELERATION", "deg/s²",
-    ATTITUDE.acceleration_deg_s2, ATTITUDE.max_acceleration_deg_s2, "bodyAcceleration", true,
-  );
 
   // The Targets page: the timeline, and when each target is in view, with a
   // row for each target and a bar for each pass. A thin bar under the passes
-  // shows when the body or a part points at the target, in view or not.
+  // shows when the body or a part points at the target, in view or not. The
+  // designer has the lanes under its own timeline, and no Targets page.
   if (TARGETS.length) {
-    $("#page-tabs").querySelector('[data-page="targets"]').hidden = false;
-    gantt("#targets-gantt", hiddenX);
+    if (!DESIGNER) {
+      $("#page-tabs").querySelector('[data-page="targets"]').hidden = false;
+      gantt("#targets-gantt", hiddenX);
+    }
     const rows = TARGETS.length;
     const drawLanes = (u) =>
       clipped(u, (c, box) => {
@@ -2278,7 +2551,7 @@ const charts = (() => {
           values: (u, splits) => splits.map((s) => TARGETS[Math.round(rows - 0.5 - s)].name),
         },
         series: [{ stroke: "transparent" }],
-        draw: drawLanes,
+        draw: (u) => [drawLanes, ...(DESIGNER ? [shadeExcesses] : []), markOrbits(false)].forEach((draw) => draw(u)),
       },
       [MINUTES.map(() => null)],
     );
@@ -2309,8 +2582,8 @@ const charts = (() => {
     ["1 orbit", () => zoom(now() - PERIOD / 120, now() + PERIOD / 120), "zoomOrbit"],
     ["30 min", () => zoom(now() - 15, now() + 15), "zoom30"],
   ];
-  const zoomBars = ["#zooms", ...(power ? ["#power-zooms"] : []), "#attitude-zooms"];
-  for (const target of [...zoomBars, ...(TARGETS.length ? ["#targets-zooms"] : [])]) {
+  const zoomBars = DESIGNER ? ["#zooms"] : ["#zooms", ...(power ? ["#power-zooms"] : []), "#attitude-zooms"];
+  for (const target of [...zoomBars, ...(TARGETS.length && !DESIGNER ? ["#targets-zooms"] : [])]) {
     for (const [label, action, help] of zooms) {
       $(target).append(element("button", { class: "toggle", text: label, onclick: action, "data-help": help }));
     }
@@ -2348,6 +2621,15 @@ const charts = (() => {
     redraw() {
       for (const chart of list) chart.redraw(false, false);
     },
+    /** The time that the charts show, from and to, in seconds. */
+    shown() {
+      const x = list[0].scales.x;
+      return [x.min * 60, x.max * 60];
+    },
+    /** Show the time from one second to another on the charts. */
+    show(from, to) {
+      zoom(from / 60, to / 60);
+    },
     values,
   };
 })();
@@ -2371,6 +2653,15 @@ const readouts = (() => {
   const inverse = new THREE.Quaternion();
   const rows = $("#activity-rows").children; // live, so it sees the rows added later
   let current = null;
+  // The time from the start, and the orbits since the start, at the top
+  const timeValue = element("span");
+  const orbitsValue = element("span");
+  $("#now").append(
+    element("dt", { text: "Time", "data-help": "time" }),
+    element("dd", { "data-help": "time" }, [timeValue]),
+    element("dt", { text: "Orbits", "data-help": "orbits" }),
+    element("dd", { "data-help": "orbits" }, [orbitsValue]),
+  );
   // The title of the activity under way, above the timeline rows' values
   const titleValue = element("span");
   $("#now").append(element("dt", { text: "Activity", "data-help": "title" }), element("dd", { "data-help": "title" }, [titleValue]));
@@ -2438,12 +2729,15 @@ const readouts = (() => {
   };
   const degrees = (value) => `${value.toFixed(1)}°`;
   const orDash = (format) => (value) => (value === null ? "—" : format(value));
-  attitudeLine("Roll", AXIS_COLOURS[0], ATTITUDE.roll_deg, degrees);
-  attitudeLine("Pitch", AXIS_COLOURS[1], ATTITUDE.pitch_deg, degrees);
-  attitudeLine("Yaw", AXIS_COLOURS[2], ATTITUDE.yaw_deg, degrees);
-  attitudeLine("Rate", THEME.accent, ATTITUDE.rate_deg_s, orDash((value) => `${value.toFixed(3)} deg/s`));
-  attitudeLine("Acceleration", THEME.accent, ATTITUDE.acceleration_deg_s2, orDash((value) => `${value.toFixed(4)} deg/s²`));
-  const jointValues = ARTICULATIONS.map((joint) => {
+  // the designer has no Attitude page, and no joint angles
+  if (!DESIGNER) {
+    attitudeLine("Roll", AXIS_COLOURS[0], ATTITUDE.roll_deg, degrees);
+    attitudeLine("Pitch", AXIS_COLOURS[1], ATTITUDE.pitch_deg, degrees);
+    attitudeLine("Yaw", AXIS_COLOURS[2], ATTITUDE.yaw_deg, degrees);
+    attitudeLine("Rate", THEME.accent, ATTITUDE.rate_deg_s, orDash((value) => `${value.toFixed(3)} deg/s`));
+    attitudeLine("Acceleration", THEME.accent, ATTITUDE.acceleration_deg_s2, orDash((value) => `${value.toFixed(4)} deg/s²`));
+  }
+  const jointValues = (DESIGNER ? [] : ARTICULATIONS).map((joint) => {
     const value = element("span");
     $("#now").append(element("dt", { text: joint.name, "data-help": "articulation" }), element("dd", { "data-help": "articulation" }, [value]));
     return value;
@@ -2459,7 +2753,7 @@ const readouts = (() => {
     }
     setText(attitudeName, pieceText(pieceAt(TRACKS.attitude, state.t)));
     for (const [value, data, format] of attitudeNow) setText(value, format(data[k]));
-    if (!power) {
+    if (!power && !DESIGNER) {
       sunBody.copy(state.sun).applyQuaternion(inverse.copy(state.qBody).invert());
       ["x", "y", "z"].forEach((name, j) => setText(bodyValues[j], (sunBody[name] >= 0 ? " " : "") + sunBody[name].toFixed(3)));
     }
@@ -2468,6 +2762,8 @@ const readouts = (() => {
     setText(ground, `${lat}  ${lon}  ${(state.r.length() - R_E).toFixed(0)} km`);
     setText(orbit, `beta ${state.beta.toFixed(1)}°`);
     setText($("#clock"), `T+ ${clockText(state.t)}`);
+    setText(timeValue, `T+ ${clockText(state.t)}`);
+    setText(orbitsValue, (state.t / PERIOD).toFixed(2));
     $("#readout").innerHTML = `${clockText(state.t)} <span class="dim">/ ${clockText(T_END)} · ${utcText(state.t)} UTC</span>`;
 
     for (const item of now) {
@@ -2482,7 +2778,8 @@ const readouts = (() => {
     setText(sunValue, light >= 1 ? "100 %" : light <= 0 ? "0 %" : `${(100 * light).toFixed(1)} %`);
     sunFill.style.opacity = String(0.15 + 0.85 * light);
     const mode = pieceAt(TRACKS.mode, state.t).value;
-    ARTICULATIONS.forEach((joint, j) => {
+    jointValues.forEach((_, j) => {
+      const joint = ARTICULATIONS[j];
       const angle = ((state.joints[j] + 540) % 360) - 180;
       const text = `${angle >= 0 ? "+" : ""}${angle.toFixed(1)}°`;
       setText(jointValues[j], joint.park_modes.includes(mode) ? `${text}, parked` : text);
@@ -2499,15 +2796,19 @@ const readouts = (() => {
         if (passRows[j]) passRows[j].classList.toggle("current", pass.start_s <= state.t && state.t < pass.end_s);
       });
     }
-    const occurrence = occurrenceAt(state.t);
-    setText(titleValue, occurrence.title || "");
-    setText($("#now-activity"), `Activity ${occurrence.number} of repeat ${occurrence.repeat}`);
+    const occurrence = activityAt(state.t);
+    setText(titleValue, occurrence ? occurrence.title || "" : "unplanned");
+    setText(
+      $("#now-activity"),
+      occurrence ? `Activity ${occurrence.number} of repeat ${occurrence.repeat}` : "No activity: the list has ended",
+    );
     if (Number(slider.value) !== k) slider.value = String(k);
 
-    const index = OCCURRENCES.indexOf(occurrence);
+    // the designer has no Activities page, so no rows
+    const index = occurrence ? OCCURRENCES.indexOf(occurrence) : -1;
     if (current !== index) {
-      if (current !== null) rows[current].classList.remove("current");
-      rows[index].classList.add("current");
+      if (current !== null && rows[current]) rows[current].classList.remove("current");
+      if (rows[index]) rows[index].classList.add("current");
       current = index;
     }
   };
@@ -2950,8 +3251,11 @@ const HELP = {
     text:
       "The illumination, the attitude and the mode against time, as the scenario run gives them. A red box " +
       "marks an activity outside its constraint. A dashed red line marks an activity with a negative " +
-      "duration. A dashed amber box marks an event that never came. Click to move the time cursor, drag to " +
-      "zoom, and double-click to zoom out.",
+      "duration. A dashed amber box marks an event that never came. A dashed line marks each whole orbit " +
+      "from the start. In the Activity Designer, an amber band marks a turn faster than the slew block " +
+      "allows, a box marks each occurrence of the activity selected in the list, and grey bars mark the time " +
+      "after the list ends, which no activity plans. Click to move the time cursor, drag to zoom, and " +
+      "double-click to zoom out.",
   },
   power: {
     title: "Power",
@@ -2996,6 +3300,13 @@ const HELP = {
   current: {
     title: "Current data",
     text: "The state of the run at the time cursor. It changes as the scenario plays, or as you move the cursor.",
+  },
+  time: { title: "Time", text: "The time from the start of the run to the time cursor." },
+  orbits: {
+    title: "Orbits",
+    text:
+      "The orbits from the start of the run to the time cursor. One orbit is the period that a duration in " +
+      "orbits counts: the nodal period for an element set. The timeline marks each whole orbit.",
   },
   mode: {
     title: "Mode",
@@ -3220,6 +3531,12 @@ const HELP = {
       "Show or hide the arrows to the targets: the nearest four in view, and each target that the body or a part " +
       "points at. An arrow to a target out of view is dim.",
   },
+  orbitShown: {
+    title: "3D Orbit View",
+    text:
+      "Show or hide the orbit in 3D, beside the map. Hide it to give the map its width on a narrow screen. " +
+      "The browser remembers the choice.",
+  },
   passTracks: {
     title: "Passes",
     text: "Show the track of each satellite target in view over its current pass, from its rise to its set.",
@@ -3350,17 +3667,33 @@ function observe(selector, resize) {
 // ---------------------------------------------------------------- Start
 
 setupControls();
-showActivities();
-showAttitude();
-showInputs();
-showTargets();
-showResults();
-showPowerSetup();
+// the designer has only the Scenario page, with no 3D views
+if (!DESIGNER) {
+  showActivities();
+  showAttitude();
+  showInputs();
+  showTargets();
+  showResults();
+  showPowerSetup();
+}
 trackColours.start();
 observe("#vp-orbit", (w, h) => orbitView.resize(w, h));
-observe("#vp-body", (w, h) => bodyView.resize(w, h));
+if (!DESIGNER) observe("#vp-body", (w, h) => bodyView.resize(w, h));
 observe("#vp-ground", (w, h) => groundView.resize(w, h));
-setTime(0);
+// The designer's view carries over from the run before, in the address's hash
+const startView = DESIGNER ? viewFromHash(location.hash) : { t: null, zoom: null };
+if (startView.zoom) charts.show(...startView.zoom);
+setTime(startView.t ?? 0);
+if (DESIGNER) {
+  // the editor selects an activity when its row is selected in the list
+  window.addEventListener("message", (event) => {
+    const message = event.data;
+    if (event.origin !== location.origin || event.source !== window.parent) return;
+    if (!message || message.source !== "quicksat-designer") return;
+    if (message.type === "select") select(Number.isInteger(message.number) ? message.number : null);
+  });
+  tellEditor("ready");
+}
 
 let last = performance.now();
 function frame(now) {
@@ -3379,12 +3712,13 @@ function frame(now) {
     dirty.charts = false;
   }
   if (state.page === "scenario") {
-    if (dirty.orbit) {
+    // the designer can hide the orbit, and then it is not drawn
+    if (dirty.orbit && !document.body.classList.contains("no-orbit")) {
       orbitView.update();
       orbitView.render();
       dirty.orbit = false;
     }
-    if (dirty.body) {
+    if (dirty.body && bodyView) {
       bodyView.update();
       bodyView.render();
       dirty.body = false;

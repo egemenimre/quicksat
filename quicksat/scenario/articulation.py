@@ -139,7 +139,13 @@ def grid_modes(run: "ScenarioRun") -> np.ndarray:
     -------
     modes : ndarray
         The mode names, as an array of objects
+
+    Raises
+    ------
+    ValueError
+        If part of the run is unplanned: see `ScenarioRun.unplanned`
     """
+    run.check_planned("the modes on the grid")
     modes = labels_at(run.mode, run.times)
     # the run is open at its end, so the last time takes the last activity's mode
     modes[-1] = run.occurrences[-1].activity.mode
@@ -161,10 +167,17 @@ def articulation_angles(run: "ScenarioRun") -> dict[str, Quantity]:
         For each articulation, by its name in the scenario file, its angles in
         degrees, from -180 to 180, one for each time of the grid. Empty without
         a model or without articulations.
+
+    Raises
+    ------
+    ValueError
+        If there are articulations and part of the run is unplanned: see
+        `ScenarioRun.unplanned`
     """
     model = run.scenario.spacecraft_model
     if model is None or not model.articulations:
         return {}
+    run.check_planned("the articulations' angles")
     targets = _body_directions(run, {a.point[1] for a in model.articulations.values()})
     modes = grid_modes(run)
 

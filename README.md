@@ -68,7 +68,7 @@ The power sample flies a 510 km sun-synchronous orbit for three orbits, with ima
 
 ### With the editor's server
 
-The editor's server runs on your computer only. It serves the Scenario Editor, and runs quicksat on the files when you ask for the viewer.
+The editor's server runs on your computer only. It serves the Scenario Editor, and runs quicksat on the files when you ask for a run or for the viewer.
 
 1. **Start the server,** in a terminal where quicksat is installed:
 
@@ -79,11 +79,16 @@ The editor's server runs on your computer only. It serves the Scenario Editor, a
    The first folder holds the input files, and the second is where the viewer goes. Keep the terminal open while you work.
 2. **The editor opens in your browser** by itself. If it does not, open the address that the server prints, such as `http://localhost:8780/quicksat/editor?key=...`.
 3. **Edit the files.** The Setup tab takes you through every file, step by step, with an explanation of each choice. The other tabs edit the same data by theme, and a side panel shows the 3D model.
-4. **Create the viewer.** Click **Create the viewer**, on the Files tab or on the last Setup step, "Save and view". quicksat runs the files as they are on the page, saved or not, in a few seconds. It writes `sample/power/output/power_viewer.html`, and the page shows the results and any problem.
-5. **Open the viewer.** Click **Open the viewer**. The viewer opens in a tab of its own: the editor does not open it by itself. It shows the run in 3D, with the ground track, the timeline, the power and the attitude.
-6. **Go round again.** Change something, click **Update the viewer**, then **Open the viewer** again, or reload the viewer's tab.
-7. **Keep your changes.** The server never changes the files in `sample/power/data/`. Download them from the page, as a zip or one by one, and put them back there.
-8. **Stop the server** with Ctrl+C in its terminal.
+4. **Design the activities.** The Activities tab is the Activity Designer: the run above the list of activities, with the orbit in 3D, the ground track and the timeline. **Generate scenario** runs the list as it is on the page, in a second or two after the first run, and writes nothing. At first the list runs once, and the time after it is grey. **Repeat the list** repeats it until the run ends. Select a row to see where its activity falls, or click the timeline to find the row. [How to plan the activities](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/plan_the_activities.md) walks through it.
+5. **Create the viewer.** Click **Create the viewer**, on the Files tab or on the last Setup step, "Save and view". quicksat runs the files as they are on the page, saved or not, in a few seconds. It writes `sample/power/output/power_viewer.html`, and the page shows the results and any problem.
+6. **Open the viewer.** Click **Open the viewer**. The viewer opens in a tab of its own: the editor does not open it by itself. It shows the run in 3D, with the ground track, the timeline, the power and the attitude.
+7. **Go round again.** Change something, click **Update the viewer**, then **Open the viewer** again, or reload the viewer's tab.
+8. **Keep your changes.** Download the files from the page, as a zip or one by one, and put them back in `sample/power/data/`. On the Activities tab, **Save into the folder** writes the scenario file there itself, after a confirm. Nothing else on the page changes the folder's files.
+9. **Stop the server** with Ctrl+C in its terminal.
+
+![The editor's Activities tab: the orbit, the ground track, the timeline and the passes over Svalbard above the list of activities, with the downlink selected](https://raw.githubusercontent.com/egemenimre/quicksat/master/docs/images/activity_designer.webp)
+
+*The Activity Designer, with the list run once. The downlink is selected, and the time after the list is grey. Under the list's title, each row says what the run made of it.*
 
 For the scenario sample, start it with `sample/scenario/data sample/scenario/output`. The Sizing Editor needs no server.
 

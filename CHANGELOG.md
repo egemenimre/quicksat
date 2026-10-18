@@ -4,6 +4,20 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- The Activity Designer, on the Scenario Editor's Activities tab, with the editor's server. The run sits above the list of activities: the orbit in 3D, the ground track, and the timeline with each target's passes. **Generate scenario** runs the list as it is on the page, and writes nothing. The list runs once at first, or with repeats, and may be empty. Selecting a row shows its activity in the run, and a click on the timeline or the track selects the row. Under each title is what the run made of it, such as a turn faster than the slew block allows.
+- **Save into the folder**, on the same tab, writes the scenario file into the server's input folder, after a confirm. It refuses a file that changed on disk since the page read it.
+- `run_scenario(scenario, repeat=False)` runs the list of activities once. The time after it is unplanned: `run.unplanned` gives it, and the attitude and mode rows name it `unplanned`. `Scenario.from_yaml_text` and `from_yaml_file` take `designer=True`, which reads an empty list of activities and skips the park mode check.
+- `scenario_data(run, designer=True)`, `activity_rows` and `designer_page` give the designer's data, the results of each activity and the page. The editor's server answers `design`, `designer` and `save`.
+- The viewer marks each whole orbit on its timelines. Its current data gives the time and the orbits since the start.
+- A guide, `docs/guides/scenario/plan_the_activities.md`, builds a list of activities in the Activity Designer, from an empty list to a plan for the whole run, and says what to do about each warning. The scenario reference notebook has a section on one pass of the list and on an empty list.
+
+### Changed
+
+- No attitude and no mode may be named `unplanned`, as none may be named `slew`.
+- `body_rates` gives NaN next to a time with no orientation, where it failed before.
+
 ## [0.2.0] - 2026-10-17
 
 ### Added
