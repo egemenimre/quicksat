@@ -82,6 +82,8 @@ One row per manoeuvre. The `manoeuvre_type` column decides what the `value` colu
 
 Set `recurring` to `true` when `count` is per year. The budget then multiplies it by the mission duration.
 
+[How to add a manoeuvre](add_a_manoeuvre.md) shows which type to pick, and what a new row costs.
+
 Details: [`delta_v_ref.ipynb`](../../sizing/delta_v_ref.ipynb), section "The manoeuvre file".
 
 ### `delta_v_config.yaml`
@@ -176,3 +178,5 @@ The README shows the main calls for each budget. The sample notebooks work throu
 - [`sample/sizing/data_budget.ipynb`](../../../sample/sizing/data_budget.ipynb)
 - [`sample/sizing/delta_v_budget.ipynb`](../../../sample/sizing/delta_v_budget.ipynb)
 - [`sample/sizing/agility_roll.ipynb`](../../../sample/sizing/agility_roll.ipynb) and [`sample/sizing/agility_pitch.ipynb`](../../../sample/sizing/agility_pitch.ipynb)
+
+The budgets share their inputs, so a change to close one can make another fail. [How to close the sizing budgets](close_the_sizing_budgets.md) runs them in rounds until they all pass.
