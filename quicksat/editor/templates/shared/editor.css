@@ -51,8 +51,8 @@ button, select, input, textarea { font: inherit; color: inherit; }
 .tabs { display: flex; align-self: stretch; overflow-x: auto; }
 .tabs button {
   background: none; border: 0; border-bottom: 2px solid transparent;
-  padding: 11px 14px 9px; color: var(--muted); cursor: pointer;
-  text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; white-space: nowrap;
+  padding: 11px 9px 9px; color: var(--muted); cursor: pointer;
+  text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px; white-space: nowrap;
 }
 .tabs button:hover { color: var(--text); }
 .tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }

@@ -28,7 +28,7 @@ The steps below use `my_project/winter`.
 python -m quicksat.editor serve my_project/winter my_project/winter/output
 ```
 
-The server opens the editor in your browser, with the folder's files. The second folder is where it writes the viewer. Keep the terminal window open while you work, and press Ctrl+C in it to stop the server.
+The server opens the editor in your browser, with the folder's files. The second folder is where it writes the viewer. Keep the terminal window open while you work. When you are done, click **Stop the server** at the top right of the page, or press Ctrl+C in the terminal. The server also stops by itself after 48 h with no editor page open.
 
 Only your computer can reach the server. Its address looks like `http://localhost:8780/quicksat/editor?key=k3Xq9vTzR2mA`. The port is 8780, or the next free one if another program has it. The key at the end is a random password, new at each start, which keeps other websites out. So open the address that the server prints. A reload of the page reads the folder's files again, with quicksat's full check. A reload also loses the changes you have not saved.
 

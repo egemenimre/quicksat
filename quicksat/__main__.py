@@ -96,7 +96,8 @@ To edit and view the power sample with the editor's server:
   6. To keep your changes, download them from the page and put them back in
      data/. On the Activities tab, Save into the folder writes the scenario
      file there itself. Nothing else on the page changes the files in data/.
-  7. Press Ctrl+C in the terminal to stop the server.
+  7. When you are done, click Stop the server at the top right of the page,
+     or press Ctrl+C in the terminal.
 For the scenario sample, give {scenario / "data"} and {scenario / "output"}.
 
 The Sizing Editor needs no server. Double-click

@@ -29,6 +29,11 @@ it to the designer's frame. **Save into the folder** sends the files that
 changed, and `save_files` writes them into the input folder. It refuses a file
 that changed on disk since the page was written.
 
+**Stop the server**, in the page's header, stops the server, as Ctrl+C does in
+its window. A server started from a shortcut has no window to press Ctrl+C in.
+The server also stops by itself after 48 h with no editor page open, as
+`IDLE_S` says.
+
 The server is for one user, on one computer:
 
 - It listens on 127.0.0.1, which other computers cannot reach.
@@ -91,7 +96,12 @@ PORTS_TRIED = 20
 
 PREFIX = "/quicksat/"
 """The start of every address the server answers: `editor`, `status`, `run`,
-`design`, `designer`, `save` and `viewer/` follow it."""
+`design`, `designer`, `save`, `stop` and `viewer/` follow it."""
+
+IDLE_S = 48 * 3600
+"""How long the server runs with no request from a page before it stops by
+itself, in seconds: 48 h. An editor page asks every few seconds while it is in
+view, and every 10 min while it is not."""
 
 MAX_BODY = 200 * 1024 * 1024
 """The largest run request the server reads, in bytes. The 3D model is the
@@ -477,6 +487,9 @@ class EditorServer(ThreadingHTTPServer):
         next free one after it.
     scenario_file, power_file, consumption_file : str, optional
         The files' names, if not the usual ones. See `editor_data`.
+    idle_s : float, optional
+        The time with no request from a page after which the server stops by
+        itself, in seconds: `IDLE_S` by default
     """
 
     daemon_threads = True
@@ -491,6 +504,7 @@ class EditorServer(ThreadingHTTPServer):
         scenario_file: str = SCENARIO_FILE,
         power_file: str = POWER_FILE,
         consumption_file: str = CONSUMPTION_FILE,
+        idle_s: float = IDLE_S,
     ):
         self.folder = Path(folder)
         self.output = Path(output)
@@ -503,6 +517,10 @@ class EditorServer(ThreadingHTTPServer):
         self.save_lock = threading.Lock()
         # the Activity Designer's last run, as the page its frame shows
         self.design_page: str | None = None
+        self.idle_s = idle_s
+        # when a page last asked anything, on a clock that the system time does not move
+        self.last_request = time.monotonic()
+        self.stopping = False
         ports = [port] if port is not None else [*range(PORT, PORT + PORTS_TRIED), 0]
         for number in ports:
             try:
@@ -511,6 +529,33 @@ class EditorServer(ThreadingHTTPServer):
             except OSError:
                 if number == ports[-1]:
                     raise
+
+    def stop(self, why: str) -> None:
+        """
+        Stop serving, so that `serve` ends. Call it from any thread but the one
+        that serves.
+
+        Parameters
+        ----------
+        why : str
+            Why the server stops, for its window
+        """
+        if self.stopping:
+            return
+        self.stopping = True
+        print(f"{time.strftime('%H:%M:%S')}  stopping, {why}", flush=True)
+        # in a thread of its own: `shutdown` waits for `serve_forever` to end
+        threading.Thread(target=self.shutdown, daemon=True).start()
+
+    def service_actions(self) -> None:
+        """
+        Stop, once no page has asked anything for `idle_s`. `serve_forever` calls
+        this about twice a second.
+        """
+        super().service_actions()
+        busy = self.run_lock.locked() or self.save_lock.locked()
+        if not busy and time.monotonic() - self.last_request > self.idle_s:
+            self.stop(f"as no editor page has been open for {self.idle_s / 3600:g} h")
 
     @property
     def url(self) -> str:
@@ -548,6 +593,7 @@ class EditorServer(ThreadingHTTPServer):
             f"{_argument(self.output)}",
             "viewers": self.viewer_pages(),
             "sha256": hashes,
+            "idle_h": self.idle_s / 3600,
         }
         return editor_page(data)
 
@@ -565,6 +611,7 @@ _REQUESTS = {
     "run": "a run",
     "design": "a run of the Activity Designer",
     "save": "a save",
+    "stop": "a stop",
 }
 """What each address of a POST request takes, for the message that refuses one."""
 
@@ -572,7 +619,7 @@ _REQUESTS = {
 class _Handler(BaseHTTPRequestHandler):
     """
     Answers the page: the editor, its status, its runs, the Activity Designer's
-    runs and saves, and the viewer's files.
+    runs and saves, the viewer's files, and the stop.
     """
 
     server: EditorServer
@@ -601,7 +648,10 @@ class _Handler(BaseHTTPRequestHandler):
         return value in (f"{prefix}{HOST}:{port}", f"{prefix}localhost:{port}")
 
     def _route(self) -> str | None:
-        """The address after `PREFIX`, or None if the key is wrong or missing."""
+        """
+        The address after `PREFIX`, or None if the key is wrong or missing. A
+        request with the key keeps the server from stopping by itself.
+        """
         address = urlsplit(self.path)
         path = unquote(address.path)
         key = parse_qs(address.query).get("key", [""])[0]
@@ -609,6 +659,7 @@ class _Handler(BaseHTTPRequestHandler):
             key, self.server.key
         ):
             return None
+        self.server.last_request = time.monotonic()
         return path.removeprefix(PREFIX)
 
     def do_GET(self):  # noqa: N802
@@ -672,7 +723,7 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(HTTPStatus.OK, body, kind)
 
     def do_POST(self):  # noqa: N802
-        """A run, a run of the Activity Designer, or a save of the page's files."""
+        """A run, a run of the Activity Designer, a save of the page's files, or a stop."""
         if not self._own("Host") or (
             "Origin" in self.headers and not self._own("Origin", "http://")
         ):
@@ -689,6 +740,9 @@ class _Handler(BaseHTTPRequestHandler):
             or length > MAX_BODY
         ):
             self._json(HTTPStatus.BAD_REQUEST, {**refused, "checks": []})
+            return
+        if route == "stop":
+            self._stop()
             return
         try:
             request = json.loads(self.rfile.read(length))
@@ -762,10 +816,27 @@ class _Handler(BaseHTTPRequestHandler):
             print(f"{now}  nothing saved: {result['error']}", flush=True)
         self._json(HTTPStatus.OK, result)
 
+    def _stop(self) -> None:
+        """Stop the server, unless a run or a save is going on."""
+        server = self.server
+        if not server.run_lock.acquire(blocking=False):
+            busy = "A run is going. Wait for it to end, then stop the server."
+        elif not server.save_lock.acquire(blocking=False):
+            server.run_lock.release()
+            busy = "A save is going. Wait for it to end, then stop the server."
+        else:
+            busy = ""
+        if busy:
+            self._json(HTTPStatus.CONFLICT, {"ok": False, "error": busy})
+            return
+        # the locks stay taken, so that no run or save starts before the server stops
+        self._json(HTTPStatus.OK, {"ok": True})
+        server.stop("as the page asked")
+
 
 def serve(server: EditorServer, open_browser: bool = True) -> None:
     """
-    Serve the editor until the user stops it with Ctrl+C.
+    Serve the editor until the user stops it, on the page or with Ctrl+C.
 
     Parameters
     ----------
@@ -779,7 +850,9 @@ def serve(server: EditorServer, open_browser: bool = True) -> None:
     )
     print(f"Create the viewer on the page, and it goes in {_label(server.output)}.")
     print(
-        "Keep this window open while you work. Press Ctrl+C to stop the server.",
+        "Keep this window open while you work. To stop the server, click Stop "
+        "the server on the page, or press Ctrl+C. It stops by itself after "
+        f"{server.idle_s / 3600:g} h with no editor page open.",
         flush=True,
     )
     if open_browser:
@@ -787,6 +860,7 @@ def serve(server: EditorServer, open_browser: bool = True) -> None:
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nThe server has stopped.")
+        print()  # a new line, after the ^C that the terminal shows
     finally:
         server.server_close()
+    print("The server has stopped.")
