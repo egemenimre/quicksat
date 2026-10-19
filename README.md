@@ -8,7 +8,7 @@ A first-pass satellite sizing tool, in two parts:
 - **[Sizing](#sizing)** works out the mass, data, delta-V and attitude agility budgets. Each budget is a table, worked out from a few input files and a reference orbit.
 - **[Scenario and power](#scenario-and-power-with-the-viewer)** flies the satellite through a timeline of activities on a real orbit, and checks the power: what the solar panels generate, what the equipment draws, and the battery between them. A 3D viewer shows the run.
 
-The two parts share no input files. The budgets use a reference orbit, while the scenario needs a real orbit, with an epoch and a node. quicksat is kept simple on purpose. It gives a first-pass sizing, not a full systems engineering environment.
+The two parts share no input files. The budgets use a reference orbit, while the scenario needs a real orbit, with an epoch and a node. quicksat is kept simple on purpose. It gives a first-pass sizing, not a full systems engineering environment. [Quickstart](#quickstart) lists a guide for each task.
 
 ![The viewer with the power sample: the orbit, the body, the current data, the ground track, the timeline, the net power and the battery](https://raw.githubusercontent.com/egemenimre/quicksat/master/docs/images/power_viewer.webp)
 
@@ -42,6 +42,23 @@ conda env create -f environment.yml
 conda activate quicksat
 pip install -e .
 ```
+
+## Quickstart
+
+Each guide takes you through one task, from the samples to files of your own. Pick the one for what you want to do. Or read on: the rest of this page is a short introduction to both parts, with the samples.
+
+| To do this | Read |
+|---|---|
+| Start the sizing files for your own satellite | [How to initialise a satellite](https://github.com/egemenimre/quicksat/blob/master/docs/guides/sizing/initialise_a_satellite.md) |
+| Edit the sizing files in the Sizing Editor, and run the budgets | [How to edit and run the sizing files](https://github.com/egemenimre/quicksat/blob/master/docs/guides/sizing/edit_the_sizing_files.md) |
+| Make every sizing budget pass at the same time | [How to close the sizing budgets](https://github.com/egemenimre/quicksat/blob/master/docs/guides/sizing/close_the_sizing_budgets.md) |
+| Add a manoeuvre to the delta-V budget | [How to add a manoeuvre](https://github.com/egemenimre/quicksat/blob/master/docs/guides/sizing/add_a_manoeuvre.md) |
+| Write a scenario: the orbit, the attitudes and the activities | [How to set up and run a scenario](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/set_up_a_scenario.md) |
+| Edit, run and view a scenario in the Scenario Editor | [How to edit, run and view a scenario](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/edit_and_view_a_scenario.md) |
+| Build the list of activities in the Activity Designer | [How to plan the activities](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/plan_the_activities.md) |
+| Bring your spacecraft's 3D model in from CAD or Blender | [How to prepare a 3D model](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/prepare_a_3d_model.md) |
+| Plan a link to a data relay satellite | [How to use a relay satellite](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/use_a_relay_satellite.md) |
+| Size the power system: the panels, the consumption and the battery | [How to set up and run a power budget](https://github.com/egemenimre/quicksat/blob/master/docs/guides/power/set_up_a_power_budget.md) |
 
 ## Sizing
 
@@ -116,7 +133,7 @@ The scenario sample works the same way, for the timeline alone: [`sample/scenari
 | Power consumption | What the equipment draws in each mode | [consumption](https://github.com/egemenimre/quicksat/blob/master/sample/power/power_consumption.ipynb) | [consumption](https://github.com/egemenimre/quicksat/blob/master/docs/power/power_consumption_ref.ipynb) |
 | Power budget | The battery's charge through the run, and whether each orbit has energy to spare | [budget](https://github.com/egemenimre/quicksat/blob/master/sample/power/power_budget.ipynb) | [budget](https://github.com/egemenimre/quicksat/blob/master/docs/power/power_budget_ref.ipynb) |
 
-[How to edit, run and view a scenario](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/edit_and_view_a_scenario.md) goes round this loop in full, for the samples or a folder of your own. For what each field means, see [how to set up and run a scenario](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/set_up_a_scenario.md) and [how to set up and run a power budget](https://github.com/egemenimre/quicksat/blob/master/docs/guides/power/set_up_a_power_budget.md). [How to prepare a 3D model](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/prepare_a_3d_model.md) takes your spacecraft's model from CAD or Blender to the viewer and the power budget.
+[How to edit, run and view a scenario](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/edit_and_view_a_scenario.md) goes round this loop in full, for the samples or a folder of your own. For what each field means, see [how to set up and run a scenario](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/set_up_a_scenario.md) and [how to set up and run a power budget](https://github.com/egemenimre/quicksat/blob/master/docs/guides/power/set_up_a_power_budget.md). [How to prepare a 3D model](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/prepare_a_3d_model.md) takes your spacecraft's model from CAD or Blender to the viewer and the power budget. [How to use a relay satellite](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/use_a_relay_satellite.md) plans a link to a data relay, from its element sets to the time the antenna tracks it.
 
 **The editors** open with the files of the folder that their page was written for. **Open a folder…**, on the first Setup step, reads any other folder, and **Open** on a tab reads one file. Or drop a folder, or its files, onto the page, and a file onto its tab's bar. Or write a page for a folder of your own. A folder with a `scenario.yaml` gets the Scenario Editor, and a folder of sizing files gets the Sizing Editor:
 
