@@ -58,8 +58,8 @@ button, select, input, textarea { font: inherit; color: inherit; }
 .tabs { display: flex; align-self: stretch; overflow-x: auto; }
 .tabs button {
   background: none; border: 0; border-bottom: 2px solid transparent;
-  padding: 11px 14px 9px; color: var(--muted); cursor: pointer;
-  text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; white-space: nowrap;
+  padding: 11px 9px 9px; color: var(--muted); cursor: pointer;
+  text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px; white-space: nowrap;
 }
 .tabs button:hover { color: var(--text); }
 .tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
@@ -327,7 +327,7 @@ input.short { width: 100px; }
 }
 .file-bar .file-name { color: var(--text); font-weight: 600; }
 .file-state[data-value="unchanged"] { color: var(--muted); }
-.file-state[data-value="downloaded"] { color: var(--green); }
+.file-state[data-value="downloaded"], .file-state[data-value="saved"] { color: var(--green); }
 .file-state[data-value="modified"] { color: var(--amber); }
 .file-state[data-value="new"] { color: var(--accent); }
 .file-state[data-value="absent"] { color: var(--dim); }
@@ -1241,6 +1241,8 @@ const page = {
   describeBinary: (file) => `A binary file of ${(file.bytes.length / 1024).toFixed(1)} kB.`,
   /** What the Files tab shows under its buttons, such as the scenario editor's viewer, or null. */
   filesExtra: () => null,
+  /** The kind of a dropped file that no fixed name gives, such as a satellite target's file, or null. */
+  kindOfFile: () => null,
 };
 
 /** What the page shows: the tab, the Setup step, the open explanations, and more. */
@@ -1671,7 +1673,7 @@ function updateBanner() {
 /** The explanation of the table of files and of the buttons, for each page's first step. */
 const FILES_HELP = `<span class="k">The table of files</span>
 <p><b>From</b> says where each file came from: the folder the page was written for, a folder you opened, or a file opened alone. A browser does not tell a page which folder a file opened alone came from.</p>
-<p><b>State</b> says whether the file has changed: <i>unchanged</i> since it was opened, <i>modified</i>, <i>downloaded</i> when saved and not changed since, or <i>new</i> for a file started on the page.</p>
+<p><b>State</b> says whether the file has changed: <i>unchanged</i> since it was opened, <i>modified</i>, <i>downloaded</i> when saved and not changed since, <i>saved into the folder</i> by the Activity Designer, or <i>new</i> for a file started on the page.</p>
 <p><b>Simple check</b> is the page's own: names, units and ranges, run as you type. <b>Full check</b> is quicksat's own loaders, which read the files when Python wrote the page. A file opened since shows <i>not run</i>: write the page again for its full check. On a page that the Scenario Editor's server sends, a reload, or a run that creates the viewer, gives the full check too.</p>
 <span class="k">Opening and saving</span>
 <p><b>Open a folder</b> reads every file of the folder that the page knows, and fills every step. <b>Open</b>, on a row or on a tab, reads one file in place of that one. You can also drop a folder, or its files, on the first Setup step or anywhere on the page, and a file on its tab's bar. <b>download</b> saves one file, and the Files tab saves them all as a zip. Put the files back in the folder yourself: a browser cannot write into it.</p>`;
@@ -1699,7 +1701,11 @@ const sources = {};
 /** Each file's text, or bytes, as it was last opened or saved: a file that differs has changed. */
 const savedText = {};
 
-/** How each file was last saved, by kind: `download` once the page has saved it, and otherwise not set. */
+/**
+ * How each file was last saved, by kind: `download` once the page has saved it,
+ * `folder` once the editor's server has written it into the folder, and
+ * otherwise not set.
+ */
 const savedBy = {};
 
 /** Each file's text, or bytes, as saving would write it now, by kind. The help lines are always in. */
@@ -1713,7 +1719,7 @@ function currentTexts() {
   }
 }
 
-/** Note the files of `kinds` as saved, as they are now: opened, or downloaded from the page. */
+/** Note the files of `kinds` as saved, as they are now: opened, downloaded, or saved into the folder. */
 function markSaved(kinds, by = "") {
   const texts = currentTexts();
   for (const kind of kinds) {
@@ -1724,9 +1730,9 @@ function markSaved(kinds, by = "") {
 }
 
 /**
- * Each file's state, by kind: `unchanged` since it was opened, `downloaded` and not
- * changed since, `modified` since either, `new` for a file never saved, or
- * `absent` for one the page does not save.
+ * Each file's state, by kind: `unchanged` since it was opened, `downloaded` or
+ * `saved` into the folder and not changed since, `modified` since any of them,
+ * `new` for a file never saved, or `absent` for one the page does not save.
  */
 function fileStates() {
   const texts = currentTexts();
@@ -1734,14 +1740,17 @@ function fileStates() {
     if (!(kind in texts)) return "absent";
     if (!(kind in savedText)) return "new";
     if (texts[kind] !== savedText[kind]) return "modified";
-    return savedBy[kind] === "download" ? "downloaded" : "unchanged";
+    return { download: "downloaded", folder: "saved" }[savedBy[kind]] || "unchanged";
   };
-  return Object.fromEntries(FILES.map(({ kind }) => [kind, stateOf(kind)]));
+  // the fixed kinds, and any the page saves beyond them, such as a satellite target's file
+  const kinds = new Set([...FILES.map(({ kind }) => kind), ...Object.keys(texts)]);
+  return Object.fromEntries([...kinds].map((kind) => [kind, stateOf(kind)]));
 }
 
 const STATE_TEXT = {
   unchanged: "unchanged",
   downloaded: "downloaded",
+  saved: "saved into the folder",
   modified: "modified, not saved",
   new: "new, not saved",
   absent: "not in this folder",
@@ -1916,10 +1925,14 @@ function openFolderButton() {
 
 // ---------------------------------------------------------------- dropping files
 
-/** The kind of file a name belongs to, if exactly one of the page's files has it. */
+/**
+ * The kind of file a name belongs to, if exactly one of the page's files has it,
+ * or a kind the page's own `kindOfFile` gives it.
+ */
 function kindOfName(name) {
   const kinds = Object.keys(project.names).filter((kind) => OPENERS[kind] && project.names[kind] === name);
-  return kinds.length === 1 ? kinds[0] : null;
+  if (kinds.length === 1) return kinds[0];
+  return page.kindOfFile(name);
 }
 
 /**

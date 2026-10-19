@@ -9,7 +9,8 @@ server answers and refuses.
 
 The runs use the power and scenario test folders, sent as the page sends them,
 and write the viewer into a temporary folder. The server runs in a thread, on a
-free port. The saves write into a copy of the power test folder.
+free port. The saves write into a copy of the power test folder. The stop, and
+the stop after a time with no request, end `serve`, in a thread of its own.
 """
 
 import base64
@@ -17,6 +18,7 @@ import http.client
 import json
 import shutil
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -32,6 +34,7 @@ from quicksat.editor.server import (
     design_files,
     file_hash,
     run_files,
+    serve,
 )
 
 TESTS = Path(__file__).parent.parent
@@ -215,6 +218,7 @@ def test_page(server):
         == f"python -m quicksat.editor serve {POWER} {server.output}"
     )
     assert data["server"]["viewers"] == []
+    assert data["server"]["idle_h"] == 48
     assert data["files"]["power"]["name"] == "power_system.yaml"
 
 
@@ -618,3 +622,86 @@ def test_not_a_design_or_a_save(server, route):
     )
     assert status == 400
     assert not json.loads(answer)["ok"]
+
+
+# ---------------------------------------------------------------- the stop
+
+STOP = b"{}", {"Content-Type": "application/json"}
+
+
+def test_stop_ends_serve(tmp_path, capsys):
+    """The page's Stop the server button ends `serve`, as Ctrl+C does."""
+    server = EditorServer(POWER, tmp_path / "output")
+    thread = threading.Thread(target=serve, args=(server, False), daemon=True)
+    thread.start()
+    status, answer, _ = ask(server, "POST", at(server, "stop"), *STOP)
+    assert status == 200
+    assert json.loads(answer) == {"ok": True}
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    assert capsys.readouterr().out.endswith("The server has stopped.\n")
+    with pytest.raises(ConnectionRefusedError):
+        ask(server, "GET", at(server, "status"))
+
+
+def test_stop_needs_the_key_and_this_page(server):
+    status, _, _ = ask(server, "POST", "/quicksat/stop", *STOP)
+    assert status == 404
+    body, headers = STOP
+    status, _, _ = ask(
+        server,
+        "POST",
+        at(server, "stop"),
+        body,
+        {**headers, "Origin": "https://example.com"},
+    )
+    assert status == 403
+    status, _, _ = ask(server, "POST", at(server, "stop"), body, {})
+    assert status == 400
+    assert ask(server, "GET", at(server, "status"))[0] == 200
+
+
+@pytest.mark.parametrize("busy", ["run", "save"])
+def test_stop_waits_for_a_run_or_a_save(server, busy):
+    with getattr(server, f"{busy}_lock"):
+        status, answer, _ = ask(server, "POST", at(server, "stop"), *STOP)
+    assert status == 409
+    assert json.loads(answer)["error"].startswith(f"A {busy} is going")
+    assert ask(server, "GET", at(server, "status"))[0] == 200
+    # the refused stop gave back the lock it took
+    assert server.run_lock.acquire(blocking=False)
+    server.run_lock.release()
+
+
+def test_idle_server_stops_by_itself(tmp_path, capsys):
+    """With no request from a page for `idle_s`, the server stops, and `serve` ends."""
+    server = EditorServer(POWER, tmp_path / "output", idle_s=0)
+    thread = threading.Thread(target=serve, args=(server, False), daemon=True)
+    thread.start()
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    out = capsys.readouterr().out
+    assert "stopping, as no editor page has been open for 0 h" in out
+    assert out.endswith("The server has stopped.\n")
+
+
+def test_a_request_with_the_key_keeps_the_server_going(server):
+    before = time.monotonic() - 100
+    server.last_request = before
+    ask(server, "GET", "/quicksat/status")
+    assert server.last_request == before
+    ask(server, "GET", at(server, "status"))
+    assert server.last_request > before
+
+
+def test_no_idle_stop_during_a_run(tmp_path):
+    """A run that takes longer than `idle_s` does not stop the server."""
+    server = EditorServer(POWER, tmp_path / "output", idle_s=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    with server.run_lock:
+        thread.start()
+        time.sleep(1)
+        assert thread.is_alive()
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    server.server_close()

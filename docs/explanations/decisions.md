@@ -76,6 +76,10 @@ A target can be another satellite, such as a relay of a constellation, as well a
 
 **The page without a server.** A page opened from a file has the button greyed out, with the command that starts the server. A page from the server asks it every few seconds whether it still answers. When it stops, the button is greyed out, with how to start it again.
 
+**The stop.** The page's **Stop the server** button stops the server, after a confirm, as Ctrl+C does in its terminal. A server started with no terminal, such as from a desktop shortcut, would otherwise run until the user found its process and ended it. The server refuses the stop while a run or a save is going on.
+
+The server also stops by itself after 48 hours with no editor page open, for a user who closes the page and forgets the server. A page asks the server every few seconds while it is in view, and every 10 min while it is not. So a page left open in the background keeps the server going, and a page closed for two days does not.
+
 **After a run,** the page's full check becomes what the loaders said in that run. The server also serves the output folder, so **Open the viewer** opens the new viewer.
 
 A hosted page with Pyodide stays possible, for a demo that needs no install. It would answer the same request as the server.

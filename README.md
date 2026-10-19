@@ -84,7 +84,7 @@ The editor's server runs on your computer only. It serves the Scenario Editor, a
 6. **Open the viewer.** Click **Open the viewer**. The viewer opens in a tab of its own: the editor does not open it by itself. It shows the run in 3D, with the ground track, the timeline, the power and the attitude.
 7. **Go round again.** Change something, click **Update the viewer**, then **Open the viewer** again, or reload the viewer's tab.
 8. **Keep your changes.** Download the files from the page, as a zip or one by one, and put them back in `sample/power/data/`. On the Activities tab, **Save into the folder** writes the scenario file there itself, after a confirm. Nothing else on the page changes the folder's files.
-9. **Stop the server** with Ctrl+C in its terminal.
+9. **Stop the server** when you are done, with its button at the top right of the page, or with Ctrl+C in its terminal. It also stops by itself after 48 h with no editor page open.
 
 ![The editor's Activities tab: the orbit, the ground track, the timeline and the passes over Svalbard above the list of activities, with the downlink selected](https://raw.githubusercontent.com/egemenimre/quicksat/master/docs/images/activity_designer.webp)
 

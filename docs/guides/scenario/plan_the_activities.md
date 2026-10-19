@@ -15,7 +15,7 @@ python -m quicksat init my_project
 python -m quicksat.editor serve my_project/power/data my_project/power/output
 ```
 
-The Scenario Editor opens in your browser. Keep the terminal open while you work.
+The Scenario Editor opens in your browser. Keep the terminal open while you work. When you are done, click **Stop the server** at the top right of the page.
 
 ## 2. Open the Activity Designer
 

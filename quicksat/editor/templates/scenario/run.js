@@ -4,8 +4,10 @@
 // the server's key, which each address ends with, and the input and output folders. Its "Create the
 // viewer" button sends the page's files to the server, which runs them with
 // quicksat and writes the viewer into the output folder. The page asks the
-// server every few seconds whether it still answers. A page opened from a file
-// has no server, so the button is greyed out, with how to start one.
+// server every few seconds whether it still answers, and every 10 min while it
+// is out of view, so that the server knows that a page is open. A page opened
+// from a file has no server, so the button is greyed out, with how to start
+// one. Stop the server, in the header, stops it when the user is done.
 
 /** The viewer's state: the server, the run going on, and the last run's answer. */
 const viewer = {
@@ -59,11 +61,39 @@ async function checkServer() {
   } catch {
     now = "down";
   }
-  if (now !== viewer.server) {
-    viewer.server = now;
-    drawViewerPanels();
-    designerServerChanged();
+  setServer(now);
+}
+
+/** Note the server's state, and redraw what shows it, if it changed. */
+function setServer(now) {
+  if (now === viewer.server) return;
+  viewer.server = now;
+  drawViewerPanels();
+  designerServerChanged();
+  drawStopButton();
+}
+
+/** Show the header's Stop the server button while the server answers. */
+function drawStopButton() {
+  $("#stop-server").hidden = viewer.server !== "up";
+}
+
+/** Stop the server, after a confirm. The page stays open, with how to start the server again. */
+async function stopServer() {
+  if (viewer.server !== "up") return;
+  const lost = unsaved() ? " Some changes on this page are not saved yet. After the stop, you can still download them from the Files tab." : "";
+  if (!confirm(`Stop the editor's server? This page stays open, but it can no longer run quicksat or save into the folder.${lost}`)) return;
+  let result;
+  try {
+    const response = await fetch(serverUrl("stop"), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    result = await response.json();
+  } catch {
+    // no answer: the server may have stopped already
+    checkServer();
+    return;
   }
+  if (result.ok) setServer("down");
+  else alert(result.error);
 }
 
 /** Send the page's files to the server, which runs them and writes the viewer. */
@@ -126,7 +156,7 @@ function serverHelp() {
   }
   return el("div", { class: "info" },
     el("h4", { text: "The server has stopped" }),
-    el("p", { text: "This page cannot reach the editor's server, so it cannot run the files. To start it again, run this in a terminal:" }),
+    el("p", { text: `This page cannot reach the editor's server, so it cannot run the files. The server stops when you click Stop the server, or by itself after ${DATA.server.idle_h} h with no editor page open. To start it again, run this in a terminal:` }),
     command,
     el("p", { text: `Then open the address it prints: each start has a new key. ${unsaved}` }));
 }
@@ -179,6 +209,11 @@ function drawViewerPanels() {
 }
 
 if (DATA.server) {
+  // every few seconds in view, and every 10 min out of it: the server stops by
+  // itself once no page has asked for `DATA.server.idle_h`
   setInterval(() => document.visibilityState === "visible" && checkServer(), 4000);
+  setInterval(() => document.visibilityState !== "visible" && checkServer(), 600000);
   window.addEventListener("focus", checkServer);
+  $("#stop-server").addEventListener("click", stopServer);
+  drawStopButton();
 }
