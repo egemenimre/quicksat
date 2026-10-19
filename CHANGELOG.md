@@ -13,6 +13,10 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 - The viewer marks each whole orbit on its timelines. Its current data gives the time and the orbits since the start.
 - A guide, `docs/guides/scenario/plan_the_activities.md`, builds a list of activities in the Activity Designer, from an empty list to a plan for the whole run, and says what to do about each warning. The scenario reference notebook has a section on one pass of the list and on an empty list.
 - A guide, `docs/guides/scenario/prepare_a_3d_model.md`, takes a spacecraft model from CAD or Blender to a GLB file: its axes, units and origin, the parts that turn, the solar panels and the export settings. It checks the model in the Scenario Editor and from Python, and checks the body axes against the attitudes on the editor's Operations tab, so that the imager looks down and the cells face the sun.
+- A guide, `docs/guides/sizing/close_the_sizing_budgets.md`, runs every sizing budget in rounds, carries each result into the files by hand, and stops when a round passes every budget and changes nothing. Its example closes a direct re-entry on the sample in four rounds, and its last section covers a change of orbit.
+- The README's Quickstart section lists a guide for each task.
+- A guide, `docs/guides/scenario/use_a_relay_satellite.md`, plans a link to a data relay: its element sets, the targets, the passes, an attitude or an antenna that points at it, activities that end at its rise and set, and the time it is tracked.
+- A guide, `docs/guides/sizing/add_a_manoeuvre.md`, adds a manoeuvre to the delta-V budget: which type to pick, the row, how often it happens, the loss factor, the checks, and its cost in propellant.
 
 ### Changed
 

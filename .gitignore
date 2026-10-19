@@ -155,3 +155,6 @@ quicksat.code-workspace
 # prototype codes
 /prototypes/
 /OUTPUT/
+
+# macOS folder settings
+.DS_Store
