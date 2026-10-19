@@ -23,8 +23,6 @@ from quicksat.scenario.config import Scenario
 from quicksat.scenario.run import run_scenario
 from quicksat.scenario.viewer import scenario_data
 
-from .conftest import SLOW
-
 
 def test_a_steady_spin_has_its_rate_and_no_acceleration():
     seconds = np.arange(0.0, 60.0, 10.0)
@@ -66,13 +64,6 @@ def test_within_the_limits_there_is_no_warning(slew_run, run):
     assert slew_run.warnings == []
     # without a slew block there is nothing to check against
     assert run.warnings == []
-
-
-@pytest.fixture(scope="module")
-def slow_run(data_dir):
-    """`scenario.yaml` with a slew rate limit below the orbit's rate."""
-    text = (data_dir / "scenario.yaml").read_text() + SLOW
-    return run_scenario(Scenario.from_yaml_text(text, data_dir))
 
 
 def test_an_attitude_past_the_limit_gives_a_warning(slow_run):
