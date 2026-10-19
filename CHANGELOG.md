@@ -4,6 +4,8 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-20
+
 ### Added
 
 - The Activity Designer, on the Scenario Editor's Activities tab, with the editor's server. The run sits above the list of activities: the orbit in 3D, the ground track, and the timeline with each target's passes. **Generate scenario** runs the list as it is on the page, and writes nothing. The list runs once at first, or with repeats, and may be empty. Selecting a row shows its activity in the run, and a click on the timeline or the track selects the row. Under each title is what the run made of it, such as a turn faster than the slew block allows.
@@ -14,6 +16,10 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 - A guide, `docs/guides/scenario/plan_the_activities.md`, builds a list of activities in the Activity Designer, from an empty list to a plan for the whole run, and says what to do about each warning. The scenario reference notebook has a section on one pass of the list and on an empty list.
 - A guide, `docs/guides/scenario/prepare_a_3d_model.md`, takes a spacecraft model from CAD or Blender to a GLB file: its axes, units and origin, the parts that turn, the solar panels and the export settings. It checks the model in the Scenario Editor and from Python, and checks the body axes against the attitudes on the editor's Operations tab, so that the imager looks down and the cells face the sun.
 - **Stop the server**, at the top right of the Scenario Editor, stops the editor's server after a confirm, as Ctrl+C does in its terminal. A server started with no terminal, such as from a desktop shortcut, can now be stopped too. The server answers `stop`, and stops by itself after 48 h with no editor page open.
+- A guide, `docs/guides/sizing/close_the_sizing_budgets.md`, runs every sizing budget in rounds, carries each result into the files by hand, and stops when a round passes every budget and changes nothing. Its example closes a direct re-entry on the sample in four rounds, and its last section covers a change of orbit.
+- The README's Quickstart section lists a guide for each task.
+- A guide, `docs/guides/scenario/use_a_relay_satellite.md`, plans a link to a data relay: its element sets, the targets, the passes, an attitude or an antenna that points at it, activities that end at its rise and set, and the time it is tracked.
+- A guide, `docs/guides/sizing/add_a_manoeuvre.md`, adds a manoeuvre to the delta-V budget: which type to pick, the row, how often it happens, the loss factor, the checks, and its cost in propellant.
 
 ### Changed
 
@@ -102,6 +108,7 @@ Initial release.
 - A ground target search, through OpenStreetMap's Nominatim.
 - `python -m quicksat.editor serve FOLDER OUTPUT` serves the Scenario Editor on this computer, with a button that runs the page's files and writes the viewer.
 
-[Unreleased]: https://github.com/egemenimre/quicksat/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/egemenimre/quicksat/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/egemenimre/quicksat/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/egemenimre/quicksat/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/egemenimre/quicksat/tree/v0.1.0
