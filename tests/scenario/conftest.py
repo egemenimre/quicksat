@@ -13,6 +13,8 @@ change only with the tests that read them:
 
 `slew_run` is `scenario.yaml` again, with slews at the sizing sample's rate and
 acceleration. `articulated_run` adds the 3D model and two wings to it.
+`slow_run` has slews too slow for nadir, so some must start before the slew
+before them.
 `once_run` runs the list of `once_text` once, as the Activity Designer does:
 the wings, and slews whose rate limit nadir passes.
 
@@ -117,6 +119,22 @@ SLOW = (
 )
 """A slew block whose rate limit nadir passes, at about the orbit's 0.063 deg/s,
 so that there are turn rate warnings."""
+
+
+@pytest.fixture(scope="session")
+def slow_run(data_dir) -> ScenarioRun:
+    """Three orbits of `scenario.yaml`, with slews too slow for nadir.
+
+    Some activities are shorter than the slews around them, so some slews must
+    start before the slew before them.
+
+    Returns
+    -------
+    ScenarioRun
+        The run
+    """
+    text = (data_dir / "scenario.yaml").read_text() + SLOW
+    return run_scenario(Scenario.from_yaml_text(text, data_dir))
 
 
 @pytest.fixture(scope="session")

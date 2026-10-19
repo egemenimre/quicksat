@@ -110,3 +110,24 @@ def test_a_slew_longer_than_the_activity_before_starts_early(data_dir):
     # turns smoothly
     assert run.scenario.slew is not None
     assert peak_rate(run) < run.scenario.slew.max_rate + TARGET_RATE
+
+
+def test_a_slew_that_must_start_first_replaces_the_one_before(slow_run):
+    occurrences, slews = slow_run.occurrences, slow_run.slews
+    # in time order, and no two start together
+    assert all(a.start < b.start for a, b in zip(slews[:-1], slews[1:], strict=True))
+    changes = {
+        index
+        for index, (before, after) in enumerate(
+            zip(occurrences[:-1], occurrences[1:], strict=True), 1
+        )
+        if before.activity.attitude != after.activity.attitude
+    }
+    replaced = changes - {window.into for window in slews}
+    assert replaced
+    for index in replaced:
+        assert occurrences[index].slew is None
+        # the slew after it starts before its activity does, and says so
+        following = next(window for window in slews if window.into > index)
+        assert following.start < occurrences[index].start
+        assert SLEW_STARTS_EARLY in occurrences[following.into].statuses

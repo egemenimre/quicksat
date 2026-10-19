@@ -322,6 +322,12 @@ def plan_slews(
     until the time settles to 1 ms. An activity with a negative duration takes no
     time, so it is passed over.
 
+    A slew can need to start before an earlier slew does, when the activities
+    between them are shorter than the turn. It then turns from the orientation
+    the body had before the earlier slew, which the body never makes. So the
+    earlier slew is dropped, and its activity has no slew of its own. This keeps
+    the list in time order.
+
     Parameters
     ----------
     occurrences : list of Occurrence
@@ -380,19 +386,22 @@ def plan_slews(
             )
             # a slew that cannot start early enough runs on into its activity
             end = max(occurrence.start, round_time(turned + slew.settling_time))
-            windows.append(
-                SlewWindow(
-                    start=start,
-                    turned=turned,
-                    end=end,
-                    angle=angle,
-                    target=occurrence.activity.attitude,
-                    start_rotation=orientation_at(start),
-                    end_rotation=rotation_of(occurrence.activity.attitude, turned),
-                    early=bool(start < previous.start) or bool(end > occurrence.start),
-                    into=index,
-                )
+            window = SlewWindow(
+                start=start,
+                turned=turned,
+                end=end,
+                angle=angle,
+                target=occurrence.activity.attitude,
+                start_rotation=orientation_at(start),
+                end_rotation=rotation_of(occurrence.activity.attitude, turned),
+                early=bool(start < previous.start) or bool(end > occurrence.start),
+                into=index,
             )
+            # the body turns from where it was before these slews, so it never
+            # makes them
+            while windows and windows[-1].start >= start:
+                windows.pop()
+            windows.append(window)
         previous = occurrence
     return windows
 
