@@ -154,6 +154,13 @@ def test_each_slew_is_a_piece_that_names_its_target(slew_run):
     assert all("target" not in piece for piece in track if piece["value"] != "slew")
 
 
+def test_the_track_holds_together_when_a_slew_replaces_another(slow_run):
+    track = scenario_data(slow_run)["tracks"]["attitude"]
+    assert all(piece["end_s"] > piece["start_s"] for piece in track)
+    for before, after in zip(track[:-1], track[1:], strict=True):
+        assert after["start_s"] == before["end_s"]
+
+
 def test_the_occurrences_carry_their_slews(slew_run):
     data = scenario_data(slew_run)
     slews = [o["slew_s"] for o in data["occurrences"] if o["slew_s"] is not None]

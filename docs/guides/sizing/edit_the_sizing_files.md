@@ -102,3 +102,5 @@ python -m quicksat.editor my_satellite my_satellite/editor
 ```
 
 Then reload the page in the browser. One round is then: edit, save, put the files back, run the notebooks, read the results, and open the folder again.
+
+[How to close the sizing budgets](close_the_sizing_budgets.md) says which results to carry into the files after each round, and when to stop.

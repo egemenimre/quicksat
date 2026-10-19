@@ -20,6 +20,10 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 - No attitude and no mode may be named `unplanned`, as none may be named `slew`.
 - `body_rates` gives NaN next to a time with no orientation, where it failed before.
 
+### Fixed
+
+- A slew that must start before an earlier slew now replaces it, since the body turns from where it was and never makes the earlier turn. The list of slews stays in time order, so the viewer's attitude track no longer has a piece that ends before it starts.
+
 ## [0.2.0] - 2026-10-17
 
 ### Added

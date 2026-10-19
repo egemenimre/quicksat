@@ -81,6 +81,8 @@ sat_targets:
 - **The names** of the two blocks share one list: no name may be in both.
 - **The run checks each orbit.** An element set more than 7 days from either end of the run gets a warning. A trajectory must cover the run.
 
+[How to use a relay satellite](use_a_relay_satellite.md) plans a whole relay link, from the element sets to the time the antenna tracks the relay.
+
 Two more examples:
 
 - `{point: [+z, nadir], constrain: [+x, ground velocity]}` steers in yaw, so that x follows the ground's motion below.
