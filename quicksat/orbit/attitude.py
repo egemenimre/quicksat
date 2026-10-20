@@ -306,15 +306,17 @@ def turn_between(
     start: np.ndarray,
     ends: np.ndarray,
     fractions: np.ndarray,
-    reference: np.ndarray | None = None,
+    toward: np.ndarray | None = None,
 ) -> np.ndarray:
     """
     Rotations part of the way from one rotation to others.
 
-    This is spherical linear interpolation of the quaternions. By default each
-    turn goes the shorter way round. With a reference, every turn goes the way
-    that is shorter to the reference. That keeps the direction of a slew fixed
-    while its target moves, even where the target drifts past a half turn away.
+    This is spherical linear interpolation of the quaternions. A quaternion and
+    its negative give the same rotation, and the sign each end takes sets which
+    way the turn goes. By default, each end takes the sign nearer the start, so
+    each turn goes the shorter way round. With `toward`, each end takes the sign
+    nearer its own quaternion there. That keeps the direction of a slew fixed
+    while its target moves, even past a half turn from where the slew ends.
 
     Parameters
     ----------
@@ -324,8 +326,9 @@ def turn_between(
         The rotations turned to, shape (n, 3, 3)
     fractions : ndarray
         How far along each turn, from 0 at `start` to 1 at the end, shape (n,)
-    reference : ndarray, optional
-        A rotation close to all the ends, shape (3, 3), that fixes the direction
+    toward : ndarray, optional
+        Quaternions `[x, y, z, w]`, scalar last, one close to each end, shape
+        (n, 4). They fix the direction of each turn.
 
     Returns
     -------
@@ -334,13 +337,8 @@ def turn_between(
     """
     q0 = Rotation.from_matrix(start).as_quat()
     q1 = Rotation.from_matrix(ends).as_quat()
-    # q and -q are the same rotation, and the sign of q1 sets which way the turn
-    # goes: the sign nearer q0 is the shorter way round
-    toward = q0
-    if reference is not None:
-        toward = Rotation.from_matrix(reference).as_quat()
-        toward = toward if toward @ q0 >= 0 else -toward
-    q1 = np.where((q1 @ toward)[:, None] < 0, -q1, q1)
+    signs = q1 @ q0 if toward is None else np.sum(q1 * toward, axis=1)
+    q1 = np.where(signs[:, None] < 0, -q1, q1)
     angle = np.arccos(np.clip(q1 @ q0, -1.0, 1.0))
     fractions = np.asarray(fractions, dtype=float)
     with np.errstate(divide="ignore", invalid="ignore"):

@@ -167,12 +167,12 @@ def test_turn_between_starts_and_ends_where_it_should():
     assert np.degrees(rotation_angles(start, rotations)) == pytest.approx([0, 45, 90])
 
 
-def test_a_reference_keeps_the_turn_going_one_way():
+def test_smooth_signs_keep_the_turn_going_one_way():
     # targets just either side of a half turn: alone, each turn goes the shorter
     # way, so the two halfway points lie on opposite sides
     ends = about_z(np.radians([179.0, 181.0]))
     free = turn_between(np.eye(3), ends, np.array([0.5, 0.5]))
-    held = turn_between(np.eye(3), ends, np.array([0.5, 0.5]), reference=ends[0])
+    held = turn_between(np.eye(3), ends, np.array([0.5, 0.5]), toward=quaternions(ends))
     assert np.degrees(rotation_angles(free[0], free[1])[0]) > 170
     assert np.degrees(rotation_angles(held[0], held[1])[0]) == pytest.approx(1.0)
 

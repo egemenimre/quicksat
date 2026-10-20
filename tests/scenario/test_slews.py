@@ -131,3 +131,14 @@ def test_a_slew_that_must_start_first_replaces_the_one_before(slow_run):
         following = next(window for window in slews if window.into > index)
         assert following.start < occurrences[index].start
         assert SLEW_STARTS_EARLY in occurrences[following.into].statuses
+
+
+def test_a_slew_keeps_its_way_round_while_its_target_moves_past_a_half_turn(
+    slow_run,
+):
+    # quaternions more than 90 degrees apart are rotations more than a half turn
+    # apart: in a slow slew, nadir moves that far before the turn ends
+    assert any(window.path[0] @ window.path[-1] < 0 for window in slow_run.slews)
+    # the way round chosen for the end alone flipped there, and the body jumped
+    # at 7.2 deg/s
+    assert peak_rate(slow_run) < Q_(1, "deg / s")
