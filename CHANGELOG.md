@@ -4,6 +4,14 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+
+- `turn_between` takes `toward`, a quaternion for each end, in place of `reference`, one rotation for all of them. `SlewWindow` holds `path_seconds` and `path`, its target attitude sampled through the turn, in place of `end_rotation`.
+
+### Fixed
+
+- A slew no longer jumps partway when its target attitude moves more than a half turn before the turn ends. The way round was chosen against the target at the end of the turn, and it flipped there. With a slew limit slower than nadir's own motion, the body jumped at 7.2 deg/s. Each slew now samples its target every 10 s through the turn, and keeps one way round throughout. Slews at real rates, as in the samples, turn exactly as before.
+
 ## [0.3.0] - 2026-10-20
 
 ### Added

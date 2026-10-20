@@ -56,6 +56,7 @@ from quicksat.orbit.attitude import (
     ParallelDirections,
     align,
     axis_vector,
+    quaternions,
     rotation_angles,
     turn_between,
 )
@@ -83,6 +84,10 @@ _TURN_TIME_TOLERANCE = Q_(1, "ms")
 
 _MAX_ROUNDS = 10
 """Most rounds of the search for a turn time."""
+
+_PATH_STEP = Q_(10, "s")
+"""The longest time between the samples of a slew's target, which fix which way it
+turns. The way stays right while the target turns less than 18 deg/s."""
 
 TargetOrbits = Mapping[str, Tle | Trajectory]
 """The orbits of the satellite targets, by name, as the run reads them."""
@@ -239,9 +244,14 @@ class SlewWindow:
         The attitude turned into
     start_rotation : ndarray
         The orientation when the turn starts, shape (3, 3)
-    end_rotation : ndarray
-        The target attitude's orientation when the turn ends, shape (3, 3). It
-        fixes which way the body turns.
+    path_seconds : ndarray
+        The times of the samples in `path`, in seconds from `start`, rising from
+        0 to the turn's end, shape (n,)
+    path : ndarray
+        The target attitude's quaternions at those times, `[x, y, z, w]`, shape
+        (n, 4). Their signs change smoothly, and the last one is nearer the
+        start, so the body ends with the shorter turn. They fix which way the
+        body turns while the target moves.
     early : bool
         True if the turn starts before the activity before it does, because that
         activity is shorter than the slew
@@ -255,7 +265,8 @@ class SlewWindow:
     angle: Quantity
     target: str
     start_rotation: np.ndarray
-    end_rotation: np.ndarray
+    path_seconds: np.ndarray
+    path: np.ndarray
     early: bool
     into: int
 
@@ -354,11 +365,13 @@ def plan_slews(
     run_start: TimeArray = interval.lower
     windows: list[SlewWindow] = []
 
-    def rotation_of(name: str, time: TimeArray) -> np.ndarray:
-        times = time + Q_(np.zeros(1), "s")
+    def rotations_of(name: str, times: TimeArray) -> np.ndarray:
         return attitude_rotations(
             scenario, name, state_at(times), sun_at(times), sat_orbits
-        )[0]
+        )
+
+    def rotation_of(name: str, time: TimeArray) -> np.ndarray:
+        return rotations_of(name, time + Q_(np.zeros(1), "s"))[0]
 
     def orientation_at(time: TimeArray) -> np.ndarray:
         # the latest slew under way wins, as it starts from the one before
@@ -386,14 +399,24 @@ def plan_slews(
             )
             # a slew that cannot start early enough runs on into its activity
             end = max(occurrence.start, round_time(turned + slew.settling_time))
+            start_rotation = orientation_at(start)
+            path_seconds, path = _target_path(
+                start,
+                turned,
+                start_rotation,
+                lambda times, name=occurrence.activity.attitude: rotations_of(
+                    name, times
+                ),
+            )
             window = SlewWindow(
                 start=start,
                 turned=turned,
                 end=end,
                 angle=angle,
                 target=occurrence.activity.attitude,
-                start_rotation=orientation_at(start),
-                end_rotation=rotation_of(occurrence.activity.attitude, turned),
+                start_rotation=start_rotation,
+                path_seconds=path_seconds,
+                path=path,
                 early=bool(start < previous.start) or bool(end > occurrence.start),
                 into=index,
             )
@@ -489,6 +512,47 @@ def _turn(
     return start, turned, angle_from(start)
 
 
+def _target_path(
+    start: TimeArray,
+    turned: TimeArray,
+    start_rotation: np.ndarray,
+    rotations_of: Callable[[TimeArray], np.ndarray],
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    The target attitude's quaternions through a turn, with smooth signs.
+
+    During a turn, the body goes the way from where it started to the target as
+    it is at each time. A quaternion and its negative give the same rotation,
+    and the sign sets the way. Matched to the start alone, the sign flips where
+    the target moves past a half turn from the start, and the body would jump.
+    So the target is sampled through the turn, each sign is kept close to the
+    one before, and the last sign is the one nearer the start.
+
+    Parameters
+    ----------
+    start, turned : Time
+        When the turn starts and ends
+    start_rotation : ndarray
+        The orientation when the turn starts, shape (3, 3)
+    rotations_of : callable
+        Gives the target attitude's orientations for a `Time` array
+
+    Returns
+    -------
+    seconds : ndarray
+        The times of the samples, in seconds from `start`, shape (n,)
+    path : ndarray
+        The quaternions `[x, y, z, w]` at those times, shape (n, 4)
+    """
+    length = float((turned - start).to_value(u.s))
+    count = int(np.ceil(length / _PATH_STEP.to(u.s).value)) + 1
+    seconds = np.linspace(0.0, length, count)
+    path = quaternions(rotations_of(start + Q_(seconds, "s")))
+    if path[-1] @ Rotation.from_matrix(start_rotation).as_quat() < 0:
+        path = -path
+    return seconds, path
+
+
 def _slew_rotations(
     window: SlewWindow, slew: Slew, times: TimeArray, targets: np.ndarray
 ) -> np.ndarray:
@@ -515,11 +579,12 @@ def _slew_rotations(
     rotations : ndarray
         Shape (n, 3, 3)
     """
-    elapsed = Q_(np.atleast_1d((times - window.start).to_value(u.s)), "s")
-    fractions = slew.turned(window.angle, elapsed)
-    return turn_between(
-        window.start_rotation, targets, fractions, reference=window.end_rotation
-    )
+    seconds = np.atleast_1d((times - window.start).to_value(u.s))
+    fractions = slew.turned(window.angle, Q_(seconds, "s"))
+    # each time takes the sign of the nearest sample of the target's path
+    nearest = np.interp(seconds, window.path_seconds, np.arange(len(window.path)))
+    toward = window.path[np.rint(nearest).astype(int)]
+    return turn_between(window.start_rotation, targets, fractions, toward=toward)
 
 
 def _activity_attitudes(run: "ScenarioRun") -> np.ndarray:
