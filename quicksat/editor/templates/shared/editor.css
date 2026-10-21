@@ -30,7 +30,7 @@ body {
   color: var(--text);
   font: 12px/1.45 var(--mono);
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   overflow: hidden;
 }
 button, select, input, textarea { font: inherit; color: inherit; }
@@ -82,7 +82,7 @@ button, select, input, textarea { font: inherit; color: inherit; }
 .folder-name { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .folder-name::before { content: "\25B8  "; color: var(--dim); }
 
-/* The banner: what to review before saving */
+/* The banners: a draft kept from before a reload, and what to review before saving */
 .banner[hidden] { display: none; }
 .banner {
   padding: 5px 14px; background: var(--warn-bg); border-bottom: 1px solid var(--warn-line);
@@ -90,8 +90,8 @@ button, select, input, textarea { font: inherit; color: inherit; }
 }
 .banner b { color: var(--text); font-weight: 400; }
 
-/* Main area: the pages, and any panel beside them */
-main { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 0; }
+/* Main area: the pages, and any panel beside them, in the last row under any banner */
+main { grid-row: -2; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 0; }
 .pages { min-height: 0; min-width: 0; display: grid; }
 .page { display: none; min-height: 0; min-width: 0; }
 .page.active { display: grid; }

@@ -224,6 +224,10 @@ Object.assign(page, {
   },
   filesExtra: () => el("div", { class: "files-viewer" }, el("div", { class: "folder", text: "the viewer" }), viewerPanel()),
   kindOfFile: (name) => (satTargetFiles().includes(name) ? "target" : null),
+  // the folder's opener finds the model, the orbit file and a satellite target's
+  // file by the name the scenario gives it
+  draftPath: (file) => ({ model: S.model.file, orbit: S.orbit[ORBIT_KEYS[S.orbit.source]] })[file.kind]
+    || (file.kind.startsWith("target:") ? file.kind.slice("target:".length) : file.path),
   describeBinary: (file) => `A binary GLB file of ${(file.bytes.length / 1024).toFixed(1)} kB, with ${model.parts.length} named parts:\n\n${model.parts.map((p) => "  " + p.name).join("\n")}`,
 });
 
@@ -232,7 +236,7 @@ $("#toggle-3d").addEventListener("click", toggle3d);
 $("#hide-3d").addEventListener("click", toggle3d);
 window.addEventListener("resize", () => view3d.resize());
 
-const glb = DATA.model ? Uint8Array.from(atob(DATA.model.glb_base64), (c) => c.charCodeAt(0)) : null;
+const glb = DATA.model ? base64ToBytes(DATA.model.glb_base64) : null;
 (glb ? view3d.load(glb, DATA.model.name) : Promise.resolve(false)).then((loaded) => {
   if (!loaded) view3d.cube();
   startPage();

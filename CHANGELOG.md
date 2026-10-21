@@ -4,6 +4,10 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- The Scenario Editor and the Sizing Editor keep a draft of the changes not saved in the browser's storage. When the page is reloaded or opened again, a bar offers to restore the draft or discard it, and says if a folder file has changed on disk since. A change on the page discards the draft, and it goes once every file is saved.
+
 ### Changed
 
 - `turn_between` takes `toward`, a quaternion for each end, in place of `reference`, one rotation for all of them. `SlewWindow` holds `path_seconds` and `path`, its target attitude sampled through the turn, in place of `end_rotation`.

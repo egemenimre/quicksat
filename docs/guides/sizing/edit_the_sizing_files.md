@@ -74,6 +74,8 @@ The page always saves every budget's files. A saved file shows as *downloaded* u
 
 The browser puts the downloads in its downloads folder. Copy the files over the ones in `my_satellite/`. Check their names: a browser can add a number, such as `mission (1).yaml`, to a file it has downloaded before.
 
+Until you save, the page keeps your changes in the browser's storage, on this computer only. When you reload the page, or open it again, a bar offers this draft: **restore** puts the changes back, and **discard** drops them. A change on the page discards the draft too. The bar says if a file in the folder has changed on disk since. The draft goes once every file is saved.
+
 ## 6. Run the budgets
 
 The sizing budgets have no command-line run. Run each one in its notebook:

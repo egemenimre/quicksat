@@ -17,7 +17,9 @@
 //   commentTarget(kind, path)     the block of a comment: [block, label, depth]
 //   runChecks()                   its checks, which end with showProblems()
 //
-// and, if it needs them, the hooks in `page`. The help comes from the page's
+// and, if it needs them, the hooks in `page`. While the page has changes that
+// are not saved, the frame keeps them in the browser's storage, as a draft, and
+// offers it back after a reload. The help comes from the page's
 // #help script, which Python fills from quicksat/editor/help/.
 
 /** What a page may add to the frame's work. */
@@ -36,6 +38,8 @@ const page = {
   filesExtra: () => null,
   /** The kind of a dropped file that no fixed name gives, such as a satellite target's file, or null. */
   kindOfFile: () => null,
+  /** The path that the folder's opener looks for a saved file under, to read a draft back. */
+  draftPath: (file) => file.path,
 };
 
 /** What the page shows: the tab, the Setup step, the open explanations, and more. */
@@ -93,6 +97,7 @@ function changed(structure = false) {
     runChecks();
     if (state.tab === "files") drawPreview();
     page.afterChange();
+    keepDraft();
   }, 120);
 }
 
@@ -378,7 +383,7 @@ function reviewFiles(kinds) {
       if (generated.has(normalise(comment.text))) continue;
       const [target, label, depth = comment.path.length] = commentTarget(kind, comment.path);
       const key = comment.path.slice(depth).filter((part) => typeof part === "string").join(".");
-      review.push({ kind, file: file.name, line: comment.line, text: comment.text, key, target, label, status: "" });
+      review.push({ kind, file: file.name, line: comment.line, path: comment.path, text: comment.text, key, target, label, status: "" });
     }
   }
   review.sort((a, b) => YAML_KINDS.indexOf(a.kind) - YAML_KINDS.indexOf(b.kind) || a.line - b.line);
@@ -469,7 +474,8 @@ const FILES_HELP = `<span class="k">The table of files</span>
 <p><b>State</b> says whether the file has changed: <i>unchanged</i> since it was opened, <i>modified</i>, <i>downloaded</i> when saved and not changed since, <i>saved into the folder</i> by the Activity Designer, or <i>new</i> for a file started on the page.</p>
 <p><b>Simple check</b> is the page's own: names, units and ranges, run as you type. <b>Full check</b> is quicksat's own loaders, which read the files when Python wrote the page. A file opened since shows <i>not run</i>: write the page again for its full check. On a page that the Scenario Editor's server sends, a reload, or a run that creates the viewer, gives the full check too.</p>
 <span class="k">Opening and saving</span>
-<p><b>Open a folder</b> reads every file of the folder that the page knows, and fills every step. <b>Open</b>, on a row or on a tab, reads one file in place of that one. You can also drop a folder, or its files, on the first Setup step or anywhere on the page, and a file on its tab's bar. <b>download</b> saves one file, and the Files tab saves them all as a zip. Put the files back in the folder yourself: a browser cannot write into it.</p>`;
+<p><b>Open a folder</b> reads every file of the folder that the page knows, and fills every step. <b>Open</b>, on a row or on a tab, reads one file in place of that one. You can also drop a folder, or its files, on the first Setup step or anywhere on the page, and a file on its tab's bar. <b>download</b> saves one file, and the Files tab saves them all as a zip. Put the files back in the folder yourself: a browser cannot write into it.</p>
+<p>Until you save, the page keeps a draft of your changes in the browser's storage, and offers it back when you reload the page or open it again.</p>`;
 
 // ---------------------------------------------------------------- the help
 
@@ -520,6 +526,7 @@ function markSaved(kinds, by = "") {
     savedText[kind] = texts[kind];
     if (by) savedBy[kind] = by; else delete savedBy[kind];
   }
+  keepDraft();
 }
 
 /**
@@ -797,6 +804,200 @@ function showLabel() {
   $("#folder").textContent = DATA.label || project.name;
 }
 
+// ---------------------------------------------------------------- the draft
+
+// While the page has changes that are not saved, it keeps them in the browser's
+// storage, so that a reload or a closed tab does not lose them. The draft holds
+// every file as saving would write it, where each came from, and how each was
+// last saved. When the page starts and finds a draft, it offers to read it back,
+// as it opens a folder. The storage is the browser's, on this computer only,
+// with one draft for each page file, and one for each folder the server serves.
+
+/** The draft's key in the browser's storage, set as the page starts. */
+let draftKey = "";
+
+/** Each file's text, or bytes, as the page started with it. */
+const startTexts = {};
+
+/** The draft found as the page started, until the user restores or discards it. */
+let offeredDraft = null;
+
+/** Whether the page holds changes that a reload would lose. */
+function hasChanges() {
+  if (!unsaved()) return false;
+  const texts = currentTexts();
+  const kinds = new Set([...Object.keys(texts), ...Object.keys(startTexts)]);
+  return [...kinds].some((kind) => texts[kind] !== startTexts[kind]);
+}
+
+/**
+ * The draft of the page as it is now. A binary file that the page started with
+ * is not copied. Another one is copied in base64, unless `binary` is false.
+ */
+function makeDraft(binary) {
+  const texts = currentTexts();
+  const files = projectFiles().map((file) => {
+    const entry = { kind: file.kind, path: file.path, read: page.draftPath(file) };
+    if (file.text != null) entry.text = file.text;
+    else if (file.bytes === startTexts[file.kind]) entry.start = true;
+    else if (binary) entry.base64 = bytesToBase64(file.bytes);
+    else entry.lost = true;
+    return entry;
+  });
+  const saved = Object.fromEntries(Object.entries(savedText).map(([kind, text]) => [kind,
+    text === texts[kind] ? { same: true } : typeof text === "string" ? { text } : text === startTexts[kind] ? { start: true } : { lost: true }]));
+  return {
+    time: new Date().toISOString(),
+    files,
+    saved,
+    savedBy: { ...savedBy },
+    sources: { ...sources },
+    notices: notices.files,
+    review: review.map(({ kind, file, line, path, text, key, status }) => ({ kind, file, line, path, text, key, status })),
+  };
+}
+
+/** Write a value into the browser's storage. False if the browser refuses it, such as when it is full. */
+function storeDraft(value) {
+  try {
+    localStorage.setItem(draftKey, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Remove the draft from the browser's storage. */
+function forgetDraft() {
+  try { localStorage.removeItem(draftKey); } catch { /* storage that cannot be read holds no draft */ }
+}
+
+/** Keep the page's changes as the draft, or remove the draft once there are none. */
+function keepDraft() {
+  if (!draftKey) return;
+  if (!hasChanges()) {
+    // the draft found at the start stays until the user decides
+    if (!offeredDraft) forgetDraft();
+    return;
+  }
+  // a change made instead discards the draft on offer
+  if (offeredDraft) closeDraftBar();
+  if (!storeDraft(makeDraft(true))) storeDraft(makeDraft(false));
+}
+
+/** The draft in the browser's storage, or null. */
+function recallDraft() {
+  try {
+    const draft = JSON.parse(localStorage.getItem(draftKey) || "null");
+    return draft && Array.isArray(draft.files) ? draft : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The text a draft notes as saved, for a text file, or null. */
+function draftSaved(draft, kind) {
+  const saved = draft.saved[kind];
+  if (!saved) return null;
+  if (saved.same) return (draft.files.find((file) => file.kind === kind) || {}).text ?? null;
+  if (saved.start) return null;
+  return saved.text ?? null;
+}
+
+/** The names of the files, as a list in words. */
+const nameList = (names) => (names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0] || "");
+
+/** Look for a draft as the page starts, and offer it if it differs from the page. */
+function offerDraft() {
+  // the server's command names both its folders, and a page written into a folder is a file of its own
+  draftKey = `quicksat-draft:${PAGE_TITLE}:${DATA.server ? DATA.server.command : location.pathname}`;
+  Object.assign(startTexts, currentTexts());
+  const draft = recallDraft();
+  if (!draft) return;
+  const differs = draft.files.filter((file) => (file.text != null ? file.text !== startTexts[file.kind] : !file.start));
+  const kinds = new Set(draft.files.map((file) => file.kind));
+  if (!differs.length && Object.keys(startTexts).every((kind) => kinds.has(kind))) {
+    forgetDraft();
+    return;
+  }
+  offeredDraft = draft;
+  // a file from the folder that has changed on disk since the draft
+  const moved = Object.keys(draft.sources).filter((kind) => draft.sources[kind].how === "page" && typeof startTexts[kind] === "string")
+    .filter((kind) => { const saved = draftSaved(draft, kind); return saved != null && saved !== startTexts[kind]; });
+  const time = new Date(draft.time);
+  const when = Number.isNaN(time.getTime()) ? "" : ` from ${time.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`;
+  const bar = $("#draft");
+  bar.hidden = false;
+  bar.replaceChildren(
+    el("b", { text: "Changes not saved: " }),
+    `this page kept a draft${when}, of ${nameList(differs.map((file) => file.path))}. `,
+    moved.length ? `The folder's ${nameList(moved.map((kind) => draft.files.find((file) => file.kind === kind)?.path || kind))} changed on disk since, and restoring replaces it on the page. ` : "",
+    draft.files.some((file) => file.lost) ? "The 3D model was too large for the browser's storage, so the draft does not hold it. " : "",
+    "A change on the page discards the draft. ",
+    el("button", { class: "btn small primary", text: "restore", onclick: restoreDraft }), " ",
+    el("button", { class: "btn small danger", text: "discard", onclick: () => { closeDraftBar(); forgetDraft(); } }));
+}
+
+/** Close the offer of a draft. */
+function closeDraftBar() {
+  offeredDraft = null;
+  $("#draft").hidden = true;
+  $("#draft").replaceChildren();
+}
+
+/** Read the draft on offer back into the page, as a folder opens, with its files' states. */
+async function restoreDraft() {
+  const draft = offeredDraft;
+  closeDraftBar();
+  const files = draft.files.filter((file) => !file.lost).map((file) => {
+    const content = file.text ?? (file.start ? startTexts[file.kind] : base64ToBytes(file.base64));
+    // as `pickedFile` looks for it
+    const path = file.read.trim().replace(/\\/g, "/").replace(/^(\.\/)+/, "");
+    return { path, file: new File([content], path.split("/").pop()) };
+  });
+  const { folder, label } = DATA;
+  const checks = DATA.checks;
+  try {
+    await OPENERS.folder.open({ folder: label, isFolder: true, files });
+  } catch (error) {
+    alert(`The draft does not read, so it is discarded: ${error.message}`);
+    forgetDraft();
+    return;
+  }
+  Object.assign(DATA, { folder, label });
+  for (const file of draft.files) if (file.kind in project.names) project.names[file.kind] = file.path;
+  for (const record of [sources, savedBy, savedText]) for (const kind of Object.keys(record)) delete record[kind];
+  Object.assign(sources, draft.sources);
+  Object.assign(savedBy, draft.savedBy);
+  const texts = currentTexts();
+  // a binary file reads back as new bytes, the same as the page's own
+  const own = new Set(draft.files.filter((file) => file.start).map((file) => file.kind));
+  for (const kind of own) startTexts[kind] = texts[kind];
+  for (const [kind, saved] of Object.entries(draft.saved)) {
+    // a file from the folder is compared with the folder as it is now
+    if (sources[kind] && sources[kind].how === "page") { if (kind in startTexts) savedText[kind] = startTexts[kind]; }
+    else if (saved.same) savedText[kind] = texts[kind];
+    else if (saved.start) savedText[kind] = startTexts[kind];
+    else if (saved.text != null) savedText[kind] = saved.text;
+  }
+  notices.files = draft.notices || {};
+  review = (draft.review || []).map((item) => {
+    const [target, itemLabel] = commentTarget(item.kind, item.path);
+    return { ...item, target, label: itemLabel };
+  });
+  // quicksat's loaders read the files in the folder, not the draft's
+  const states = fileStates();
+  const changedNames = Object.keys(states).filter((kind) => states[kind] === "modified" || states[kind] === "new").map(fileName);
+  DATA.checks = checks.map((check) => (check.file.split(" with ").some((name) => changedNames.includes(name)) ? { ...check, ok: null, message: "" } : check));
+  state.pendingDelete = null;
+  showLabel();
+  updateBanner();
+  drawView();
+  runChecks();
+  page.afterChange();
+  keepDraft();
+}
+
 // ---------------------------------------------------------------- start
 
 /** Start the page, once the page's own parts are ready. */
@@ -817,4 +1018,5 @@ function startPage() {
   showTab("setup");
   showStep(0);
   updateBanner();
+  offerDraft();
 }
