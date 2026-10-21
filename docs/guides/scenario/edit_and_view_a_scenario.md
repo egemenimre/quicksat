@@ -116,6 +116,8 @@ A saved file shows as *downloaded*, or *saved into the folder*, until you change
 
 The browser puts the downloads in its downloads folder. Copy the files over the ones in `my_project/winter/`. Check their names: a browser can add a number, such as `scenario (1).yaml`, to a file it has downloaded before.
 
+Until you save, the page keeps your changes in the browser's storage, on this computer only. When you reload the page, or open it again, a bar offers this draft: **restore** puts the changes back, and **discard** drops them. A change on the page discards the draft too. The bar says if a file in the folder has changed on disk since. The draft goes once every file is saved.
+
 ## 6. Run
 
 **With the server,** click **Create the viewer**. It is in the Files tab, under the download button, and on the last Setup step, **Save and view**. The run uses the files as they are on the page, saved or not. It writes the viewer into the output folder you gave the server, and does not change the folder's files. The button reads *Running…* until the run ends, a few seconds for the samples.

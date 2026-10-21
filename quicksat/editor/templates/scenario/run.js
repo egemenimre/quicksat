@@ -26,13 +26,6 @@ const serverUrl = (name) => `${DATA.server.base}${name}?key=${DATA.server.key}`;
 /** The viewer page that a run of these files writes. */
 const viewerPage = () => (project.hasPower && project.hasConsumption ? "power_viewer.html" : "scenario_viewer.html");
 
-/** Bytes in base64, in pieces, as a long array would overflow a call's arguments. */
-function bytesToBase64(bytes) {
-  let text = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(text);
-}
-
 /**
  * The files to run, as the server takes them. A model, an orbit file or a
  * satellite target's file goes by the name the scenario gives it, so that the

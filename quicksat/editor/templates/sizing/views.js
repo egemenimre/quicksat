@@ -132,6 +132,8 @@ const OPENERS = {
 Object.assign(page, {
   beforeDraw: () => live.clear(),
   afterChange: () => { for (const update of live) update(); },
+  // the folder's opener finds each file by its usual name
+  draftPath: (file) => NAMES[file.kind],
 });
 
 startPage();

@@ -47,6 +47,16 @@ const escapeHtml = (text) => String(text).replace(/[&<>"]/g, (c) => ({ "&": "&am
 /** Text, or "" for anything that is not text or a number. */
 const str = (value) => (typeof value === "string" ? value : typeof value === "number" ? String(value) : "");
 
+/** Bytes in base64, in pieces, as a long array would overflow a call's arguments. */
+function bytesToBase64(bytes) {
+  let text = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(text);
+}
+
+/** The bytes of a base64 text. */
+const base64ToBytes = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
+
 // ---------------------------------------------------------------- constants
 
 /** The key of the user's notes in every block. No named item may take it. */
