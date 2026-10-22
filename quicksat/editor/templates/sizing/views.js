@@ -5,7 +5,9 @@
 
 const TABS = [
   { id: "setup", title: "Setup" },
+  { id: "budgets", title: "Budgets", draw: drawBudgets, count: failingBudgets },
   { id: "mission", title: "Mission", sections: ["mission"], intro: "The reference orbit and the design life, from mission.yaml. The data, delta-V and agility budgets read them." },
+  { id: "requirements", title: "Requirements", sections: ["slews", "required_storage"], intro: "What the mission asks of the spacecraft, from requirements.yaml. The agility and data budgets check their figures against it." },
   { id: "mass", title: "Mass", budget: "mass", top: () => overallBox("mass"), sections: ["locations"], intro: "The mass budget's settings: each location's margins and harness. The equipment list has a tab of its own." },
   { id: "equipment", title: "Equipment", budget: "mass", sections: ["equipment"], intro: "Every item of the spacecraft, from equipment.csv. The totals under the table add the rows as entered." },
   { id: "data", title: "Data", budget: "data", top: () => overallBox("data"), sections: ["generation", "downlink", "storage"], intro: "The payload data flow: what the payload makes, what the link sends, and the memory between passes." },
@@ -17,6 +19,7 @@ const TABS = [
 const STEPS = [
   { group: "Start", title: "Folder", sections: ["folder"] },
   { group: "Mission", title: "Reference orbit and design life", sections: ["mission"] },
+  { group: "Requirements", title: "What the mission asks", sections: ["slews", "required_storage"] },
   { group: "Mass", title: "Locations: margins and harness", sections: ["locations"], top: () => overallBox("mass") },
   { title: "Equipment", sections: ["equipment"] },
   { group: "Data", title: "Payload data generation", sections: ["generation"], top: () => overallBox("data") },
@@ -34,6 +37,7 @@ const STEPS = [
 function fileComments(path) {
   const n = project.names;
   if (path === n.mission) return commentsBox(M, "Your comments on the mission", { note: "They go in the comments field at the top of the file." });
+  if (path === n.requirements) return commentsBox(project.requirements, "Your comments on the requirements", { note: "They go in the comments field at the top of the file." });
   for (const key of ["mass", "data", "deltav", "agility"]) {
     if (path === n[key]) return commentsBox(project[key], `Your comments on ${BUDGETS[key].label}`, { note: "They go in the comments field at the top of the file." });
   }
@@ -51,6 +55,17 @@ function commentTarget(kind, path) {
   const [first, second] = path;
   const find = (list, name) => list.find((x) => x.name === name);
   if (kind === "mission") return [M, "the mission", 0];
+  if (kind === "requirements") {
+    const R = project.requirements;
+    const S = R.agility.slews;
+    if (first === "agility") {
+      const [, , name] = path;
+      if (second !== "slews") return [R.agility, "agility", 1];
+      return name != null && find(S.items, name) ? [find(S.items, name), `slews › ${name}`, 3] : [S, "agility › slews", 2];
+    }
+    if (first === "data") return [R.data, "data", 1];
+    return [R, "the requirements", 0];
+  }
   if (kind === "mass") {
     const L = project.mass.locations;
     if (first === "locations") return second != null && find(L.items, second) ? [find(L.items, second), `locations › ${second}`, 2] : [L, "locations", 1];
@@ -75,7 +90,7 @@ function commentTarget(kind, path) {
 const PAGE_TITLE = "quicksat Sizing Editor";
 
 /** The kinds of the folder's YAML files, whose `#` comments the page reviews. */
-const YAML_KINDS = ["mission", "mass", "data", "deltav", "agility"];
+const YAML_KINDS = ["mission", "requirements", "mass", "data", "deltav", "agility"];
 
 /** The folder's files, by kind, in the order the Start step lists them. */
 const FILES = Object.keys(NAMES).map((kind) => ({ kind }));
@@ -119,6 +134,7 @@ const OPENERS = {
     },
   },
   mission: fileOpener("mission", "a mission file"),
+  requirements: fileOpener("requirements", "a requirements file"),
   mass: fileOpener("mass", "a mass settings file"),
   equipment: fileOpener("equipment", "an equipment list"),
   data: fileOpener("data", "a data flow file"),
@@ -131,9 +147,18 @@ const OPENERS = {
 
 Object.assign(page, {
   beforeDraw: () => live.clear(),
-  afterChange: () => { for (const update of live) update(); },
+  afterChange: () => {
+    for (const update of live) update();
+    scheduleBudgets();
+  },
   // the folder's opener finds each file by its usual name
   draftPath: (file) => NAMES[file.kind],
+  serverChanged: () => {
+    if (server.state === "up" && changedSince().length) workOutBudgets();
+    refreshBudgets();
+  },
 });
 
 startPage();
+// the results that Python worked out come from the files as the page first holds them
+budgets.texts = budgetTexts();

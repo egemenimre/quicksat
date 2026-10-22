@@ -21,13 +21,16 @@ from pydantic import ConfigDict, Field, field_validator
 
 from quicksat import u
 from quicksat.dataflow.report import tabulate
+from quicksat.utils.checks import Check
 from quicksat.utils.mission import Mission
 from quicksat.utils.parser_helpers import (
     Commented,
     DataRateQty,
+    DataVolumeQty,
     FractionQty,
     TimeQty,
 )
+from quicksat.utils.requirements import Requirements
 
 
 class Generation(Commented):
@@ -89,19 +92,22 @@ class Downlink(Commented):
 
 class Storage(Commented):
     """
-    The onboard memory sizing case.
+    The onboard memory.
+
+    How long the memory must hold the data is a requirement, not a property of
+    the memory. So it is in the requirements file, as `orbits_without_contact`.
 
     Parameters
     ----------
-    orbits_without_contact : float
-        Orbits the spacecraft may go without a usable pass
+    capacity : Quantity
+        The mass memory's usable capacity, after any space kept for other data
     comments : str, optional
         The user's notes on the block. quicksat does not read them
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
-    orbits_without_contact: float = Field(ge=0)
+    capacity: DataVolumeQty
 
 
 class DataFlowModel(Commented):
@@ -118,7 +124,7 @@ class DataFlowModel(Commented):
     downlink : Downlink
         What the link sends
     storage : Storage
-        The onboard memory sizing case
+        The onboard memory
     comments : str, optional
         The user's notes on the block. quicksat does not read them
     """
@@ -187,15 +193,28 @@ class DataBudget:
         The payload dataflow model
     mission : Mission
         The shared mission, for the period and the orbits in a day
+    requirements : Requirements, optional
+        The shared requirements, for the orbits without contact that the memory
+        must cover. Without them, the storage needs its orbits passed in, and
+        there is no storage check
     """
 
-    def __init__(self, model: DataFlowModel, mission: Mission):
+    def __init__(
+        self,
+        model: DataFlowModel,
+        mission: Mission,
+        requirements: Requirements | None = None,
+    ):
         self.model = model
         self.mission = mission
+        self.requirements = requirements
 
     @classmethod
     def from_yaml_file(
-        cls, model_path: str | Path, mission_path: str | Path
+        cls,
+        model_path: str | Path,
+        mission_path: str | Path,
+        requirements_path: str | Path | None = None,
     ) -> "DataBudget":
         """
         Build a data budget from a payload dataflow model and a mission file.
@@ -209,6 +228,8 @@ class DataBudget:
             Filepath of the payload dataflow model (YAML)
         mission_path : str | Path
             Filepath of the shared mission (YAML)
+        requirements_path : str | Path, optional
+            Filepath of the shared requirements (YAML)
 
         Returns
         -------
@@ -218,6 +239,9 @@ class DataBudget:
         return cls(
             DataFlowModel.from_yaml_file(Path(model_path)),
             Mission.from_yaml_file(Path(mission_path)),
+            Requirements.from_yaml_file(Path(requirements_path))
+            if requirements_path is not None
+            else None,
         )
 
     @property
@@ -332,15 +356,76 @@ class DataBudget:
         Parameters
         ----------
         orbits_without_contact : float, optional
-            Orbits to cover. Defaults to the value in the dataflow model
+            Orbits to cover. Defaults to the requirement's
 
         Returns
         -------
         volume : Quantity
+
+        Raises
+        ------
+        ValueError
+            If no orbits are given and there is no data requirement
         """
         if orbits_without_contact is None:
-            orbits_without_contact = self.model.storage.orbits_without_contact
+            orbits_without_contact = self.required_orbits
+            if orbits_without_contact is None:
+                raise ValueError(
+                    "No orbits without contact given, and no data requirement. Pass "
+                    "the orbits, or build the data budget with requirements=... to "
+                    "take them from there."
+                )
         return (self.generated_per_orbit * orbits_without_contact).to("GB")
+
+    @property
+    def required_orbits(self) -> float | None:
+        """
+        The orbits without contact that the requirements ask the memory to
+        cover.
+
+        Returns
+        -------
+        orbits : float or None
+            None when there is no data requirement
+        """
+        if self.requirements is None or self.requirements.data is None:
+            return None
+        return self.requirements.data.orbits_without_contact
+
+    def checks(self) -> list[Check]:
+        """
+        The budget's checks: the downlink against the data generated, and the
+        mass memory against the storage required.
+
+        The downlink check needs no requirement: the link must send each day's
+        data. The storage check needs the data requirement, and is left out
+        without it.
+
+        Returns
+        -------
+        checks : list of Check
+            The downlink check, then the storage check
+        """
+        checks = [
+            Check(
+                "downlink",
+                "The downlink sends the data generated each day",
+                self.downlinked_per_day,
+                self.generated_per_day,
+            )
+        ]
+        orbits = self.required_orbits
+        if orbits is not None:
+            checks.append(
+                Check(
+                    "storage",
+                    f"The mass memory holds the data of {orbits:g} orbits "
+                    "without contact",
+                    self.model.storage.capacity.to("GB"),
+                    self.storage_required(),
+                )
+            )
+        return checks
 
     def tabulated_data(self):
         """

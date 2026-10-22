@@ -26,8 +26,10 @@ from quicksat import Q_
 from quicksat.agility.budget import AgilityBudget, AgilityConfig, Axis, Profile
 from quicksat.mass.budget import MassBudget
 from quicksat.utils.mission import Mission
+from quicksat.utils.requirements import Requirements
 
 CONFIG = """
+selected_case: workbook
 inertia_cases:
   workbook:
     body:
@@ -82,6 +84,14 @@ pinned to it while the sample notebooks track our own mass budget."""
 TARGET_DURATION = Q_(113, "s")
 """What the source tab's operation allows. An argument, not config: how long a
 manoeuvre may take is asked of a spacecraft, not a property of one."""
+
+REQUIREMENTS = """
+agility:
+  slews:
+    roll_40: {axis: roll, angle: 40 deg, duration: 113 s}
+    roll_60: {axis: roll, angle: 60 deg, duration: 60 s}
+    pitch_40: {axis: pitch, angle: 40 deg, duration: 113 s}
+"""
 
 # angle -> (nominal slew time, one-wheel-failed slew time), in seconds
 SLEW_TIMES = {
@@ -281,6 +291,55 @@ def test_an_unknown_case_is_an_error(config, mission):
         AgilityBudget(config, mission, Axis.ROLL, "typo")
 
 
+def test_with_no_case_named_the_budget_flies_the_selected_one(config, mission):
+    budget = AgilityBudget(config, mission, Axis.ROLL, mass=WORKBOOK_MASS)
+    assert budget.case_name == "workbook"
+    other = AgilityBudget(config, mission, Axis.ROLL, "stated")
+    assert other.case_name == "stated"
+
+
+def test_the_selected_case_must_be_one_of_the_cases():
+    text = CONFIG.replace("selected_case: workbook", "selected_case: typo")
+    with pytest.raises(ValueError, match="'typo' is not one of the inertia cases"):
+        AgilityConfig.from_yaml_text(text)
+
+
+# --- the checks --------------------------------------------------------------
+
+
+def test_each_slew_about_the_axis_is_checked(budget):
+    """The workbook's 40 deg slew takes 83.7 s with settling: 35.0% inside 113 s."""
+    budget.requirements = Requirements.from_yaml_text(REQUIREMENTS)
+    checks = budget.checks()
+    assert [check.name for check in checks] == ["roll_40", "roll_60"]
+    fits, too_slow = checks
+    assert_quantity_allclose(fits.design, budget.total_time(Q_(40, "deg")))
+    assert_quantity_allclose(fits.limit, TARGET_DURATION)
+    assert fits.at_most
+    assert_quantity_allclose(
+        fits.margin, budget.time_margin(Q_(40, "deg"), TARGET_DURATION)
+    )
+    assert fits.margin.value == pytest.approx(0.350, abs=1e-3)
+    assert fits.passes
+    assert not too_slow.passes
+
+
+def test_pitch_checks_only_the_pitch_slews(config, mission):
+    requirements = Requirements.from_yaml_text(REQUIREMENTS)
+    pitch = AgilityBudget(
+        config, mission, Axis.PITCH, mass=WORKBOOK_MASS, requirements=requirements
+    )
+    assert [check.name for check in pitch.checks()] == ["pitch_40"]
+
+
+def test_with_no_requirement_there_is_no_check(budget):
+    assert budget.checks() == []
+    budget.requirements = Requirements.from_yaml_text(
+        "data: {orbits_without_contact: 3}"
+    )
+    assert budget.checks() == []
+
+
 # --- the axes ----------------------------------------------------------------
 
 
@@ -373,7 +432,9 @@ def test_input_files_load(data_dir):
         data_dir / "mission.yaml",
         Axis.ROLL,
         "measured_bol",
+        requirements_path=data_dir / "requirements.yaml",
     )
     assert_quantity_allclose(
         budget.inertia, Q_(264.7, "kg * m**2"), atol=Q_(0.1, "kg * m**2")
     )
+    assert [check.name for check in budget.checks()] == ["roll_40"]

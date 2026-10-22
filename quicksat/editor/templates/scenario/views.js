@@ -223,6 +223,12 @@ Object.assign(page, {
     designerChanged();
   },
   filesExtra: () => el("div", { class: "files-viewer" }, el("div", { class: "folder", text: "the viewer" }), viewerPanel()),
+  serverBusy: () => viewer.running,
+  onStatus: (status) => { viewer.pages = status.viewers; },
+  serverChanged: () => {
+    drawViewerPanels();
+    designerServerChanged();
+  },
   kindOfFile: (name) => (satTargetFiles().includes(name) ? "target" : null),
   // the folder's opener finds the model, the orbit file and a satellite target's
   // file by the name the scenario gives it

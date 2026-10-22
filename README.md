@@ -65,16 +65,23 @@ Each guide takes you through one task, from the samples to files of your own. Pi
 The sizing sample is a small Earth observation satellite on a 500 km sun-synchronous orbit. Its files are in `sample/sizing/data/`. The workflow:
 
 1. **Edit the files.** Double-click [`sample/sizing/editor/editor.html`](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/editor/editor.html) to open the Sizing Editor in your browser. Its Setup tab takes you through every file, step by step, and the other tabs edit one budget each. Save the files, as a zip or one by one, and put them back in `sample/sizing/data/`. The files are YAML and CSV, with units written out, such as `750 g` or `800 Mbit/s`, so they can be edited by hand too.
-2. **Run the notebooks** in `sample/sizing/`, in the order below. Each reads the files and builds its budget. Delta-V and agility also read the mass budget.
-3. **Read the tables.** Each notebook ends with its budget laid out as a document, and the figures that answer the usual questions.
+2. **See the budgets.** The editor's Budgets tab shows every budget's tables and checks, as quicksat works them out. A page opened from a file shows them as they were when the page was written. To have them follow each change, serve the page, and open the address the server prints:
+
+   ```bash
+   python -m quicksat.editor serve sample/sizing/data
+   ```
+
+3. **Run the notebooks** in `sample/sizing/`, in the order below, to see each budget step by step. Each reads the files and builds its budget. Delta-V and agility also read the mass budget.
+4. **Read the tables.** Each notebook ends with its budget laid out as a document, and the figures that answer the usual questions. The data, delta-V and agility notebooks also check their figures: against the requirements in `requirements.yaml`, and the propellant required against the propellant loaded.
 
 | Budget | What it gives | Sample | Reference |
 |---|---|---|---|
 | Mission | The reference orbit and the design life, which every budget shares | | [mission](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/mission_ref.ipynb) |
+| Requirements | What the mission asks of the satellite: the slews it needs, and the time without contact, which the agility and data budgets check | | [agility](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/agility_ref.ipynb), [data](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/data_budget_ref.ipynb) |
 | Mass | Dry and wet mass, by location, subsystem and owner, with two layers of margin | [mass](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/mass_budget.ipynb) | [mass](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/mass_budget_ref.ipynb) |
-| Data | Data made against data sent down each day, and the memory needed between passes | [data](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/data_budget.ipynb) | [data](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/data_budget_ref.ipynb) |
+| Data | Data made against data sent down each day, and the memory needed between passes against the memory flown | [data](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/data_budget.ipynb) | [data](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/data_budget_ref.ipynb) |
 | Delta-V | Delta-V by phase and type, and the propellant it needs | [delta-V](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/delta_v_budget.ipynb) | [delta-V](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/delta_v_ref.ipynb) |
-| Agility | Slew times about roll and pitch, from the wheels and the inertia, with a wheel failed or not | [roll](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/agility_roll.ipynb), [pitch](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/agility_pitch.ipynb) | [agility](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/agility_ref.ipynb) |
+| Agility | Slew times about roll and pitch, from the wheels and the inertia, with a wheel failed or not, and the slews the mission needs | [roll](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/agility_roll.ipynb), [pitch](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/agility_pitch.ipynb) | [agility](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/agility_ref.ipynb) |
 | Radiator | Not yet specified | | |
 
 The sample works one satellite through each budget. The reference explains each input field, how each figure is worked out, and where the budget stops. For your own satellite, see [how to initialise a satellite](https://github.com/egemenimre/quicksat/blob/master/docs/guides/sizing/initialise_a_satellite.md). [How to edit and run the sizing files](https://github.com/egemenimre/quicksat/blob/master/docs/guides/sizing/edit_the_sizing_files.md) goes round the loop in the Sizing Editor. [How to close the sizing budgets](https://github.com/egemenimre/quicksat/blob/master/docs/guides/sizing/close_the_sizing_budgets.md) runs every budget in rounds, until a round passes them all and changes nothing. [How to add a manoeuvre](https://github.com/egemenimre/quicksat/blob/master/docs/guides/sizing/add_a_manoeuvre.md) adds a row to the delta-V budget, and shows its cost.
@@ -107,7 +114,7 @@ The editor's server runs on your computer only. It serves the Scenario Editor, a
 
 *The Activity Designer, with the list run once. The downlink is selected, and the time after the list is grey. Under the list's title, each row says what the run made of it.*
 
-For the scenario sample, start it with `sample/scenario/data sample/scenario/output`. The Sizing Editor needs no server.
+For the scenario sample, start it with `sample/scenario/data sample/scenario/output`. For the sizing sample, start it with `sample/sizing/data` alone: the Sizing Editor writes no viewer.
 
 ### By hand, with a notebook or a command
 

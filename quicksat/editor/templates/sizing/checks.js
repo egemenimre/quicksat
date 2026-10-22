@@ -3,9 +3,9 @@
 // ---------------------------------------------------------------- the checks
 
 /** What the page's checks leave to the notebooks, for the checks pop-over. */
-const CHECKS_NOTE = "The budgets themselves come from the notebooks.";
+const CHECKS_NOTE = "The Budgets tab shows the budgets, as quicksat works them out.";
 
-/** The page's own checks: names, units and ranges. The budgets themselves need the notebooks. */
+/** The page's own checks: names, units and ranges. quicksat works out the budgets themselves. */
 function runChecks() {
   const problems = [];
   const add = (section, text, level = "error") => problems.push({ section, text, level });
@@ -42,6 +42,19 @@ function runChecks() {
   positive("mission", "the duration", M.duration);
   const km = toKm(M.altitude);
   if (km != null && km > 2000) add("mission", `${fmt(km, 0)} km is above low Earth orbit; quicksat's budgets are meant for it`, "note");
+
+  // Requirements
+  {
+    const R = project.requirements;
+    const S = R.agility.slews.items;
+    unique("slews", "slew", S.map((x) => x.name));
+    for (const x of S) {
+      if (!AXES.includes(x.axis)) add("slews", `slew ${x.name}: the axis must be roll or pitch`);
+      positive("slews", `slew ${x.name}: the angle`, x.angle);
+      positive("slews", `slew ${x.name}: the time`, x.duration);
+    }
+    if (R.data.orbits_without_contact !== "") atLeast("required_storage", "the orbits without contact", R.data.orbits_without_contact, 0);
+  }
 
   // Mass
   {
@@ -85,7 +98,7 @@ function runChecks() {
     if (blank(D.rate)) add("downlink", "the rate is missing");
     atLeast("downlink", "the contacts per day", D.contacts_per_day, 0);
     if (blank(D.avg_contact_duration)) add("downlink", "the average contact is missing");
-    atLeast("storage", "the orbits without contact", S.orbits_without_contact, 0);
+    positive("storage", "the capacity", S.capacity);
   }
 
   // Delta-V
@@ -113,6 +126,8 @@ function runChecks() {
     const A = project.agility;
     unique("cases", "case", A.cases.items.map((c) => c.name));
     if (!A.cases.items.length) add("cases", "there must be at least one case");
+    else if (!A.selected) add("cases", "no case is selected");
+    else if (!A.cases.items.some((c) => c.name === A.selected)) add("cases", `the selected case "${A.selected}" is not one of the cases`);
     for (const c of A.cases.items) {
       if (c.kind === "envelope") {
         for (const axis of ["x", "y", "z"]) positive("cases", `case ${c.name}: the body's ${axis}`, c.body[axis]);

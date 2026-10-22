@@ -32,7 +32,7 @@ const designer = {
 };
 
 /** Whether the designer can run: the page came from the editor's server, which still answers. */
-const designing = () => viewer.server === "up";
+const designing = () => server.state === "up";
 
 /** An activity's fields that the run reads, as text, to compare with the last run's. */
 const activityKey = (item) =>

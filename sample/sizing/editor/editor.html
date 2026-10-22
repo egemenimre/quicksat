@@ -363,9 +363,59 @@ input.short { width: 100px; }
 .totals th:first-child, .totals td:first-child { text-align: left; }
 .totals td { padding: 2px 14px 2px 0; text-align: right; color: var(--text); }
 .totals tr.sum td { border-top: 1px solid var(--line); color: var(--accent); }
+
+/* The Budgets tab: the list of budgets, as the Setup steps are listed, and the
+   figures and tables of the one chosen, as quicksat works them out */
+#page-budgets { grid-template-columns: 190px minmax(0, 1fr); }
+#page-budgets .step-head .intro { color: var(--muted); margin: 0 0 0 14px; }
+#page-budgets .steps button.off { color: var(--dim); }
+.budget-state { color: var(--muted); font-size: 11px; }
+/* figures that the page's changes have left out of date */
+#page-budgets .stale .figs, #page-budgets .stale .card { opacity: 0.55; }
+.stale-banner, .budget-error { border: 1px solid var(--warn-line); background: var(--warn-bg); color: var(--amber); border-radius: 3px; padding: 6px 10px; font-size: 11px; }
+.budget-error { border-color: var(--fail-line); background: var(--fail-bg); color: var(--red); white-space: pre-wrap; }
+.budget-error b { color: var(--text); font-weight: 400; }
+.stale-banner pre.command { margin: 6px 0 0; color: var(--text); white-space: pre-wrap; }
+.figs { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.fig { border: 1px solid var(--line); border-radius: 3px; background: #0a1526; padding: 7px 10px; }
+.fig .k { color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; }
+.fig .v { font-size: 16px; color: var(--text); margin: 2px 0; }
+.fig .v u { text-decoration: none; color: var(--muted); font-size: 11px; margin-left: 4px; }
+.fig .s { color: var(--muted); font-size: 10.5px; }
+.fig.bad { border-color: var(--fail-line); background: var(--fail-bg); }
+.fig.bad .v { color: var(--red); }
+#page-budgets .card { margin: 0; }
+.card-head .source { color: var(--dim); font-size: 10.5px; }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; align-items: start; }
+.pair.two { grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); }
+.controls { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.controls .tick { color: var(--muted); display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.other-case { margin: 0; color: var(--amber); font-size: 11px; }
+.items.budget td { padding: 3px 8px; white-space: nowrap; }
+.items.budget th { padding: 3px 8px; }
+.items.budget .right { text-align: right; }
+.items.budget td.col-comments, .items.budget td.wrap { white-space: normal; }
+.items.budget td.col-comments { color: var(--muted); min-width: 220px; }
+.items.budget td.file { color: var(--dim); }
+.items.budget td.name { color: var(--muted); }
+.items.budget td.neg { color: var(--red); }
+.items.budget tr.bad-row td { background: rgba(248, 113, 113, 0.06); }
+.items.budget tr.rt-location_subtotal td, .items.budget tr.rt-subsystem_subtotal td, .items.budget tr.rt-phase_subtotal td, .items.budget tr.rt-subtotal td { color: var(--muted); font-style: italic; }
+.items.budget tr.rt-location_total td, .items.budget tr.rt-margin td { border-bottom: 1px solid var(--line-2); }
+.items.budget tr.rt-location_total td { font-weight: 600; padding-bottom: 8px; }
+.items.budget tr.rt-dry_total td, .items.budget tr.rt-wet_total td, .items.budget tr.rt-total td, .items.budget tr.rt-storage td { color: var(--accent); font-weight: 600; border-top: 1px solid var(--line-2); }
+.items.budget tr.rt-propellant td { color: var(--amber); }
+.items.budget tr.rt-fails td { color: var(--red); }
+.items.budget tr.rt-selected td { color: var(--accent); }
+.verdict { display: inline-block; padding: 0 6px; border-radius: 3px; font-size: 10px; letter-spacing: 0.06em; border: 1px solid; }
+.verdict.pass { color: var(--green); border-color: var(--ok-line); background: var(--ok-bg); }
+.verdict.fail { color: var(--red); border-color: var(--fail-line); background: var(--fail-bg); }
+
 @media (max-width: 900px) {
   #page-setup { grid-template-columns: minmax(0, 1fr); }
   #page-files { grid-template-columns: minmax(0, 1fr); }
+  #page-budgets { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  #page-budgets .step-head .intro { display: none; }
 }
 </style>
 </head>
@@ -376,6 +426,7 @@ input.short { width: 100px; }
   <nav class="tabs" id="tabs"></nav>
   <div class="spacer"></div>
   <button class="chip" id="checks-chip" title="The page's basic checks"></button>
+  <button class="btn danger" id="stop-server" hidden title="Stop the editor's server when you are done. The page stays open.">Stop the server</button>
 </header>
 <div class="banner" id="draft" hidden></div>
 <div class="banner" id="banner" hidden></div>
@@ -385,7 +436,9 @@ input.short { width: 100px; }
       <nav class="steps" id="steps"></nav>
       <div class="step" id="step"></div>
     </section>
+    <section class="page" id="page-budgets"></section>
     <section class="page" id="page-mission"><div class="sheet" id="sheet-mission"></div></section>
+    <section class="page" id="page-requirements"><div class="sheet" id="sheet-requirements"></div></section>
     <section class="page" id="page-mass"><div class="sheet" id="sheet-mass"></div></section>
     <section class="page" id="page-equipment"><div class="sheet" id="sheet-equipment"></div></section>
     <section class="page" id="page-data"><div class="sheet" id="sheet-data"></div></section>
@@ -398,8 +451,8 @@ input.short { width: 100px; }
   </div>
 </main>
 <div class="popover" id="popover" hidden></div>
-<script id="help" type="application/json">{"folder":{"title":"Folder","info":"<p>This folder holds the input files of quicksat's sizing budgets. Each budget is a notebook, which reads its files and builds one table.<\/p>\n<p>Saving always writes every budget's files. A folder that lacks a budget's files gets them started here, as new, for you to fill in.<\/p>\n{{files}}\n<span class=\"k\">What follows<\/span>\n<p>Data, delta-V and agility read <code>mission.yaml<\/code>, so the folder always holds it. Delta-V and agility also read the mass budget: delta-V for the dry mass, and agility for the mass of an envelope case. Without the mass files, their notebooks must give a mass instead.<\/p>\n<p>These files share nothing with a scenario or power folder. The mission's orbit is a reference orbit for the budgets: it has no epoch and no node.<\/p>"},"mission":{"title":"Reference orbit and design life","info":"<p>The mission is a circular orbit and a design life. The other budgets read it from here, so they cannot disagree on the orbit.<\/p>\n<span class=\"k\">Altitude<\/span><p>Above the Earth's equatorial radius of 6378.1 km. quicksat models no eccentricity.<\/p>\n<span class=\"k\">Inclination<\/span><p>No budget reads it yet. It records the orbit that the budgets assume. A sun-synchronous orbit at 500 km has an inclination of about 97.4 deg.<\/p>\n<span class=\"k\">Duration<\/span><p>The design life. The delta-V budget multiplies each recurring manoeuvre's yearly count by it.<\/p>\n<span class=\"k\">What follows<\/span><p>The figures under the fields come from the altitude alone. The data budget uses the period and the orbits in a day. Delta-V uses the orbit's radius and speed. Agility uses the ground track speed.<\/p>"},"altitude":{"file":"Above the Earth's equatorial radius. The orbit is circular."},"inclination":{"file":"No budget reads it yet. It records the orbit the budgets assume."},"duration":{"file":"The design life. It scales the recurring manoeuvres."},"locations":{"title":"Locations: margins and harness","info":"<p>Every equipment row names a location, such as Platform or Payload. The location sets the row's system margin and harness, and whether it stays in orbit.<\/p>\n<span class=\"k\">System margin<\/span><p>In percent, on the location's subtotal, after each row's equipment margin.<\/p>\n<span class=\"k\">Harness<\/span><p>The harness is worked out, not listed. It is a percentage of the location's equipment mass before margin, without the propellant. The harness takes its own margin, and then the system margin.<\/p>\n<span class=\"k\">Stays in orbit<\/span><p>Untick it for hardware that leaves at separation.<\/p>\n<span class=\"k\">Launcher<\/span><p><code>Launcher<\/code> needs no entry. It has no margins and no harness, and leaves at separation. Any other location that the equipment names must be listed here.<\/p>","file":"Each location's system margin, harness and harness margin, in percent, and whether it stays in orbit."},"equipment":{"title":"Equipment","info":"<p>One row per item, with the mass of one unit and the number flown. The mass takes its unit, such as <code>750 g<\/code> or <code>62 kg<\/code>.<\/p>\n<span class=\"k\">Ids<\/span><p>An id has no spaces. Two rows may share an id only at different locations, such as the MLI on the payload and on the platform.<\/p>\n<span class=\"k\">Margin<\/span><p>The equipment margin, in percent, follows how mature the item is. A usual rule is 5 % for an item off the shelf, 10 % for one modified, and 20 % for a new design.<\/p>\n<span class=\"k\">Class<\/span><p><code>propellant<\/code> marks the propellant load. It never takes a margin, and the mass cases scale it from full to empty. Every other row is <code>equipment<\/code>.<\/p>\n<span class=\"k\">Responsibility and subsystem<\/span><p>They group the rows in the notebook's tables. They do not change the mass.<\/p>\n<span class=\"k\">What follows<\/span><p>The totals under the table add the rows as entered. The notebook adds the harness and the system margins.<\/p>"},"generation":{"title":"Payload data generation","info":"<p>What the payload makes in each orbit. The raw rate is divided by the compression ratio. The result flows for the duty cycle's share of each orbit.<\/p>\n<span class=\"k\">Raw data rate<\/span><p>The instrument's output before compression, such as <code>1000 Mbit/s<\/code>.<\/p>\n<span class=\"k\">Compression ratio<\/span><p>1 means no compression. It cannot be below 1.<\/p>\n<span class=\"k\">Duty cycle<\/span><p>The share of each orbit spent making data, up to 100 %. An imager that works only on the day side, over land, may need a few percent.<\/p>","file":"What the payload makes. The raw rate is divided by the compression ratio, and flows for the duty cycle's share of each orbit."},"downlink":{"title":"Downlink","info":"<p>What the link sends down. It is given per day, because ground contacts are counted over the station's day.<\/p>\n<span class=\"k\">Rate<\/span><p>The achieved throughput, not the symbol rate.<\/p>\n<span class=\"k\">Contacts per day<\/span><p>The usable passes in a day, from Mission Analysis. It need not be a whole number.<\/p>\n<span class=\"k\">Average contact<\/span><p>How long a usable pass lasts, on average.<\/p>","file":"What the link sends: the achieved throughput, the usable contacts in a day, and their average length."},"storage":{"title":"Storage","info":"<p>The memory is sized to hold the data of this many orbits without a usable pass. It need not be a whole number.<\/p>\n<span class=\"k\">What follows<\/span><p>The data budget compares what the payload makes with what the link sends. It then gives the memory for this case.<\/p>","file":"The memory is sized for this many orbits without a usable contact."},"dvconfig":{"title":"Propulsion and margin","info":"<p>The settings of the delta-V budget. The orbit and the design life come from <code>mission.yaml<\/code>.<\/p>\n<span class=\"k\">Isp<\/span><p>The specific impulse, for the rocket equation. Hydrazine monopropellant gives about 220 s.<\/p>\n<span class=\"k\">Margin<\/span><p>In percent, one allowance on the total delta-V.<\/p>\n<span class=\"k\">Collision avoidance<\/span><p>With the return burn, each avoidance goes up and comes back down, which doubles its delta-V. Leave it off when the satellite was due to be raised anyway. The avoidance then also pays off some of the drag make-up.<\/p>"},"propulsion":{"file":"The specific impulse, for the rocket equation."},"margin":{"file":"In percent, one allowance on the total delta-V."},"collision_avoidance":{"file":"return_burn is true when each avoidance comes back down, which doubles its delta-V."},"manoeuvres":{"title":"Manoeuvres","info":"<p>One row per manoeuvre. Its type sets how the value turns into a delta-V, and the unit that the value takes.<\/p>\n<table><tr><th>type<\/th><th>value<\/th><th>worked out as<\/th><\/tr>\n<tr><td><code>altitude_change<\/code><\/td><td>a length<\/td><td>a Hohmann transfer between two circular orbits<\/td><\/tr>\n<tr><td><code>collision_avoidance<\/code><\/td><td>a length<\/td><td>the same, doubled with the return burn<\/td><\/tr>\n<tr><td><code>inclination_change<\/code><\/td><td>an angle<\/td><td>a plane change at the orbital speed<\/td><\/tr>\n<tr><td><code>deorbit<\/code><\/td><td>a length<\/td><td>one burn that lowers the perigee to this altitude<\/td><\/tr>\n<tr><td><code>given<\/code><\/td><td>a speed<\/td><td>taken as it is<\/td><\/tr><\/table>\n<span class=\"k\">Count and per year<\/span><p>How many times. With <b>per year<\/b> ticked, the count is per year, and is multiplied by the design life.<\/p>\n<span class=\"k\">Loss factor<\/span><p>The finite-burn and gravity losses, as a factor on the ideal delta-V. 1.0 is an impulsive burn, and the factor cannot be below 1.<\/p>\n<span class=\"k\">Phase<\/span><p>It groups the rows in the notebook's tables, such as Commissioning, Operations and Disposal.<\/p>"},"cases":{"title":"Inertia cases","info":"<p>Each case is one spacecraft, with one set of mass properties. The names are yours: the agility notebook asks for a case by its name.<\/p>\n<span class=\"k\">Envelope estimate<\/span><p>A uniform box, with a factor on each axis for the arrays, radiators and booms. Its inertia follows the mass from the mass budget, at the propellant level given.<\/p>\n<span class=\"k\">Stated inertia<\/span><p>The roll and pitch inertia, as a mass properties report gives them. It is a fixed number: nothing checks that it still matches the mass budget.<\/p>\n<p>A case is one or the other, never both, so each figure has one source.<\/p>\n<span class=\"k\">Axes<\/span><p>x is along the track, y across it, and z towards nadir.<\/p>"},"inertia_cases":{"file":"Each case is an envelope estimate or a stated inertia, never both. An envelope is a body box with an appendage factor per axis, and follows the mass budget's mass. A stated inertia is fixed."},"wheels":{"title":"Reaction wheels and settling","info":"<p>A pyramid of reaction wheels, with its axis along yaw.<\/p>\n<span class=\"k\">Nameplate figures<\/span><p>The momentum and the torque of one wheel, as the vendor quotes them. The elevation is each wheel's angle above the pyramid's base.<\/p>\n<span class=\"k\">Use policy<\/span><p>The momentum use factor is the share of the momentum kept for slews. The rest stores disturbances. The torque derating is the share of the torque used in a slew. The rest is kept for control.<\/p>\n<span class=\"k\">Settling time<\/span><p>What the platform needs after a slew before the payload can work. It is added once, at the end of a manoeuvre.<\/p>\n<span class=\"k\">Not in the file<\/span><p>The time allowed for a slew. It is asked of a spacecraft, so the notebook passes it to each call.<\/p>","file":"A pyramid of reaction wheels about yaw. The momentum and the torque are nameplate figures per wheel. The use factor and the derating are the shares used in slews."},"settling_time":{"file":"What the platform needs after a slew before the payload can work."},"save":{"title":"Save the files","info":"<p>Saving writes each file again. The page writes its own help as lines that start with #. Your notes are kept in the comments fields.<\/p>\n<p>Download the zip, or each file alone. Then put the files back in the folder, and run the notebooks.<\/p>"}}</script>
-<script id="project" type="application/json">{"format":"quicksat-sizing-editor","version":1,"folder":"data","label":"sample/sizing/data","files":{"mission":{"name":"mission.yaml","data":{"altitude":"500 km","inclination":"97.4 deg","duration":"7 yr"},"comments":[{"line":1,"text":"Shared mission. Read by every module that needs any of it: the data budget for\nperiod and orbits per day, delta-V for its Hohmann transfers and for scaling the\nrecurring manoeuvres, agility for ground track speed.\n\nA fact more than one module can use lives here; a fact only one module can use\nstays in that module's own config -- the Isp, say.\n\nThe orbit is circular throughout. quicksat models no eccentricity.","path":[],"inline":false},{"line":11,"text":"Sun-synchronous at this altitude.","path":["inclination"],"inline":false},{"line":13,"text":"The design life. It scales the recurring manoeuvres.","path":["duration"],"inline":false}]},"mass":{"name":"mass_budget_config.yaml","data":{"locations":{"Platform":{"system_margin":20,"harness_fraction":4,"harness_margin":25},"Payload":{"system_margin":20,"harness_fraction":5,"harness_margin":25}}},"comments":[{"line":1,"text":"quicksat mass budget configuration\n\nEverything is keyed on location: it carries both the system margin and the\nharness parameters. `Launcher` is a reserved location name and needs no entry --\nit defaults to no margins, no harness, and being dropped at separation.","path":[],"inline":false},{"line":8,"text":"All three figures are percentages. The system margin applies to the\nlocation's subtotal. The harness is a share of the location's equipment\nmass, before margin, and takes its own contingency.","path":["locations","Platform"],"inline":false}]},"equipment":{"name":"equipment.csv","header":["equipment_id","equipment_name","location","responsibility","subsystem","unit_mass","eqpt_margin","number_of_units","mass_class","comments"],"rows":[["telescope","TMA telescope assembly","Payload","Payload","Instrument","62.0 kg","20","1","equipment",""],["focal_plane","Focal plane assembly","Payload","Payload","Instrument","11.5 kg","15","1","equipment",""],["payload_electronics","Video processing unit","Payload","Payload","OBDH","8.0 kg","10","1","equipment",""],["payload_radiator","Payload radiator","Payload","Payload","Thermal","3.4 kg","20","1","equipment",""],["optical_bench","Optical bench","Payload","Payload","Structure","12.0 kg","20","1","equipment",""],["mli","Multi-layer insulation","Payload","Payload","Thermal","3.5 kg","20","1","equipment",""],["heaters","Heater lines and thermistors","Payload","Payload","Thermal","1.2 kg","15","1","equipment",""],["star_tracker","Jena Astro HP","Payload","Platform","ADCS","1.2 kg","5","2","equipment","Redundant pair"],["reaction_wheel","Rockwell RSI 45","Platform","Platform","ADCS","7.0 kg","10","4","equipment","Pyramid configuration"],["magnetorquer","ZARM MT30","Platform","Platform","ADCS","1.1 kg","10","3","equipment",""],["imu","Northrop LN-200S","Platform","Platform","ADCS","750 g","5","1","equipment","Entered in grams"],["gps_receiver","RUAG PODRIX","Platform","Platform","ADCS","1.6 kg","10","1","equipment",""],["battery","Saft VES16 pack","Platform","Platform","EPS","12.5 kg","15","1","equipment","Sized in the power budget"],["solar_array","Deployable GaAs wing","Platform","Platform","EPS","9.4 kg","20","2","equipment","Two wings"],["pcdu","Airbus PCDU","Platform","Platform","EPS","14.0 kg","10","1","equipment",""],["obc","SSTL OBC750","Platform","Platform","OBDH","3.2 kg","5","2","equipment","Cold redundant"],["mass_memory","SSDR 2 TB","Platform","Platform","OBDH","4.5 kg","15","1","equipment",""],["s_band_tx","S-band transceiver","Platform","Platform","COMM","1.8 kg","5","2","equipment",""],["x_band_tx","X-band transmitter","Platform","Platform","COMM","5.5 kg","15","1","equipment",""],["s_band_ant","S-band patch antenna","Platform","Platform","COMM","0.3 kg","10","4","equipment",""],["x_band_ant","X-band patch antenna","Platform","Platform","COMM","0.4 kg","10","2","equipment",""],["primary_structure","CFRP central tube","Platform","Platform","Structure","48.0 kg","20","1","equipment",""],["side_panels","Sandwich side panels","Platform","Platform","Structure","26.0 kg","20","1","equipment",""],["mli","Multi-layer insulation","Platform","Platform","Thermal","6.5 kg","20","1","equipment",""],["heaters","Heater lines and thermistors","Platform","Platform","Thermal","2.2 kg","15","1","equipment",""],["thruster","Hydrazine 1 N thruster","Platform","Platform","Propulsion","0.35 kg","10","4","equipment",""],["tank","Propellant tank","Platform","Platform","Propulsion","8.8 kg","15","1","equipment",""],["hydrazine","Hydrazine load","Platform","Platform","Propulsion","22.0 kg","0","1","propellant","No mass margin; carried as delta-V margin"],["sep_ring_sat","Adapter ring, satellite side","Platform","Platform","Structure","9.0 kg","10","1","equipment","Stays with the satellite"],["sep_ring_lv","Adapter ring, launcher side","Launcher","Launcher","Structure","11.0 kg","10","1","equipment","Stays with the launcher"],["clampband","Clampband and pyros","Launcher","Launcher","Structure","4.2 kg","10","1","equipment","Stays with the launcher"]]},"data":{"name":"pl_dataflow_model.yaml","data":{"generation":{"raw_datarate":"1000 Mbit/s","compression_ratio":2.4,"duty_cycle":"5 %"},"downlink":{"rate":"800 Mbit/s","contacts_per_day":7,"avg_contact_duration":"6 min"},"storage":{"orbits_without_contact":3}},"comments":[{"line":1,"text":"Payload dataflow model: what the instrument generates, what the downlink clears,\nand what has to be held on board in between.\n\nOrbit comes from mission.yaml.","path":[],"inline":false},{"line":7,"text":"Before compression: 416.67 Mbit/s after it.","path":["generation","raw_datarate"],"inline":false},{"line":10,"text":"Of each orbit: daytime, full VNIR.","path":["generation","duty_cycle"],"inline":false},{"line":14,"text":"The X-band transmitter's throughput.","path":["downlink","rate"],"inline":false},{"line":16,"text":"Usable ground contacts, from Mission Analysis.","path":["downlink","contacts_per_day"],"inline":false},{"line":18,"text":"The average usable contact.","path":["downlink","avg_contact_duration"],"inline":false},{"line":22,"text":"The sizing case for the mass memory.","path":["storage","orbits_without_contact"],"inline":false}]},"deltav":{"name":"delta_v_config.yaml","data":{"propulsion":{"isp":"220 s"},"margin":5,"collision_avoidance":{"return_burn":false}},"comments":[{"line":1,"text":"Delta-V budget settings.\n\nOrbit and duration both come from mission.yaml: the manoeuvres are flown from the\norbit and the recurring ones are scaled by the duration, and the delta-V budget is\nnot the only thing that needs either. What stays here is what only it can use.","path":[],"inline":false},{"line":8,"text":"Hydrazine monopropellant, for the rocket equation.","path":["propulsion","isp"],"inline":false},{"line":11,"text":"Percent, one allowance on the total.","path":["margin"],"inline":false},{"line":15,"text":"A hop up and back down. False when the satellite was due to be raised\nanyway, and the manoeuvre does double duty against the maintenance debt.","path":["collision_avoidance","return_burn"],"inline":false}]},"manoeuvres":{"name":"manoeuvres.csv","header":["manoeuvre_id","manoeuvre_name","phase","manoeuvre_type","value","count","recurring","loss_factor","comments"],"rows":[["injection_correction","Launcher dispersion correction","Commissioning","altitude_change","12 km","1","false","1.0","Semi-major axis dispersion at separation"],["inclination_trim","Injection inclination trim","Commissioning","inclination_change","0.05 deg","1","false","1.0","Plane error at separation"],["phasing","Orbit phasing to the reference slot","Commissioning","given","8 m/s","1","false","1.0","From Mission Analysis; needs a real phasing analysis"],["drag_makeup","Drag make-up","Operations","altitude_change","1.2 km","1","true","1.0","Per year at 500 km solar mean"],["collision_avoidance","Collision avoidance","Operations","collision_avoidance","200 m","4","true","1.0","Per year; one-way hop as the drag make-up absorbs the return"],["inclination_maint","Inclination maintenance","Operations","inclination_change","0.012 deg","1","true","1.0","Per year, holds the sun-synchronous plane"],["deorbit","End-of-life deorbit","Disposal","deorbit","250 km","1","false","1.0","Single burn to a 500 x 250 km disposal orbit; natural decay rather than controlled re-entry"]]},"agility":{"name":"agility_config.yaml","data":{"inertia_cases":{"first_guess":{"body":{"x":"1.5 m","y":"1.5 m","z":"2.0 m"},"appendage_factor":{"roll":1.07,"pitch":1.02},"propellant":"100 %"},"measured_bol":{"inertia":{"roll":"264.7 kg*m**2","pitch":"280.0 kg*m**2"}},"measured_eol":{"inertia":{"roll":"250.0 kg*m**2","pitch":"264.0 kg*m**2"}}},"wheels":{"count":4,"elevation":"26.5 deg","momentum":"4.0 N*m*s","torque":"0.2 N*m","momentum_use_factor":"33.3 %","torque_derating":"75 %"},"settling_time":"20 s"},"comments":[{"line":1,"text":"Attitude agility settings: the spacecraft cases that can be slewed, the wheels\nthat slew them, and how long the platform takes to settle afterwards.\n\nNo mass anywhere. The mass budget owns it, and a second copy here would drift --\nthe same reason altitude lives only in mission.yaml. Orbit comes from mission.yaml,\nfor ground track speed. The target duration for a manoeuvre is not here\neither: that is asked of a spacecraft, not a property of one.","path":[],"inline":false},{"line":10,"text":"One case is one spacecraft, one set of mass properties. The names are yours\n-- nothing in the code matches on them. Each case is EITHER an envelope\nestimate OR a stated inertia, never both, so there is never a question which\nof the two produced a number.","path":["inertia_cases"],"inline":false},{"line":15,"text":"Inertia estimated from a uniform box.","path":["inertia_cases","first_guess"],"inline":false},{"line":17,"text":"The box: x along track, y cross track, z nadir.","path":["inertia_cases","first_guess","body"],"inline":false},{"line":22,"text":"Uplift for arrays, radiator and booms. It is per axis, because the\nappendages are not symmetric.","path":["inertia_cases","first_guess","appendage_factor"],"inline":false},{"line":27,"text":"Of the load still aboard. The mass comes from the mass budget and this\npicks the mission point, so the inertia follows the mass automatically.","path":["inertia_cases","first_guess","propellant"],"inline":false},{"line":31,"text":"Stated outright, as a mass properties report gives it. NOTE: a stated\ninertia is a fixed number. It does not follow the mass budget, and nothing\nchecks that it still describes the spacecraft you costed.","path":["inertia_cases","measured_bol"],"inline":false},{"line":39,"text":"The same spacecraft, tanks empty.","path":["inertia_cases","measured_eol"],"inline":false},{"line":45,"text":"A pyramid, with its symmetry axis along yaw. The momentum and the torque are\nnameplate figures, per wheel. The use factor and the derating are policy: the\nrest of the momentum is disturbance storage, and the rest of the torque is\ncontrol authority.","path":["wheels"],"inline":false},{"line":51,"text":"Of each wheel above the pyramid base plane.","path":["wheels","elevation"],"inline":false},{"line":58,"text":"What the platform needs after a slew before the payload can work. An ADCS\nproperty, applied once at the end of a manoeuvre and not between steps.","path":["settling_time"],"inline":false}]}},"checks":[{"file":"mission.yaml","ok":true,"message":""},{"file":"equipment.csv with mass_budget_config.yaml","ok":true,"message":""},{"file":"pl_dataflow_model.yaml","ok":true,"message":""},{"file":"manoeuvres.csv with delta_v_config.yaml","ok":true,"message":""},{"file":"agility_config.yaml","ok":true,"message":""}]}</script>
+<script id="help" type="application/json">{"folder":{"title":"Folder","info":"<p>This folder holds the input files of quicksat's sizing budgets. Each budget is a notebook, which reads its files and builds one table. The Budgets tab shows them all, as quicksat works them out.<\/p>\n<p>Saving always writes every budget's files. A folder that lacks a budget's files gets them started here, as new, for you to fill in.<\/p>\n{{files}}\n<span class=\"k\">What follows<\/span>\n<p>Data, delta-V and agility read <code>mission.yaml<\/code>, so the folder always holds it. Delta-V and agility also read the mass budget: delta-V for the dry mass, and agility for the mass of an envelope case. Without the mass files, their notebooks must give a mass instead.<\/p>\n<p>The data and agility budgets check their figures against <code>requirements.yaml<\/code>. Without it, they work out their figures and check nothing against a requirement.<\/p>\n<p>These files share nothing with a scenario or power folder. The mission's orbit is a reference orbit for the budgets: it has no epoch and no node.<\/p>"},"mission":{"title":"Reference orbit and design life","info":"<p>The mission is a circular orbit and a design life. The other budgets read it from here, so they cannot disagree on the orbit.<\/p>\n<span class=\"k\">Altitude<\/span><p>Above the Earth's equatorial radius of 6378.1 km. quicksat models no eccentricity.<\/p>\n<span class=\"k\">Inclination<\/span><p>No budget reads it yet. It records the orbit that the budgets assume. A sun-synchronous orbit at 500 km has an inclination of about 97.4 deg.<\/p>\n<span class=\"k\">Duration<\/span><p>The design life. The delta-V budget multiplies each recurring manoeuvre's yearly count by it.<\/p>\n<span class=\"k\">What follows<\/span><p>The figures under the fields come from the altitude alone. The data budget uses the period and the orbits in a day. Delta-V uses the orbit's radius and speed. Agility uses the ground track speed.<\/p>"},"altitude":{"file":"Above the Earth's equatorial radius. The orbit is circular."},"inclination":{"file":"No budget reads it yet. It records the orbit the budgets assume."},"duration":{"file":"The design life. It scales the recurring manoeuvres."},"slews":{"title":"Slews the mission needs","info":"<p>Each slew that the mission needs: an angle about roll or pitch, and the time it may take. The names are yours. Different operations may ask different times of the same spacecraft, so there may be several slews about one axis.<\/p>\n<span class=\"k\">Within<\/span><p>The time for the whole manoeuvre, with the settling time after it.<\/p>\n<span class=\"k\">What follows<\/span><p>The agility budget checks each slew about its axis, for the selected inertia case, with every wheel working.<\/p>","file":"Each slew the mission needs, under a name of your choice: the axis, the angle and the time it may take, settling included."},"required_storage":{"title":"Time without contact","info":"<p>The longest run of orbits with no usable pass. It need not be a whole number. Leave it empty when there is no such requirement.<\/p>\n<span class=\"k\">What follows<\/span><p>The data budget works out the data generated over this time, and checks that the mass memory holds it.<\/p>","file":"The longest run of orbits with no usable contact. The mass memory must hold the data generated over it."},"locations":{"title":"Locations: margins and harness","info":"<p>Every equipment row names a location, such as Platform or Payload. The location sets the row's system margin and harness, and whether it stays in orbit.<\/p>\n<span class=\"k\">System margin<\/span><p>In percent, on the location's subtotal, after each row's equipment margin.<\/p>\n<span class=\"k\">Harness<\/span><p>The harness is worked out, not listed. It is a percentage of the location's equipment mass before margin, without the propellant. The harness takes its own margin, and then the system margin.<\/p>\n<span class=\"k\">Stays in orbit<\/span><p>Untick it for hardware that leaves at separation.<\/p>\n<span class=\"k\">Launcher<\/span><p><code>Launcher<\/code> needs no entry. It has no margins and no harness, and leaves at separation. Any other location that the equipment names must be listed here.<\/p>","file":"Each location's system margin, harness and harness margin, in percent, and whether it stays in orbit."},"equipment":{"title":"Equipment","info":"<p>One row per item, with the mass of one unit and the number flown. The mass takes its unit, such as <code>750 g<\/code> or <code>62 kg<\/code>.<\/p>\n<span class=\"k\">Ids<\/span><p>An id has no spaces. Two rows may share an id only at different locations, such as the MLI on the payload and on the platform.<\/p>\n<span class=\"k\">Margin<\/span><p>The equipment margin, in percent, follows how mature the item is. A usual rule is 5 % for an item off the shelf, 10 % for one modified, and 20 % for a new design.<\/p>\n<span class=\"k\">Class<\/span><p><code>propellant<\/code> marks the propellant load. It never takes a margin, and the mass cases scale it from full to empty. Every other row is <code>equipment<\/code>.<\/p>\n<span class=\"k\">Responsibility and subsystem<\/span><p>They group the rows in the notebook's tables. They do not change the mass.<\/p>\n<span class=\"k\">What follows<\/span><p>The totals under the table add the rows as entered. The notebook adds the harness and the system margins.<\/p>"},"generation":{"title":"Payload data generation","info":"<p>What the payload makes in each orbit. The raw rate is divided by the compression ratio. The result flows for the duty cycle's share of each orbit.<\/p>\n<span class=\"k\">Raw data rate<\/span><p>The instrument's output before compression, such as <code>1000 Mbit/s<\/code>.<\/p>\n<span class=\"k\">Compression ratio<\/span><p>1 means no compression. It cannot be below 1.<\/p>\n<span class=\"k\">Duty cycle<\/span><p>The share of each orbit spent making data, up to 100 %. An imager that works only on the day side, over land, may need a few percent.<\/p>","file":"What the payload makes. The raw rate is divided by the compression ratio, and flows for the duty cycle's share of each orbit."},"downlink":{"title":"Downlink","info":"<p>What the link sends down. It is given per day, because ground contacts are counted over the station's day.<\/p>\n<span class=\"k\">Rate<\/span><p>The achieved throughput, not the symbol rate.<\/p>\n<span class=\"k\">Contacts per day<\/span><p>The usable passes in a day, from Mission Analysis. It need not be a whole number.<\/p>\n<span class=\"k\">Average contact<\/span><p>How long a usable pass lasts, on average.<\/p>","file":"What the link sends: the achieved throughput, the usable contacts in a day, and their average length."},"storage":{"title":"Storage","info":"<p>The mass memory's usable capacity, after any space kept for other data, such as housekeeping or a file system. It takes its unit, such as <code>2 TB<\/code> or <code>512 Gbit<\/code>.<\/p>\n<span class=\"k\">What follows<\/span><p>The data budget compares what the payload makes with what the link sends. It then checks that the memory holds the data of the time without contact, which is on the Requirements tab.<\/p>","file":"The mass memory's usable capacity. How long it must hold the data is in requirements.yaml."},"dvconfig":{"title":"Propulsion and margin","info":"<p>The settings of the delta-V budget. The orbit and the design life come from <code>mission.yaml<\/code>.<\/p>\n<span class=\"k\">Isp<\/span><p>The specific impulse, for the rocket equation. Hydrazine monopropellant gives about 220 s.<\/p>\n<span class=\"k\">Margin<\/span><p>In percent, one allowance on the total delta-V.<\/p>\n<span class=\"k\">Collision avoidance<\/span><p>With the return burn, each avoidance goes up and comes back down, which doubles its delta-V. Leave it off when the satellite was due to be raised anyway. The avoidance then also pays off some of the drag make-up.<\/p>"},"propulsion":{"file":"The specific impulse, for the rocket equation."},"margin":{"file":"In percent, one allowance on the total delta-V."},"collision_avoidance":{"file":"return_burn is true when each avoidance comes back down, which doubles its delta-V."},"manoeuvres":{"title":"Manoeuvres","info":"<p>One row per manoeuvre. Its type sets how the value turns into a delta-V, and the unit that the value takes.<\/p>\n<table><tr><th>type<\/th><th>value<\/th><th>worked out as<\/th><\/tr>\n<tr><td><code>altitude_change<\/code><\/td><td>a length<\/td><td>a Hohmann transfer between two circular orbits<\/td><\/tr>\n<tr><td><code>collision_avoidance<\/code><\/td><td>a length<\/td><td>the same, doubled with the return burn<\/td><\/tr>\n<tr><td><code>inclination_change<\/code><\/td><td>an angle<\/td><td>a plane change at the orbital speed<\/td><\/tr>\n<tr><td><code>deorbit<\/code><\/td><td>a length<\/td><td>one burn that lowers the perigee to this altitude<\/td><\/tr>\n<tr><td><code>given<\/code><\/td><td>a speed<\/td><td>taken as it is<\/td><\/tr><\/table>\n<span class=\"k\">Count and per year<\/span><p>How many times. With <b>per year<\/b> ticked, the count is per year, and is multiplied by the design life.<\/p>\n<span class=\"k\">Loss factor<\/span><p>The finite-burn and gravity losses, as a factor on the ideal delta-V. 1.0 is an impulsive burn, and the factor cannot be below 1.<\/p>\n<span class=\"k\">Phase<\/span><p>It groups the rows in the notebook's tables, such as Commissioning, Operations and Disposal.<\/p>"},"cases":{"title":"Inertia cases","info":"<p>Each case is one spacecraft, with one set of mass properties, such as the spacecraft at the start or the end of its life. The names are yours.<\/p>\n<span class=\"k\">Selected case<\/span><p>The case that the agility budget checks against the slews the mission needs. The others are kept for comparison, and the agility notebooks can ask for any of them by name.<\/p>\n<span class=\"k\">Envelope estimate<\/span><p>A uniform box, with a factor on each axis for the arrays, radiators and booms. Its inertia follows the mass from the mass budget, at the propellant level given.<\/p>\n<span class=\"k\">Stated inertia<\/span><p>The roll and pitch inertia, as a mass properties report gives them. It is a fixed number: nothing checks that it still matches the mass budget.<\/p>\n<p>A case is one or the other, never both, so each figure has one source.<\/p>\n<span class=\"k\">Axes<\/span><p>x is along the track, y across it, and z towards nadir.<\/p>"},"selected_case":{"file":"The inertia case that the budget checks. The others are kept for comparison."},"inertia_cases":{"file":"Each case is an envelope estimate or a stated inertia, never both. An envelope is a body box with an appendage factor per axis, and follows the mass budget's mass. A stated inertia is fixed."},"wheels":{"title":"Reaction wheels and settling","info":"<p>A pyramid of reaction wheels, with its axis along yaw.<\/p>\n<span class=\"k\">Nameplate figures<\/span><p>The momentum and the torque of one wheel, as the vendor quotes them. The elevation is each wheel's angle above the pyramid's base.<\/p>\n<span class=\"k\">Use policy<\/span><p>The momentum use factor is the share of the momentum kept for slews. The rest stores disturbances. The torque derating is the share of the torque used in a slew. The rest is kept for control.<\/p>\n<span class=\"k\">Settling time<\/span><p>What the platform needs after a slew before the payload can work. It is added once, at the end of a manoeuvre.<\/p>\n<span class=\"k\">Not in the file<\/span><p>The time allowed for a slew. It is asked of a spacecraft, so it is on the Requirements tab.<\/p>","file":"A pyramid of reaction wheels about yaw. The momentum and the torque are nameplate figures per wheel. The use factor and the derating are the shares used in slews."},"settling_time":{"file":"What the platform needs after a slew before the payload can work."},"save":{"title":"Save the files","info":"<p>Saving writes each file again. The page writes its own help as lines that start with #. Your notes are kept in the comments fields.<\/p>\n<p>Download the zip, or each file alone. Then put the files back in the folder, and run the notebooks.<\/p>"}}</script>
+<script id="project" type="application/json">{"format":"quicksat-sizing-editor","version":1,"folder":"data","label":"sample/sizing/data","files":{"mission":{"name":"mission.yaml","data":{"altitude":"500 km","inclination":"97.4 deg","duration":"7 yr"},"comments":[{"line":1,"text":"Shared mission. Read by every module that needs any of it: the data budget for\nperiod and orbits per day, delta-V for its Hohmann transfers and for scaling the\nrecurring manoeuvres, agility for ground track speed.\n\nA fact more than one module can use lives here; a fact only one module can use\nstays in that module's own config -- the Isp, say.\n\nThe orbit is circular throughout. quicksat models no eccentricity.","path":[],"inline":false},{"line":11,"text":"Sun-synchronous at this altitude.","path":["inclination"],"inline":false},{"line":13,"text":"The design life. It scales the recurring manoeuvres.","path":["duration"],"inline":false}]},"requirements":{"name":"requirements.yaml","data":{"agility":{"slews":{"roll_40":{"axis":"roll","angle":"40 deg","duration":"90 s"},"pitch_40":{"axis":"pitch","angle":"40 deg","duration":"90 s"}}},"data":{"orbits_without_contact":3}},"comments":[{"line":1,"text":"What the mission asks of the spacecraft. Each budget checks its figures\nagainst its own section. Every section is optional.","path":[],"inline":false},{"line":5,"text":"Each slew the mission needs, under a name of your choice. The duration\nincludes the settling time.","path":["agility","slews"],"inline":false},{"line":18,"text":"The longest run of orbits with no usable contact. The mass memory must\nhold the data generated over it.","path":["data","orbits_without_contact"],"inline":false}]},"mass":{"name":"mass_budget_config.yaml","data":{"locations":{"Platform":{"system_margin":20,"harness_fraction":4,"harness_margin":25},"Payload":{"system_margin":20,"harness_fraction":5,"harness_margin":25}}},"comments":[{"line":1,"text":"quicksat mass budget configuration\n\nEverything is keyed on location: it carries both the system margin and the\nharness parameters. `Launcher` is a reserved location name and needs no entry --\nit defaults to no margins, no harness, and being dropped at separation.","path":[],"inline":false},{"line":8,"text":"All three figures are percentages. The system margin applies to the\nlocation's subtotal. The harness is a share of the location's equipment\nmass, before margin, and takes its own contingency.","path":["locations","Platform"],"inline":false}]},"equipment":{"name":"equipment.csv","header":["equipment_id","equipment_name","location","responsibility","subsystem","unit_mass","eqpt_margin","number_of_units","mass_class","comments"],"rows":[["telescope","TMA telescope assembly","Payload","Payload","Instrument","62.0 kg","20","1","equipment",""],["focal_plane","Focal plane assembly","Payload","Payload","Instrument","11.5 kg","15","1","equipment",""],["payload_electronics","Video processing unit","Payload","Payload","OBDH","8.0 kg","10","1","equipment",""],["payload_radiator","Payload radiator","Payload","Payload","Thermal","3.4 kg","20","1","equipment",""],["optical_bench","Optical bench","Payload","Payload","Structure","12.0 kg","20","1","equipment",""],["mli","Multi-layer insulation","Payload","Payload","Thermal","3.5 kg","20","1","equipment",""],["heaters","Heater lines and thermistors","Payload","Payload","Thermal","1.2 kg","15","1","equipment",""],["star_tracker","Jena Astro HP","Payload","Platform","ADCS","1.2 kg","5","2","equipment","Redundant pair"],["reaction_wheel","Rockwell RSI 45","Platform","Platform","ADCS","7.0 kg","10","4","equipment","Pyramid configuration"],["magnetorquer","ZARM MT30","Platform","Platform","ADCS","1.1 kg","10","3","equipment",""],["imu","Northrop LN-200S","Platform","Platform","ADCS","750 g","5","1","equipment","Entered in grams"],["gps_receiver","RUAG PODRIX","Platform","Platform","ADCS","1.6 kg","10","1","equipment",""],["battery","Saft VES16 pack","Platform","Platform","EPS","12.5 kg","15","1","equipment","Sized in the power budget"],["solar_array","Deployable GaAs wing","Platform","Platform","EPS","9.4 kg","20","2","equipment","Two wings"],["pcdu","Airbus PCDU","Platform","Platform","EPS","14.0 kg","10","1","equipment",""],["obc","SSTL OBC750","Platform","Platform","OBDH","3.2 kg","5","2","equipment","Cold redundant"],["mass_memory","SSDR 2 TB","Platform","Platform","OBDH","4.5 kg","15","1","equipment",""],["s_band_tx","S-band transceiver","Platform","Platform","COMM","1.8 kg","5","2","equipment",""],["x_band_tx","X-band transmitter","Platform","Platform","COMM","5.5 kg","15","1","equipment",""],["s_band_ant","S-band patch antenna","Platform","Platform","COMM","0.3 kg","10","4","equipment",""],["x_band_ant","X-band patch antenna","Platform","Platform","COMM","0.4 kg","10","2","equipment",""],["primary_structure","CFRP central tube","Platform","Platform","Structure","48.0 kg","20","1","equipment",""],["side_panels","Sandwich side panels","Platform","Platform","Structure","26.0 kg","20","1","equipment",""],["mli","Multi-layer insulation","Platform","Platform","Thermal","6.5 kg","20","1","equipment",""],["heaters","Heater lines and thermistors","Platform","Platform","Thermal","2.2 kg","15","1","equipment",""],["thruster","Hydrazine 1 N thruster","Platform","Platform","Propulsion","0.35 kg","10","4","equipment",""],["tank","Propellant tank","Platform","Platform","Propulsion","8.8 kg","15","1","equipment",""],["hydrazine","Hydrazine load","Platform","Platform","Propulsion","22.0 kg","0","1","propellant","No mass margin; carried as delta-V margin"],["sep_ring_sat","Adapter ring, satellite side","Platform","Platform","Structure","9.0 kg","10","1","equipment","Stays with the satellite"],["sep_ring_lv","Adapter ring, launcher side","Launcher","Launcher","Structure","11.0 kg","10","1","equipment","Stays with the launcher"],["clampband","Clampband and pyros","Launcher","Launcher","Structure","4.2 kg","10","1","equipment","Stays with the launcher"]]},"data":{"name":"pl_dataflow_model.yaml","data":{"generation":{"raw_datarate":"1000 Mbit/s","compression_ratio":2.4,"duty_cycle":"5 %"},"downlink":{"rate":"800 Mbit/s","contacts_per_day":7,"avg_contact_duration":"6 min"},"storage":{"capacity":"2 TB"}},"comments":[{"line":1,"text":"Payload dataflow model: what the instrument generates, what the downlink clears,\nand what has to be held on board in between.\n\nOrbit comes from mission.yaml.","path":[],"inline":false},{"line":7,"text":"Before compression: 416.67 Mbit/s after it.","path":["generation","raw_datarate"],"inline":false},{"line":10,"text":"Of each orbit: daytime, full VNIR.","path":["generation","duty_cycle"],"inline":false},{"line":14,"text":"The X-band transmitter's throughput.","path":["downlink","rate"],"inline":false},{"line":16,"text":"Usable ground contacts, from Mission Analysis.","path":["downlink","contacts_per_day"],"inline":false},{"line":18,"text":"The average usable contact.","path":["downlink","avg_contact_duration"],"inline":false},{"line":22,"text":"The mass memory's usable capacity, after any space kept for other data.\nHow long it must hold the data is in requirements.yaml.","path":["storage","capacity"],"inline":false}]},"deltav":{"name":"delta_v_config.yaml","data":{"propulsion":{"isp":"220 s"},"margin":5,"collision_avoidance":{"return_burn":false}},"comments":[{"line":1,"text":"Delta-V budget settings.\n\nOrbit and duration both come from mission.yaml: the manoeuvres are flown from the\norbit and the recurring ones are scaled by the duration, and the delta-V budget is\nnot the only thing that needs either. What stays here is what only it can use.","path":[],"inline":false},{"line":8,"text":"Hydrazine monopropellant, for the rocket equation.","path":["propulsion","isp"],"inline":false},{"line":11,"text":"Percent, one allowance on the total.","path":["margin"],"inline":false},{"line":15,"text":"A hop up and back down. False when the satellite was due to be raised\nanyway, and the manoeuvre does double duty against the maintenance debt.","path":["collision_avoidance","return_burn"],"inline":false}]},"manoeuvres":{"name":"manoeuvres.csv","header":["manoeuvre_id","manoeuvre_name","phase","manoeuvre_type","value","count","recurring","loss_factor","comments"],"rows":[["injection_correction","Launcher dispersion correction","Commissioning","altitude_change","12 km","1","false","1.0","Semi-major axis dispersion at separation"],["inclination_trim","Injection inclination trim","Commissioning","inclination_change","0.05 deg","1","false","1.0","Plane error at separation"],["phasing","Orbit phasing to the reference slot","Commissioning","given","8 m/s","1","false","1.0","From Mission Analysis; needs a real phasing analysis"],["drag_makeup","Drag make-up","Operations","altitude_change","1.2 km","1","true","1.0","Per year at 500 km solar mean"],["collision_avoidance","Collision avoidance","Operations","collision_avoidance","200 m","4","true","1.0","Per year; one-way hop as the drag make-up absorbs the return"],["inclination_maint","Inclination maintenance","Operations","inclination_change","0.012 deg","1","true","1.0","Per year, holds the sun-synchronous plane"],["deorbit","End-of-life deorbit","Disposal","deorbit","250 km","1","false","1.0","Single burn to a 500 x 250 km disposal orbit; natural decay rather than controlled re-entry"]]},"agility":{"name":"agility_config.yaml","data":{"selected_case":"first_guess","inertia_cases":{"first_guess":{"body":{"x":"1.5 m","y":"1.5 m","z":"2.0 m"},"appendage_factor":{"roll":1.07,"pitch":1.02},"propellant":"100 %"},"measured_bol":{"inertia":{"roll":"264.7 kg*m**2","pitch":"280.0 kg*m**2"}},"measured_eol":{"inertia":{"roll":"250.0 kg*m**2","pitch":"264.0 kg*m**2"}}},"wheels":{"count":4,"elevation":"26.5 deg","momentum":"4.0 N*m*s","torque":"0.2 N*m","momentum_use_factor":"33.3 %","torque_derating":"75 %"},"settling_time":"20 s"},"comments":[{"line":1,"text":"Attitude agility settings: the spacecraft cases that can be slewed, the wheels\nthat slew them, and how long the platform takes to settle afterwards.\n\nNo mass anywhere. The mass budget owns it, and a second copy here would drift --\nthe same reason altitude lives only in mission.yaml. Orbit comes from mission.yaml,\nfor ground track speed. The target duration for a manoeuvre is not here\neither: that is asked of a spacecraft, not a property of one. It is in\nrequirements.yaml.","path":[],"inline":false},{"line":10,"text":"The inertia case that the budget sizes and checks. The others are kept for\ncomparison, such as the spacecraft at other stages of the mission.","path":["selected_case"],"inline":false},{"line":15,"text":"One case is one spacecraft, one set of mass properties. The names are yours\n-- nothing in the code matches on them. Each case is EITHER an envelope\nestimate OR a stated inertia, never both, so there is never a question which\nof the two produced a number.","path":["inertia_cases"],"inline":false},{"line":20,"text":"Inertia estimated from a uniform box.","path":["inertia_cases","first_guess"],"inline":false},{"line":22,"text":"The box: x along track, y cross track, z nadir.","path":["inertia_cases","first_guess","body"],"inline":false},{"line":27,"text":"Uplift for arrays, radiator and booms. It is per axis, because the\nappendages are not symmetric.","path":["inertia_cases","first_guess","appendage_factor"],"inline":false},{"line":32,"text":"Of the load still aboard. The mass comes from the mass budget and this\npicks the mission point, so the inertia follows the mass automatically.","path":["inertia_cases","first_guess","propellant"],"inline":false},{"line":36,"text":"Stated outright, as a mass properties report gives it. NOTE: a stated\ninertia is a fixed number. It does not follow the mass budget, and nothing\nchecks that it still describes the spacecraft you costed.","path":["inertia_cases","measured_bol"],"inline":false},{"line":44,"text":"The same spacecraft, tanks empty.","path":["inertia_cases","measured_eol"],"inline":false},{"line":50,"text":"A pyramid, with its symmetry axis along yaw. The momentum and the torque are\nnameplate figures, per wheel. The use factor and the derating are policy: the\nrest of the momentum is disturbance storage, and the rest of the torque is\ncontrol authority.","path":["wheels"],"inline":false},{"line":56,"text":"Of each wheel above the pyramid base plane.","path":["wheels","elevation"],"inline":false},{"line":63,"text":"What the platform needs after a slew before the payload can work. An ADCS\nproperty, applied once at the end of a manoeuvre and not between steps.","path":["settling_time"],"inline":false}]}},"checks":[{"file":"mission.yaml","ok":true,"message":""},{"file":"requirements.yaml","ok":true,"message":""},{"file":"equipment.csv with mass_budget_config.yaml","ok":true,"message":""},{"file":"pl_dataflow_model.yaml","ok":true,"message":""},{"file":"manoeuvres.csv with delta_v_config.yaml","ok":true,"message":""},{"file":"agility_config.yaml","ok":true,"message":""}],"results":{"budgets":{"mass":{"figures":[{"label":"Launch mass","value":"487.34","unit":"kg","note":"on the ground, wet","bad":false,"headline":true},{"label":"In orbit, wet","value":"470.62","unit":"kg","note":"448.62 kg dry","bad":false,"headline":true},{"label":"In orbit, dry","value":"448.62","unit":"kg","note":"the delta-V budget's dry mass","bad":false,"headline":false},{"label":"Propellant","value":"22.00","unit":"kg","note":"loaded","bad":false,"headline":false},{"label":"Platform","value":"315.21","unit":"kg","note":"by location, wet","bad":false,"headline":false},{"label":"Payload","value":"155.41","unit":"kg","note":"by location","bad":false,"headline":false}],"tables":{"budget":{"10":{"columns":[{"key":"equipment_id","title":"Item","number":false},{"key":"name","title":"Name","number":false},{"key":"location","title":"Location","number":false},{"key":"subsystem","title":"Subsystem","number":false},{"key":"units","title":"Units","number":true},{"key":"mass","title":"Mass [kg]","number":true},{"key":"total_mass","title":"Total Mass [kg]","number":true},{"key":"margin_pct","title":"Margin [%]","number":true},{"key":"total_mass_with_margin","title":"Total + Margin [kg]","number":true},{"key":"comments","title":"Comments","number":false}],"rows":[{"type":"equipment","cells":["telescope","TMA telescope assembly","Payload","Instrument","1","62.00","62.00","20","74.40",""]},{"type":"equipment","cells":["focal_plane","Focal plane assembly","Payload","Instrument","1","11.50","11.50","15","13.22",""]},{"type":"equipment","cells":["payload_electronics","Video processing unit","Payload","OBDH","1","8.00","8.00","10","8.80",""]},{"type":"equipment","cells":["payload_radiator","Payload radiator","Payload","Thermal","1","3.40","3.40","20","4.08",""]},{"type":"equipment","cells":["mli","Multi-layer insulation","Payload","Thermal","1","3.50","3.50","20","4.20",""]},{"type":"equipment","cells":["heaters","Heater lines and thermistors","Payload","Thermal","1","1.20","1.20","15","1.38",""]},{"type":"equipment","cells":["optical_bench","Optical bench","Payload","Structure","1","12.00","12.00","20","14.40",""]},{"type":"equipment","cells":["star_tracker","Jena Astro HP","Payload","ADCS","2","1.20","2.40","5","2.52","Redundant pair"]},{"type":"equipment","cells":["harness_payload","Payload harness","Payload","Harness","1","5.20","5.20","25","6.50","Derived: 5.0% of 104.000 kg equipment mass"]},{"type":"location_subtotal","cells":["","Payload subtotal (before system margin)","Payload","","","","109.20","","129.50",""]},{"type":"location_total","cells":["","Payload total","Payload","","","","129.50","20","155.41",""]},{"type":"equipment","cells":["reaction_wheel","Rockwell RSI 45","Platform","ADCS","4","7.00","28.00","10","30.80","Pyramid configuration"]},{"type":"equipment","cells":["magnetorquer","ZARM MT30","Platform","ADCS","3","1.10","3.30","10","3.63",""]},{"type":"equipment","cells":["imu","Northrop LN-200S","Platform","ADCS","1","0.75","0.75","5","0.79","Entered in grams"]},{"type":"equipment","cells":["gps_receiver","RUAG PODRIX","Platform","ADCS","1","1.60","1.60","10","1.76",""]},{"type":"equipment","cells":["battery","Saft VES16 pack","Platform","EPS","1","12.50","12.50","15","14.37","Sized in the power budget"]},{"type":"equipment","cells":["solar_array","Deployable GaAs wing","Platform","EPS","2","9.40","18.80","20","22.56","Two wings"]},{"type":"equipment","cells":["pcdu","Airbus PCDU","Platform","EPS","1","14.00","14.00","10","15.40",""]},{"type":"equipment","cells":["obc","SSTL OBC750","Platform","OBDH","2","3.20","6.40","5","6.72","Cold redundant"]},{"type":"equipment","cells":["mass_memory","SSDR 2 TB","Platform","OBDH","1","4.50","4.50","15","5.17",""]},{"type":"equipment","cells":["s_band_tx","S-band transceiver","Platform","COMM","2","1.80","3.60","5","3.78",""]},{"type":"equipment","cells":["x_band_tx","X-band transmitter","Platform","COMM","1","5.50","5.50","15","6.32",""]},{"type":"equipment","cells":["s_band_ant","S-band patch antenna","Platform","COMM","4","0.30","1.20","10","1.32",""]},{"type":"equipment","cells":["x_band_ant","X-band patch antenna","Platform","COMM","2","0.40","0.80","10","0.88",""]},{"type":"equipment","cells":["primary_structure","CFRP central tube","Platform","Structure","1","48.00","48.00","20","57.60",""]},{"type":"equipment","cells":["side_panels","Sandwich side panels","Platform","Structure","1","26.00","26.00","20","31.20",""]},{"type":"equipment","cells":["sep_ring_sat","Adapter ring, satellite side","Platform","Structure","1","9.00","9.00","10","9.90","Stays with the satellite"]},{"type":"equipment","cells":["mli","Multi-layer insulation","Platform","Thermal","1","6.50","6.50","20","7.80",""]},{"type":"equipment","cells":["heaters","Heater lines and thermistors","Platform","Thermal","1","2.20","2.20","15","2.53",""]},{"type":"equipment","cells":["thruster","Hydrazine 1 N thruster","Platform","Propulsion","4","0.35","1.40","10","1.54",""]},{"type":"equipment","cells":["tank","Propellant tank","Platform","Propulsion","1","8.80","8.80","15","10.12",""]},{"type":"equipment","cells":["harness_platform","Platform harness","Platform","Harness","1","8.11","8.11","25","10.14","Derived: 4.0% of 202.850 kg equipment mass"]},{"type":"location_subtotal","cells":["","Platform subtotal (before system margin)","Platform","","","","210.96","","244.35",""]},{"type":"location_total","cells":["","Platform total","Platform","","","","244.35","20","293.21",""]},{"type":"dry_total","cells":["","Total Dry Mass (with system margin)","","","","","373.85","","448.62",""]},{"type":"propellant","cells":["","Propellant","","","","","22.00","","22.00",""]},{"type":"wet_total","cells":["","Total Wet Mass","","","","","395.85","","470.62",""]}]},"11":{"columns":[{"key":"equipment_id","title":"Item","number":false},{"key":"name","title":"Name","number":false},{"key":"location","title":"Location","number":false},{"key":"subsystem","title":"Subsystem","number":false},{"key":"units","title":"Units","number":true},{"key":"mass","title":"Mass [kg]","number":true},{"key":"total_mass","title":"Total Mass [kg]","number":true},{"key":"margin_pct","title":"Margin [%]","number":true},{"key":"total_mass_with_margin","title":"Total + Margin [kg]","number":true},{"key":"comments","title":"Comments","number":false}],"rows":[{"type":"equipment","cells":["telescope","TMA telescope assembly","Payload","Instrument","1","62.00","62.00","20","74.40",""]},{"type":"equipment","cells":["focal_plane","Focal plane assembly","Payload","Instrument","1","11.50","11.50","15","13.22",""]},{"type":"subsystem_subtotal","cells":["","Instrument subtotal","Payload","Instrument","","","73.50","","87.62",""]},{"type":"equipment","cells":["payload_electronics","Video processing unit","Payload","OBDH","1","8.00","8.00","10","8.80",""]},{"type":"subsystem_subtotal","cells":["","OBDH subtotal","Payload","OBDH","","","8.00","","8.80",""]},{"type":"equipment","cells":["payload_radiator","Payload radiator","Payload","Thermal","1","3.40","3.40","20","4.08",""]},{"type":"equipment","cells":["mli","Multi-layer insulation","Payload","Thermal","1","3.50","3.50","20","4.20",""]},{"type":"equipment","cells":["heaters","Heater lines and thermistors","Payload","Thermal","1","1.20","1.20","15","1.38",""]},{"type":"subsystem_subtotal","cells":["","Thermal subtotal","Payload","Thermal","","","8.10","","9.66",""]},{"type":"equipment","cells":["optical_bench","Optical bench","Payload","Structure","1","12.00","12.00","20","14.40",""]},{"type":"subsystem_subtotal","cells":["","Structure subtotal","Payload","Structure","","","12.00","","14.40",""]},{"type":"equipment","cells":["star_tracker","Jena Astro HP","Payload","ADCS","2","1.20","2.40","5","2.52","Redundant pair"]},{"type":"subsystem_subtotal","cells":["","ADCS subtotal","Payload","ADCS","","","2.40","","2.52",""]},{"type":"equipment","cells":["harness_payload","Payload harness","Payload","Harness","1","5.20","5.20","25","6.50","Derived: 5.0% of 104.000 kg equipment mass"]},{"type":"subsystem_subtotal","cells":["","Harness subtotal","Payload","Harness","","","5.20","","6.50",""]},{"type":"location_subtotal","cells":["","Payload subtotal (before system margin)","Payload","","","","109.20","","129.50",""]},{"type":"location_total","cells":["","Payload total","Payload","","","","129.50","20","155.41",""]},{"type":"equipment","cells":["reaction_wheel","Rockwell RSI 45","Platform","ADCS","4","7.00","28.00","10","30.80","Pyramid configuration"]},{"type":"equipment","cells":["magnetorquer","ZARM MT30","Platform","ADCS","3","1.10","3.30","10","3.63",""]},{"type":"equipment","cells":["imu","Northrop LN-200S","Platform","ADCS","1","0.75","0.75","5","0.79","Entered in grams"]},{"type":"equipment","cells":["gps_receiver","RUAG PODRIX","Platform","ADCS","1","1.60","1.60","10","1.76",""]},{"type":"subsystem_subtotal","cells":["","ADCS subtotal","Platform","ADCS","","","33.65","","36.98",""]},{"type":"equipment","cells":["battery","Saft VES16 pack","Platform","EPS","1","12.50","12.50","15","14.37","Sized in the power budget"]},{"type":"equipment","cells":["solar_array","Deployable GaAs wing","Platform","EPS","2","9.40","18.80","20","22.56","Two wings"]},{"type":"equipment","cells":["pcdu","Airbus PCDU","Platform","EPS","1","14.00","14.00","10","15.40",""]},{"type":"subsystem_subtotal","cells":["","EPS subtotal","Platform","EPS","","","45.30","","52.33",""]},{"type":"equipment","cells":["obc","SSTL OBC750","Platform","OBDH","2","3.20","6.40","5","6.72","Cold redundant"]},{"type":"equipment","cells":["mass_memory","SSDR 2 TB","Platform","OBDH","1","4.50","4.50","15","5.17",""]},{"type":"subsystem_subtotal","cells":["","OBDH subtotal","Platform","OBDH","","","10.90","","11.89",""]},{"type":"equipment","cells":["s_band_tx","S-band transceiver","Platform","COMM","2","1.80","3.60","5","3.78",""]},{"type":"equipment","cells":["x_band_tx","X-band transmitter","Platform","COMM","1","5.50","5.50","15","6.32",""]},{"type":"equipment","cells":["s_band_ant","S-band patch antenna","Platform","COMM","4","0.30","1.20","10","1.32",""]},{"type":"equipment","cells":["x_band_ant","X-band patch antenna","Platform","COMM","2","0.40","0.80","10","0.88",""]},{"type":"subsystem_subtotal","cells":["","COMM subtotal","Platform","COMM","","","11.10","","12.31",""]},{"type":"equipment","cells":["primary_structure","CFRP central tube","Platform","Structure","1","48.00","48.00","20","57.60",""]},{"type":"equipment","cells":["side_panels","Sandwich side panels","Platform","Structure","1","26.00","26.00","20","31.20",""]},{"type":"equipment","cells":["sep_ring_sat","Adapter ring, satellite side","Platform","Structure","1","9.00","9.00","10","9.90","Stays with the satellite"]},{"type":"subsystem_subtotal","cells":["","Structure subtotal","Platform","Structure","","","83.00","","98.70",""]},{"type":"equipment","cells":["mli","Multi-layer insulation","Platform","Thermal","1","6.50","6.50","20","7.80",""]},{"type":"equipment","cells":["heaters","Heater lines and thermistors","Platform","Thermal","1","2.20","2.20","15","2.53",""]},{"type":"subsystem_subtotal","cells":["","Thermal subtotal","Platform","Thermal","","","8.70","","10.33",""]},{"type":"equipment","cells":["thruster","Hydrazine 1 N thruster","Platform","Propulsion","4","0.35","1.40","10","1.54",""]},{"type":"equipment","cells":["tank","Propellant tank","Platform","Propulsion","1","8.80","8.80","15","10.12",""]},{"type":"subsystem_subtotal","cells":["","Propulsion subtotal","Platform","Propulsion","","","10.20","","11.66",""]},{"type":"equipment","cells":["harness_platform","Platform harness","Platform","Harness","1","8.11","8.11","25","10.14","Derived: 4.0% of 202.850 kg equipment mass"]},{"type":"subsystem_subtotal","cells":["","Harness subtotal","Platform","Harness","","","8.11","","10.14",""]},{"type":"location_subtotal","cells":["","Platform subtotal (before system margin)","Platform","","","","210.96","","244.35",""]},{"type":"location_total","cells":["","Platform total","Platform","","","","244.35","20","293.21",""]},{"type":"dry_total","cells":["","Total Dry Mass (with system margin)","","","","","373.85","","448.62",""]},{"type":"propellant","cells":["","Propellant","","","","","22.00","","22.00",""]},{"type":"wet_total","cells":["","Total Wet Mass","","","","","395.85","","470.62",""]}]},"00":{"columns":[{"key":"equipment_id","title":"Item","number":false},{"key":"name","title":"Name","number":false},{"key":"location","title":"Location","number":false},{"key":"subsystem","title":"Subsystem","number":false},{"key":"units","title":"Units","number":true},{"key":"mass","title":"Mass [kg]","number":true},{"key":"total_mass","title":"Total Mass [kg]","number":true},{"key":"margin_pct","title":"Margin [%]","number":true},{"key":"total_mass_with_margin","title":"Total + Margin [kg]","number":true},{"key":"comments","title":"Comments","number":false}],"rows":[{"type":"equipment","cells":["telescope","TMA telescope assembly","Payload","Instrument","1","62.00","62.00","20","74.40",""]},{"type":"equipment","cells":["focal_plane","Focal plane assembly","Payload","Instrument","1","11.50","11.50","15","13.22",""]},{"type":"equipment","cells":["payload_electronics","Video processing unit","Payload","OBDH","1","8.00","8.00","10","8.80",""]},{"type":"equipment","cells":["payload_radiator","Payload radiator","Payload","Thermal","1","3.40","3.40","20","4.08",""]},{"type":"equipment","cells":["mli","Multi-layer insulation","Payload","Thermal","1","3.50","3.50","20","4.20",""]},{"type":"equipment","cells":["heaters","Heater lines and thermistors","Payload","Thermal","1","1.20","1.20","15","1.38",""]},{"type":"equipment","cells":["optical_bench","Optical bench","Payload","Structure","1","12.00","12.00","20","14.40",""]},{"type":"equipment","cells":["star_tracker","Jena Astro HP","Payload","ADCS","2","1.20","2.40","5","2.52","Redundant pair"]},{"type":"equipment","cells":["harness_payload","Payload harness","Payload","Harness","1","5.20","5.20","25","6.50","Derived: 5.0% of 104.000 kg equipment mass"]},{"type":"location_subtotal","cells":["","Payload subtotal (before system margin)","Payload","","","","109.20","","129.50",""]},{"type":"location_total","cells":["","Payload total","Payload","","","","129.50","20","155.41",""]},{"type":"equipment","cells":["reaction_wheel","Rockwell RSI 45","Platform","ADCS","4","7.00","28.00","10","30.80","Pyramid configuration"]},{"type":"equipment","cells":["magnetorquer","ZARM MT30","Platform","ADCS","3","1.10","3.30","10","3.63",""]},{"type":"equipment","cells":["imu","Northrop LN-200S","Platform","ADCS","1","0.75","0.75","5","0.79","Entered in grams"]},{"type":"equipment","cells":["gps_receiver","RUAG PODRIX","Platform","ADCS","1","1.60","1.60","10","1.76",""]},{"type":"equipment","cells":["battery","Saft VES16 pack","Platform","EPS","1","12.50","12.50","15","14.37","Sized in the power budget"]},{"type":"equipment","cells":["solar_array","Deployable GaAs wing","Platform","EPS","2","9.40","18.80","20","22.56","Two wings"]},{"type":"equipment","cells":["pcdu","Airbus PCDU","Platform","EPS","1","14.00","14.00","10","15.40",""]},{"type":"equipment","cells":["obc","SSTL OBC750","Platform","OBDH","2","3.20","6.40","5","6.72","Cold redundant"]},{"type":"equipment","cells":["mass_memory","SSDR 2 TB","Platform","OBDH","1","4.50","4.50","15","5.17",""]},{"type":"equipment","cells":["s_band_tx","S-band transceiver","Platform","COMM","2","1.80","3.60","5","3.78",""]},{"type":"equipment","cells":["x_band_tx","X-band transmitter","Platform","COMM","1","5.50","5.50","15","6.32",""]},{"type":"equipment","cells":["s_band_ant","S-band patch antenna","Platform","COMM","4","0.30","1.20","10","1.32",""]},{"type":"equipment","cells":["x_band_ant","X-band patch antenna","Platform","COMM","2","0.40","0.80","10","0.88",""]},{"type":"equipment","cells":["primary_structure","CFRP central tube","Platform","Structure","1","48.00","48.00","20","57.60",""]},{"type":"equipment","cells":["side_panels","Sandwich side panels","Platform","Structure","1","26.00","26.00","20","31.20",""]},{"type":"equipment","cells":["sep_ring_sat","Adapter ring, satellite side","Platform","Structure","1","9.00","9.00","10","9.90","Stays with the satellite"]},{"type":"equipment","cells":["mli","Multi-layer insulation","Platform","Thermal","1","6.50","6.50","20","7.80",""]},{"type":"equipment","cells":["heaters","Heater lines and thermistors","Platform","Thermal","1","2.20","2.20","15","2.53",""]},{"type":"equipment","cells":["thruster","Hydrazine 1 N thruster","Platform","Propulsion","4","0.35","1.40","10","1.54",""]},{"type":"equipment","cells":["tank","Propellant tank","Platform","Propulsion","1","8.80","8.80","15","10.12",""]},{"type":"equipment","cells":["harness_platform","Platform harness","Platform","Harness","1","8.11","8.11","25","10.14","Derived: 4.0% of 202.850 kg equipment mass"]},{"type":"location_subtotal","cells":["","Platform subtotal (before system margin)","Platform","","","","210.96","","244.35",""]},{"type":"location_total","cells":["","Platform total","Platform","","","","244.35","20","293.21",""]},{"type":"equipment","cells":["sep_ring_lv","Adapter ring, launcher side","Launcher","Structure","1","11.00","11.00","10","12.10","Stays with the launcher"]},{"type":"equipment","cells":["clampband","Clampband and pyros","Launcher","Structure","1","4.20","4.20","10","4.62","Stays with the launcher"]},{"type":"location_subtotal","cells":["","Launcher subtotal (before system margin)","Launcher","","","","15.20","","16.72",""]},{"type":"location_total","cells":["","Launcher total","Launcher","","","","16.72","0","16.72",""]},{"type":"dry_total","cells":["","Total Dry Mass (with system margin)","","","","","390.57","","465.34",""]},{"type":"propellant","cells":["","Propellant","","","","","22.00","","22.00",""]},{"type":"wet_total","cells":["","Total Wet Mass","","","","","412.57","","487.34",""]}]},"01":{"columns":[{"key":"equipment_id","title":"Item","number":false},{"key":"name","title":"Name","number":false},{"key":"location","title":"Location","number":false},{"key":"subsystem","title":"Subsystem","number":false},{"key":"units","title":"Units","number":true},{"key":"mass","title":"Mass [kg]","number":true},{"key":"total_mass","title":"Total Mass [kg]","number":true},{"key":"margin_pct","title":"Margin [%]","number":true},{"key":"total_mass_with_margin","title":"Total + Margin [kg]","number":true},{"key":"comments","title":"Comments","number":false}],"rows":[{"type":"equipment","cells":["telescope","TMA telescope assembly","Payload","Instrument","1","62.00","62.00","20","74.40",""]},{"type":"equipment","cells":["focal_plane","Focal plane assembly","Payload","Instrument","1","11.50","11.50","15","13.22",""]},{"type":"subsystem_subtotal","cells":["","Instrument subtotal","Payload","Instrument","","","73.50","","87.62",""]},{"type":"equipment","cells":["payload_electronics","Video processing unit","Payload","OBDH","1","8.00","8.00","10","8.80",""]},{"type":"subsystem_subtotal","cells":["","OBDH subtotal","Payload","OBDH","","","8.00","","8.80",""]},{"type":"equipment","cells":["payload_radiator","Payload radiator","Payload","Thermal","1","3.40","3.40","20","4.08",""]},{"type":"equipment","cells":["mli","Multi-layer insulation","Payload","Thermal","1","3.50","3.50","20","4.20",""]},{"type":"equipment","cells":["heaters","Heater lines and thermistors","Payload","Thermal","1","1.20","1.20","15","1.38",""]},{"type":"subsystem_subtotal","cells":["","Thermal subtotal","Payload","Thermal","","","8.10","","9.66",""]},{"type":"equipment","cells":["optical_bench","Optical bench","Payload","Structure","1","12.00","12.00","20","14.40",""]},{"type":"subsystem_subtotal","cells":["","Structure subtotal","Payload","Structure","","","12.00","","14.40",""]},{"type":"equipment","cells":["star_tracker","Jena Astro HP","Payload","ADCS","2","1.20","2.40","5","2.52","Redundant pair"]},{"type":"subsystem_subtotal","cells":["","ADCS subtotal","Payload","ADCS","","","2.40","","2.52",""]},{"type":"equipment","cells":["harness_payload","Payload harness","Payload","Harness","1","5.20","5.20","25","6.50","Derived: 5.0% of 104.000 kg equipment mass"]},{"type":"subsystem_subtotal","cells":["","Harness subtotal","Payload","Harness","","","5.20","","6.50",""]},{"type":"location_subtotal","cells":["","Payload subtotal (before system margin)","Payload","","","","109.20","","129.50",""]},{"type":"location_total","cells":["","Payload total","Payload","","","","129.50","20","155.41",""]},{"type":"equipment","cells":["reaction_wheel","Rockwell RSI 45","Platform","ADCS","4","7.00","28.00","10","30.80","Pyramid configuration"]},{"type":"equipment","cells":["magnetorquer","ZARM MT30","Platform","ADCS","3","1.10","3.30","10","3.63",""]},{"type":"equipment","cells":["imu","Northrop LN-200S","Platform","ADCS","1","0.75","0.75","5","0.79","Entered in grams"]},{"type":"equipment","cells":["gps_receiver","RUAG PODRIX","Platform","ADCS","1","1.60","1.60","10","1.76",""]},{"type":"subsystem_subtotal","cells":["","ADCS subtotal","Platform","ADCS","","","33.65","","36.98",""]},{"type":"equipment","cells":["battery","Saft VES16 pack","Platform","EPS","1","12.50","12.50","15","14.37","Sized in the power budget"]},{"type":"equipment","cells":["solar_array","Deployable GaAs wing","Platform","EPS","2","9.40","18.80","20","22.56","Two wings"]},{"type":"equipment","cells":["pcdu","Airbus PCDU","Platform","EPS","1","14.00","14.00","10","15.40",""]},{"type":"subsystem_subtotal","cells":["","EPS subtotal","Platform","EPS","","","45.30","","52.33",""]},{"type":"equipment","cells":["obc","SSTL OBC750","Platform","OBDH","2","3.20","6.40","5","6.72","Cold redundant"]},{"type":"equipment","cells":["mass_memory","SSDR 2 TB","Platform","OBDH","1","4.50","4.50","15","5.17",""]},{"type":"subsystem_subtotal","cells":["","OBDH subtotal","Platform","OBDH","","","10.90","","11.89",""]},{"type":"equipment","cells":["s_band_tx","S-band transceiver","Platform","COMM","2","1.80","3.60","5","3.78",""]},{"type":"equipment","cells":["x_band_tx","X-band transmitter","Platform","COMM","1","5.50","5.50","15","6.32",""]},{"type":"equipment","cells":["s_band_ant","S-band patch antenna","Platform","COMM","4","0.30","1.20","10","1.32",""]},{"type":"equipment","cells":["x_band_ant","X-band patch antenna","Platform","COMM","2","0.40","0.80","10","0.88",""]},{"type":"subsystem_subtotal","cells":["","COMM subtotal","Platform","COMM","","","11.10","","12.31",""]},{"type":"equipment","cells":["primary_structure","CFRP central tube","Platform","Structure","1","48.00","48.00","20","57.60",""]},{"type":"equipment","cells":["side_panels","Sandwich side panels","Platform","Structure","1","26.00","26.00","20","31.20",""]},{"type":"equipment","cells":["sep_ring_sat","Adapter ring, satellite side","Platform","Structure","1","9.00","9.00","10","9.90","Stays with the satellite"]},{"type":"subsystem_subtotal","cells":["","Structure subtotal","Platform","Structure","","","83.00","","98.70",""]},{"type":"equipment","cells":["mli","Multi-layer insulation","Platform","Thermal","1","6.50","6.50","20","7.80",""]},{"type":"equipment","cells":["heaters","Heater lines and thermistors","Platform","Thermal","1","2.20","2.20","15","2.53",""]},{"type":"subsystem_subtotal","cells":["","Thermal subtotal","Platform","Thermal","","","8.70","","10.33",""]},{"type":"equipment","cells":["thruster","Hydrazine 1 N thruster","Platform","Propulsion","4","0.35","1.40","10","1.54",""]},{"type":"equipment","cells":["tank","Propellant tank","Platform","Propulsion","1","8.80","8.80","15","10.12",""]},{"type":"subsystem_subtotal","cells":["","Propulsion subtotal","Platform","Propulsion","","","10.20","","11.66",""]},{"type":"equipment","cells":["harness_platform","Platform harness","Platform","Harness","1","8.11","8.11","25","10.14","Derived: 4.0% of 202.850 kg equipment mass"]},{"type":"subsystem_subtotal","cells":["","Harness subtotal","Platform","Harness","","","8.11","","10.14",""]},{"type":"location_subtotal","cells":["","Platform subtotal (before system margin)","Platform","","","","210.96","","244.35",""]},{"type":"location_total","cells":["","Platform total","Platform","","","","244.35","20","293.21",""]},{"type":"equipment","cells":["sep_ring_lv","Adapter ring, launcher side","Launcher","Structure","1","11.00","11.00","10","12.10","Stays with the launcher"]},{"type":"equipment","cells":["clampband","Clampband and pyros","Launcher","Structure","1","4.20","4.20","10","4.62","Stays with the launcher"]},{"type":"subsystem_subtotal","cells":["","Structure subtotal","Launcher","Structure","","","15.20","","16.72",""]},{"type":"location_subtotal","cells":["","Launcher subtotal (before system margin)","Launcher","","","","15.20","","16.72",""]},{"type":"location_total","cells":["","Launcher total","Launcher","","","","16.72","0","16.72",""]},{"type":"dry_total","cells":["","Total Dry Mass (with system margin)","","","","","390.57","","465.34",""]},{"type":"propellant","cells":["","Propellant","","","","","22.00","","22.00",""]},{"type":"wet_total","cells":["","Total Wet Mass","","","","","412.57","","487.34",""]}]}},"by_location":{"columns":[{"key":"c0","title":"Location","number":false},{"key":"c1","title":"No margin [kg]","number":true},{"key":"c2","title":"With equipment margin [kg]","number":true},{"key":"c3","title":"With system margin [kg]","number":true}],"rows":[{"type":"item","cells":["Payload","109.20","129.50","155.41"]},{"type":"item","cells":["Platform","232.96","266.34","315.21"]},{"type":"total","cells":["Total","342.16","395.85","470.62"]}]},"by_subsystem":{"columns":[{"key":"c0","title":"Subsystem","number":false},{"key":"c1","title":"No margin [kg]","number":true},{"key":"c2","title":"With equipment margin [kg]","number":true},{"key":"c3","title":"With system margin [kg]","number":true}],"rows":[{"type":"item","cells":["ADCS","36.05","39.50","47.40"]},{"type":"item","cells":["COMM","11.10","12.30","14.77"]},{"type":"item","cells":["EPS","45.30","52.34","62.80"]},{"type":"item","cells":["Harness","13.31","16.64","19.97"]},{"type":"item","cells":["Instrument","73.50","87.62","105.15"]},{"type":"item","cells":["OBDH","18.90","20.70","24.83"]},{"type":"item","cells":["Propulsion","32.20","33.66","35.99"]},{"type":"item","cells":["Structure","95.00","113.10","135.72"]},{"type":"item","cells":["Thermal","16.80","19.99","23.99"]},{"type":"total","cells":["Total","342.16","395.85","470.62"]}]},"points":{"columns":[{"key":"c0","title":"Point of the mission","number":false},{"key":"c1","title":"Mass [kg]","number":true}],"rows":[{"type":"item","cells":["At launch, wet","487.34"]},{"type":"item","cells":["At launch, dry","465.34"]},{"type":"item","cells":["In orbit, 100 % propellant","470.62"]},{"type":"item","cells":["In orbit, 75 % propellant","465.12"]},{"type":"item","cells":["In orbit, 50 % propellant","459.62"]},{"type":"item","cells":["In orbit, 25 % propellant","454.12"]},{"type":"item","cells":["In orbit, 0 % propellant","448.62"]}]}}},"deltav":{"figures":[{"label":"Delta-V","value":"116.52","unit":"m/s","note":"with the 5 % margin","bad":false,"headline":true},{"label":"Before margin","value":"110.97","unit":"m/s","note":"7 manoeuvres","bad":false,"headline":false},{"label":"Propellant needed","value":"24.89","unit":"kg","note":"Isp 220 s","bad":false,"headline":false},{"label":"Propellant loaded","value":"22.00","unit":"kg","note":"24.89 kg needed: short by 2.89 kg","bad":true,"headline":true}],"tables":{"budget":{"columns":[{"key":"manoeuvre_id","title":"Item","number":false},{"key":"name","title":"Name","number":false},{"key":"type","title":"Type","number":false},{"key":"value","title":"Input","number":false},{"key":"each","title":"ΔV each [m/s]","number":true},{"key":"occurrences","title":"Times","number":true},{"key":"deltav","title":"ΔV total [m/s]","number":true},{"key":"comments","title":"Comments","number":false}],"rows":[{"type":"manoeuvre","cells":["injection_correction","Launcher dispersion correction","altitude_change","12 km","6.632","1.0","6.63","Semi-major axis dispersion at separation"]},{"type":"manoeuvre","cells":["inclination_trim","Injection inclination trim","inclination_change","0.05 deg","6.643","1.0","6.64","Plane error at separation"]},{"type":"manoeuvre","cells":["phasing","Orbit phasing to the reference slot","given","8 m / s","8.000","1.0","8.00","From Mission Analysis; needs a real phasing analysis"]},{"type":"phase_subtotal","cells":["","Commissioning subtotal","","","","","21.28",""]},{"type":"manoeuvre","cells":["drag_makeup","Drag make-up","altitude_change","1.2 km","0.664","7.0","4.65","Per year at 500 km solar mean"]},{"type":"manoeuvre","cells":["collision_avoidance","Collision avoidance","collision_avoidance","200 m","0.111","28.0","3.10","Per year; one-way hop as the drag make-up absorbs the return"]},{"type":"manoeuvre","cells":["inclination_maint","Inclination maintenance","inclination_change","0.012 deg","1.594","7.0","11.16","Per year, holds the sun-synchronous plane"]},{"type":"phase_subtotal","cells":["","Operations subtotal","","","","","18.91",""]},{"type":"manoeuvre","cells":["deorbit","End-of-life deorbit","deorbit","250 km","70.784","1.0","70.78","Single burn to a 500 x 250 km disposal orbit; natural decay rather than controlled re-entry"]},{"type":"phase_subtotal","cells":["","Disposal subtotal","","","","","70.78",""]},{"type":"subtotal","cells":["","Total, before margin","","","","","110.97",""]},{"type":"margin","cells":["","Margin (5%)","","","","","5.55",""]},{"type":"total","cells":["","Total ΔV","","","","","116.52",""]}]},"by_phase":{"columns":[{"key":"c0","title":"Phase","number":false},{"key":"c1","title":"ΔV with margin [m/s]","number":true}],"rows":[{"type":"item","cells":["Commissioning","22.34"]},{"type":"item","cells":["Disposal","74.32"]},{"type":"item","cells":["Operations","19.85"]},{"type":"total","cells":["Total","116.52"]}]},"by_type":{"columns":[{"key":"c0","title":"Type","number":false},{"key":"c1","title":"ΔV with margin [m/s]","number":true}],"rows":[{"type":"item","cells":["altitude_change","11.84"]},{"type":"item","cells":["collision_avoidance","3.25"]},{"type":"item","cells":["deorbit","74.32"]},{"type":"item","cells":["given","8.40"]},{"type":"item","cells":["inclination_change","18.69"]},{"type":"total","cells":["Total","116.52"]}]},"propellant":{"columns":[{"key":"c0","title":"","number":false},{"key":"c1","title":"","number":true}],"rows":[{"type":"item","cells":["In-orbit dry mass, from the mass budget","448.62 kg"]},{"type":"item","cells":["Delta-V, with margin","116.52 m/s"]},{"type":"item","cells":["Specific impulse","220 s"]},{"type":"total","cells":["Propellant required","24.89 kg"]},{"type":"item","cells":["Propellant loaded","22.00 kg"]}]}}},"data":{"figures":[{"label":"Downlink margin","value":"+12.0","unit":"%","note":"closes","bad":false,"headline":true},{"label":"Generated","value":"225.00","unit":"GB/day","note":"14.78 GB per orbit","bad":false,"headline":false},{"label":"Downlinked","value":"252.00","unit":"GB/day","note":"42 min of contact a day","bad":false,"headline":false},{"label":"Storage needed","value":"44.35","unit":"GB","note":"3 orbits without contact, of 2,000 GB","bad":false,"headline":true}],"tables":{"budget":{"columns":[{"key":"item","title":"","number":false},{"key":"value","title":"Value","number":true},{"key":"unit","title":"Unit","number":false},{"key":"comment","title":"Comment","number":false}],"rows":[{"type":"input","cells":["Orbital period","94.62","min","500 km circular"]},{"type":"derived","cells":["Orbits per day","15.22","-",""]},{"type":"input","cells":["Data generation rate","416.67","Mbit/s","1000 Mbit / s raw, 2.4x compression"]},{"type":"input","cells":["Data generation duration","283.85","s/orbit","5 % duty cycle"]},{"type":"derived","cells":["Data generated","14.78","GB/orbit",""]},{"type":"derived","cells":["","225.00","GB/day",""]},{"type":"input","cells":["Data downlink rate","800.00","Mbit/s","achieved throughput"]},{"type":"input","cells":["Contacts","7.00","per day","6 min average duration"]},{"type":"derived","cells":["Data downlink duration","42.00","min/day",""]},{"type":"derived","cells":["Data downlinked","16.56","GB/orbit",""]},{"type":"derived","cells":["","252.00","GB/day",""]},{"type":"margin","cells":["Margin","12.00","%","closes"]},{"type":"input","cells":["Mass memory","2,000.00","GB","usable capacity"]},{"type":"storage","cells":["Storage required","44.35","GB","3 orbits without contact"]}]},"storage":{"columns":[{"key":"c0","title":"Time without contact","number":false},{"key":"c1","title":"Storage [GB]","number":true}],"rows":[{"type":"item","cells":["1 orbit","14.78"]},{"type":"total","cells":["3 orbits, the requirement","44.35"]},{"type":"item","cells":["A full day","225.00"]},{"type":"item","cells":["Mass memory, usable capacity","2,000.00"]}]}}},"agility":{"figures":[{"label":"roll_40","value":"83.2","unit":"s","note":"of 90 s allowed, for first_guess","bad":false,"headline":true},{"label":"pitch_40","value":"80.6","unit":"s","note":"of 90 s allowed, for first_guess","bad":false,"headline":true}],"selected":"first_guess","cases":["first_guess","measured_bol","measured_eol"],"slews":[{"name":"roll_40","axis":"roll","text":"40° in 90 s"},{"name":"pitch_40","axis":"pitch","text":"40° in 90 s"}],"variants":{"roll|first_guess|0":{"figures":[{"label":"Inertia","value":"262.3","unit":"kg m²","note":"from the mass budget at 100 % propellant","bad":false,"headline":false},{"label":"Max rate","value":"0.737","unit":"deg/s","note":"3.37 N m s about roll","bad":false,"headline":false},{"label":"Max acceleration","value":"0.0829","unit":"deg/s²","note":"0.380 N m about roll","bad":false,"headline":false},{"label":"Crossover","value":"6.5","unit":"deg","note":"torque limited below it","bad":false,"headline":false}],"tables":{"roll_40":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true},{"key":"margin","title":"Time margin","number":true},{"key":"verdict","title":"","number":false}],"rows":[{"type":"","cells":["5","torque","15.5","35.5","0.6440","87.4%","+153.3%","PASS"]},{"type":"","cells":["10","momentum","22.5","42.5","0.7366","100.0%","+112.0%","PASS"]},{"type":"","cells":["15","momentum","29.2","49.2","0.7366","100.0%","+82.8%","PASS"]},{"type":"","cells":["20","momentum","36.0","56.0","0.7366","100.0%","+60.6%","PASS"]},{"type":"","cells":["40","momentum","63.2","83.2","0.7366","100.0%","+8.2%","PASS"]},{"type":"","cells":["45","momentum","70.0","90.0","0.7366","100.0%","+0.0%","PASS"]},{"type":"fails","cells":["60","momentum","90.3","110.3","0.7366","100.0%","-18.4%","FAILS"]},{"type":"fails","cells":["90","momentum","131.1","151.1","0.7366","100.0%","-40.4%","FAILS"]}]},"":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true}],"rows":[{"type":"","cells":["5","torque","15.5","35.5","0.6440","87.4%"]},{"type":"","cells":["10","momentum","22.5","42.5","0.7366","100.0%"]},{"type":"","cells":["15","momentum","29.2","49.2","0.7366","100.0%"]},{"type":"","cells":["20","momentum","36.0","56.0","0.7366","100.0%"]},{"type":"","cells":["40","momentum","63.2","83.2","0.7366","100.0%"]},{"type":"","cells":["45","momentum","70.0","90.0","0.7366","100.0%"]},{"type":"","cells":["60","momentum","90.3","110.3","0.7366","100.0%"]},{"type":"","cells":["90","momentum","131.1","151.1","0.7366","100.0%"]}]}}},"roll|first_guess|1":{"figures":[{"label":"Inertia","value":"262.3","unit":"kg m²","note":"from the mass budget at 100 % propellant","bad":false,"headline":false},{"label":"Max rate","value":"0.368","unit":"deg/s","note":"1.69 N m s about roll","bad":false,"headline":false},{"label":"Max acceleration","value":"0.0415","unit":"deg/s²","note":"0.190 N m about roll","bad":false,"headline":false},{"label":"Crossover","value":"3.3","unit":"deg","note":"torque limited below it","bad":false,"headline":false}],"tables":{"roll_40":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true},{"key":"margin","title":"Time margin","number":true},{"key":"verdict","title":"","number":false}],"rows":[{"type":"","cells":["5","momentum","22.5","42.5","0.3683","100.0%","+112.0%","PASS"]},{"type":"","cells":["10","momentum","36.0","56.0","0.3683","100.0%","+60.6%","PASS"]},{"type":"","cells":["15","momentum","49.6","69.6","0.3683","100.0%","+29.3%","PASS"]},{"type":"","cells":["20","momentum","63.2","83.2","0.3683","100.0%","+8.2%","PASS"]},{"type":"fails","cells":["40","momentum","117.5","137.5","0.3683","100.0%","-34.5%","FAILS"]},{"type":"fails","cells":["45","momentum","131.1","151.1","0.3683","100.0%","-40.4%","FAILS"]},{"type":"fails","cells":["60","momentum","171.8","191.8","0.3683","100.0%","-53.1%","FAILS"]},{"type":"fails","cells":["90","momentum","253.3","273.3","0.3683","100.0%","-67.1%","FAILS"]}]},"":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true}],"rows":[{"type":"","cells":["5","momentum","22.5","42.5","0.3683","100.0%"]},{"type":"","cells":["10","momentum","36.0","56.0","0.3683","100.0%"]},{"type":"","cells":["15","momentum","49.6","69.6","0.3683","100.0%"]},{"type":"","cells":["20","momentum","63.2","83.2","0.3683","100.0%"]},{"type":"","cells":["40","momentum","117.5","137.5","0.3683","100.0%"]},{"type":"","cells":["45","momentum","131.1","151.1","0.3683","100.0%"]},{"type":"","cells":["60","momentum","171.8","191.8","0.3683","100.0%"]},{"type":"","cells":["90","momentum","253.3","273.3","0.3683","100.0%"]}]}}},"pitch|first_guess|0":{"figures":[{"label":"Inertia","value":"250.0","unit":"kg m²","note":"from the mass budget at 100 % propellant","bad":false,"headline":false},{"label":"Max rate","value":"0.773","unit":"deg/s","note":"3.37 N m s about pitch","bad":false,"headline":false},{"label":"Max acceleration","value":"0.0870","unit":"deg/s²","note":"0.380 N m about pitch","bad":false,"headline":false},{"label":"Crossover","value":"6.9","unit":"deg","note":"torque limited below it","bad":false,"headline":false}],"tables":{"pitch_40":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true},{"key":"margin","title":"Time margin","number":true},{"key":"verdict","title":"","number":false}],"rows":[{"type":"","cells":["5","torque","15.2","35.2","0.6596","85.4%","+156.0%","PASS"]},{"type":"","cells":["10","momentum","21.8","41.8","0.7727","100.0%","+115.2%","PASS"]},{"type":"","cells":["15","momentum","28.3","48.3","0.7727","100.0%","+86.4%","PASS"]},{"type":"","cells":["20","momentum","34.8","54.8","0.7727","100.0%","+64.3%","PASS"]},{"type":"","cells":["40","momentum","60.6","80.6","0.7727","100.0%","+11.6%","PASS"]},{"type":"","cells":["45","momentum","67.1","87.1","0.7727","100.0%","+3.3%","PASS"]},{"type":"fails","cells":["60","momentum","86.5","106.5","0.7727","100.0%","-15.5%","FAILS"]},{"type":"fails","cells":["90","momentum","125.4","145.4","0.7727","100.0%","-38.1%","FAILS"]}]},"":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true}],"rows":[{"type":"","cells":["5","torque","15.2","35.2","0.6596","85.4%"]},{"type":"","cells":["10","momentum","21.8","41.8","0.7727","100.0%"]},{"type":"","cells":["15","momentum","28.3","48.3","0.7727","100.0%"]},{"type":"","cells":["20","momentum","34.8","54.8","0.7727","100.0%"]},{"type":"","cells":["40","momentum","60.6","80.6","0.7727","100.0%"]},{"type":"","cells":["45","momentum","67.1","87.1","0.7727","100.0%"]},{"type":"","cells":["60","momentum","86.5","106.5","0.7727","100.0%"]},{"type":"","cells":["90","momentum","125.4","145.4","0.7727","100.0%"]}]}}},"pitch|first_guess|1":{"figures":[{"label":"Inertia","value":"250.0","unit":"kg m²","note":"from the mass budget at 100 % propellant","bad":false,"headline":false},{"label":"Max rate","value":"0.386","unit":"deg/s","note":"1.69 N m s about pitch","bad":false,"headline":false},{"label":"Max acceleration","value":"0.0435","unit":"deg/s²","note":"0.190 N m about pitch","bad":false,"headline":false},{"label":"Crossover","value":"3.4","unit":"deg","note":"torque limited below it","bad":false,"headline":false}],"tables":{"pitch_40":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true},{"key":"margin","title":"Time margin","number":true},{"key":"verdict","title":"","number":false}],"rows":[{"type":"","cells":["5","momentum","21.8","41.8","0.3863","100.0%","+115.2%","PASS"]},{"type":"","cells":["10","momentum","34.8","54.8","0.3863","100.0%","+64.3%","PASS"]},{"type":"","cells":["15","momentum","47.7","67.7","0.3863","100.0%","+32.9%","PASS"]},{"type":"","cells":["20","momentum","60.6","80.6","0.3863","100.0%","+11.6%","PASS"]},{"type":"fails","cells":["40","momentum","112.4","132.4","0.3863","100.0%","-32.0%","FAILS"]},{"type":"fails","cells":["45","momentum","125.4","145.4","0.3863","100.0%","-38.1%","FAILS"]},{"type":"fails","cells":["60","momentum","164.2","184.2","0.3863","100.0%","-51.1%","FAILS"]},{"type":"fails","cells":["90","momentum","241.8","261.8","0.3863","100.0%","-65.6%","FAILS"]}]},"":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true}],"rows":[{"type":"","cells":["5","momentum","21.8","41.8","0.3863","100.0%"]},{"type":"","cells":["10","momentum","34.8","54.8","0.3863","100.0%"]},{"type":"","cells":["15","momentum","47.7","67.7","0.3863","100.0%"]},{"type":"","cells":["20","momentum","60.6","80.6","0.3863","100.0%"]},{"type":"","cells":["40","momentum","112.4","132.4","0.3863","100.0%"]},{"type":"","cells":["45","momentum","125.4","145.4","0.3863","100.0%"]},{"type":"","cells":["60","momentum","164.2","184.2","0.3863","100.0%"]},{"type":"","cells":["90","momentum","241.8","261.8","0.3863","100.0%"]}]}}},"roll|measured_bol|0":{"figures":[{"label":"Inertia","value":"264.7","unit":"kg m²","note":"stated","bad":false,"headline":false},{"label":"Max rate","value":"0.730","unit":"deg/s","note":"3.37 N m s about roll","bad":false,"headline":false},{"label":"Max acceleration","value":"0.0822","unit":"deg/s²","note":"0.380 N m about roll","bad":false,"headline":false},{"label":"Crossover","value":"6.5","unit":"deg","note":"torque limited below it","bad":false,"headline":false}],"tables":{"roll_40":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true},{"key":"margin","title":"Time margin","number":true},{"key":"verdict","title":"","number":false}],"rows":[{"type":"","cells":["5","torque","15.6","35.6","0.6410","87.8%","+152.8%","PASS"]},{"type":"","cells":["10","momentum","22.6","42.6","0.7298","100.0%","+111.4%","PASS"]},{"type":"","cells":["15","momentum","29.4","49.4","0.7298","100.0%","+82.1%","PASS"]},{"type":"","cells":["20","momentum","36.3","56.3","0.7298","100.0%","+59.9%","PASS"]},{"type":"","cells":["40","momentum","63.7","83.7","0.7298","100.0%","+7.5%","PASS"]},{"type":"fails","cells":["45","momentum","70.5","90.5","0.7298","100.0%","-0.6%","FAILS"]},{"type":"fails","cells":["60","momentum","91.1","111.1","0.7298","100.0%","-19.0%","FAILS"]},{"type":"fails","cells":["90","momentum","132.2","152.2","0.7298","100.0%","-40.9%","FAILS"]}]},"":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true}],"rows":[{"type":"","cells":["5","torque","15.6","35.6","0.6410","87.8%"]},{"type":"","cells":["10","momentum","22.6","42.6","0.7298","100.0%"]},{"type":"","cells":["15","momentum","29.4","49.4","0.7298","100.0%"]},{"type":"","cells":["20","momentum","36.3","56.3","0.7298","100.0%"]},{"type":"","cells":["40","momentum","63.7","83.7","0.7298","100.0%"]},{"type":"","cells":["45","momentum","70.5","90.5","0.7298","100.0%"]},{"type":"","cells":["60","momentum","91.1","111.1","0.7298","100.0%"]},{"type":"","cells":["90","momentum","132.2","152.2","0.7298","100.0%"]}]}}},"roll|measured_bol|1":{"figures":[{"label":"Inertia","value":"264.7","unit":"kg m²","note":"stated","bad":false,"headline":false},{"label":"Max rate","value":"0.365","unit":"deg/s","note":"1.69 N m s about roll","bad":false,"headline":false},{"label":"Max acceleration","value":"0.0411","unit":"deg/s²","note":"0.190 N m about roll","bad":false,"headline":false},{"label":"Crossover","value":"3.2","unit":"deg","note":"torque limited below it","bad":false,"headline":false}],"tables":{"roll_40":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true},{"key":"margin","title":"Time margin","number":true},{"key":"verdict","title":"","number":false}],"rows":[{"type":"","cells":["5","momentum","22.6","42.6","0.3649","100.0%","+111.4%","PASS"]},{"type":"","cells":["10","momentum","36.3","56.3","0.3649","100.0%","+59.9%","PASS"]},{"type":"","cells":["15","momentum","50.0","70.0","0.3649","100.0%","+28.6%","PASS"]},{"type":"","cells":["20","momentum","63.7","83.7","0.3649","100.0%","+7.5%","PASS"]},{"type":"fails","cells":["40","momentum","118.5","138.5","0.3649","100.0%","-35.0%","FAILS"]},{"type":"fails","cells":["45","momentum","132.2","152.2","0.3649","100.0%","-40.9%","FAILS"]},{"type":"fails","cells":["60","momentum","173.3","193.3","0.3649","100.0%","-53.4%","FAILS"]},{"type":"fails","cells":["90","momentum","255.5","275.5","0.3649","100.0%","-67.3%","FAILS"]}]},"":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true}],"rows":[{"type":"","cells":["5","momentum","22.6","42.6","0.3649","100.0%"]},{"type":"","cells":["10","momentum","36.3","56.3","0.3649","100.0%"]},{"type":"","cells":["15","momentum","50.0","70.0","0.3649","100.0%"]},{"type":"","cells":["20","momentum","63.7","83.7","0.3649","100.0%"]},{"type":"","cells":["40","momentum","118.5","138.5","0.3649","100.0%"]},{"type":"","cells":["45","momentum","132.2","152.2","0.3649","100.0%"]},{"type":"","cells":["60","momentum","173.3","193.3","0.3649","100.0%"]},{"type":"","cells":["90","momentum","255.5","275.5","0.3649","100.0%"]}]}}},"pitch|measured_bol|0":{"figures":[{"label":"Inertia","value":"280.0","unit":"kg m²","note":"stated","bad":false,"headline":false},{"label":"Max rate","value":"0.690","unit":"deg/s","note":"3.37 N m s about pitch","bad":false,"headline":false},{"label":"Max acceleration","value":"0.0777","unit":"deg/s²","note":"0.380 N m about pitch","bad":false,"headline":false},{"label":"Crossover","value":"6.1","unit":"deg","note":"torque limited below it","bad":false,"headline":false}],"tables":{"pitch_40":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true},{"key":"margin","title":"Time margin","number":true},{"key":"verdict","title":"","number":false}],"rows":[{"type":"","cells":["5","torque","16.0","36.0","0.6233","90.3%","+149.7%","PASS"]},{"type":"","cells":["10","momentum","23.4","43.4","0.6899","100.0%","+107.5%","PASS"]},{"type":"","cells":["15","momentum","30.6","50.6","0.6899","100.0%","+77.8%","PASS"]},{"type":"","cells":["20","momentum","37.9","57.9","0.6899","100.0%","+55.5%","PASS"]},{"type":"","cells":["40","momentum","66.9","86.9","0.6899","100.0%","+3.6%","PASS"]},{"type":"fails","cells":["45","momentum","74.1","94.1","0.6899","100.0%","-4.4%","FAILS"]},{"type":"fails","cells":["60","momentum","95.8","115.8","0.6899","100.0%","-22.3%","FAILS"]},{"type":"fails","cells":["90","momentum","139.3","159.3","0.6899","100.0%","-43.5%","FAILS"]}]},"":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true}],"rows":[{"type":"","cells":["5","torque","16.0","36.0","0.6233","90.3%"]},{"type":"","cells":["10","momentum","23.4","43.4","0.6899","100.0%"]},{"type":"","cells":["15","momentum","30.6","50.6","0.6899","100.0%"]},{"type":"","cells":["20","momentum","37.9","57.9","0.6899","100.0%"]},{"type":"","cells":["40","momentum","66.9","86.9","0.6899","100.0%"]},{"type":"","cells":["45","momentum","74.1","94.1","0.6899","100.0%"]},{"type":"","cells":["60","momentum","95.8","115.8","0.6899","100.0%"]},{"type":"","cells":["90","momentum","139.3","159.3","0.6899","100.0%"]}]}}},"pitch|measured_bol|1":{"figures":[{"label":"Inertia","value":"280.0","unit":"kg m²","note":"stated","bad":false,"headline":false},{"label":"Max rate","value":"0.345","unit":"deg/s","note":"1.69 N m s about pitch","bad":false,"headline":false},{"label":"Max acceleration","value":"0.0388","unit":"deg/s²","note":"0.190 N m about pitch","bad":false,"headline":false},{"label":"Crossover","value":"3.1","unit":"deg","note":"torque limited below it","bad":false,"headline":false}],"tables":{"pitch_40":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true},{"key":"margin","title":"Time margin","number":true},{"key":"verdict","title":"","number":false}],"rows":[{"type":"","cells":["5","momentum","23.4","43.4","0.3450","100.0%","+107.5%","PASS"]},{"type":"","cells":["10","momentum","37.9","57.9","0.3450","100.0%","+55.5%","PASS"]},{"type":"","cells":["15","momentum","52.4","72.4","0.3450","100.0%","+24.4%","PASS"]},{"type":"","cells":["20","momentum","66.9","86.9","0.3450","100.0%","+3.6%","PASS"]},{"type":"fails","cells":["40","momentum","124.8","144.8","0.3450","100.0%","-37.9%","FAILS"]},{"type":"fails","cells":["45","momentum","139.3","159.3","0.3450","100.0%","-43.5%","FAILS"]},{"type":"fails","cells":["60","momentum","182.8","202.8","0.3450","100.0%","-55.6%","FAILS"]},{"type":"fails","cells":["90","momentum","269.8","289.8","0.3450","100.0%","-68.9%","FAILS"]}]},"":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true}],"rows":[{"type":"","cells":["5","momentum","23.4","43.4","0.3450","100.0%"]},{"type":"","cells":["10","momentum","37.9","57.9","0.3450","100.0%"]},{"type":"","cells":["15","momentum","52.4","72.4","0.3450","100.0%"]},{"type":"","cells":["20","momentum","66.9","86.9","0.3450","100.0%"]},{"type":"","cells":["40","momentum","124.8","144.8","0.3450","100.0%"]},{"type":"","cells":["45","momentum","139.3","159.3","0.3450","100.0%"]},{"type":"","cells":["60","momentum","182.8","202.8","0.3450","100.0%"]},{"type":"","cells":["90","momentum","269.8","289.8","0.3450","100.0%"]}]}}},"roll|measured_eol|0":{"figures":[{"label":"Inertia","value":"250.0","unit":"kg m²","note":"stated","bad":false,"headline":false},{"label":"Max rate","value":"0.773","unit":"deg/s","note":"3.37 N m s about roll","bad":false,"headline":false},{"label":"Max acceleration","value":"0.0870","unit":"deg/s²","note":"0.380 N m about roll","bad":false,"headline":false},{"label":"Crossover","value":"6.9","unit":"deg","note":"torque limited below it","bad":false,"headline":false}],"tables":{"roll_40":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true},{"key":"margin","title":"Time margin","number":true},{"key":"verdict","title":"","number":false}],"rows":[{"type":"","cells":["5","torque","15.2","35.2","0.6596","85.4%","+156.0%","PASS"]},{"type":"","cells":["10","momentum","21.8","41.8","0.7727","100.0%","+115.2%","PASS"]},{"type":"","cells":["15","momentum","28.3","48.3","0.7727","100.0%","+86.4%","PASS"]},{"type":"","cells":["20","momentum","34.8","54.8","0.7727","100.0%","+64.3%","PASS"]},{"type":"","cells":["40","momentum","60.6","80.6","0.7727","100.0%","+11.6%","PASS"]},{"type":"","cells":["45","momentum","67.1","87.1","0.7727","100.0%","+3.3%","PASS"]},{"type":"fails","cells":["60","momentum","86.5","106.5","0.7727","100.0%","-15.5%","FAILS"]},{"type":"fails","cells":["90","momentum","125.4","145.4","0.7727","100.0%","-38.1%","FAILS"]}]},"":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true}],"rows":[{"type":"","cells":["5","torque","15.2","35.2","0.6596","85.4%"]},{"type":"","cells":["10","momentum","21.8","41.8","0.7727","100.0%"]},{"type":"","cells":["15","momentum","28.3","48.3","0.7727","100.0%"]},{"type":"","cells":["20","momentum","34.8","54.8","0.7727","100.0%"]},{"type":"","cells":["40","momentum","60.6","80.6","0.7727","100.0%"]},{"type":"","cells":["45","momentum","67.1","87.1","0.7727","100.0%"]},{"type":"","cells":["60","momentum","86.5","106.5","0.7727","100.0%"]},{"type":"","cells":["90","momentum","125.4","145.4","0.7727","100.0%"]}]}}},"roll|measured_eol|1":{"figures":[{"label":"Inertia","value":"250.0","unit":"kg m²","note":"stated","bad":false,"headline":false},{"label":"Max rate","value":"0.386","unit":"deg/s","note":"1.69 N m s about roll","bad":false,"headline":false},{"label":"Max acceleration","value":"0.0435","unit":"deg/s²","note":"0.190 N m about roll","bad":false,"headline":false},{"label":"Crossover","value":"3.4","unit":"deg","note":"torque limited below it","bad":false,"headline":false}],"tables":{"roll_40":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true},{"key":"margin","title":"Time margin","number":true},{"key":"verdict","title":"","number":false}],"rows":[{"type":"","cells":["5","momentum","21.8","41.8","0.3864","100.0%","+115.2%","PASS"]},{"type":"","cells":["10","momentum","34.8","54.8","0.3864","100.0%","+64.3%","PASS"]},{"type":"","cells":["15","momentum","47.7","67.7","0.3864","100.0%","+32.9%","PASS"]},{"type":"","cells":["20","momentum","60.6","80.6","0.3864","100.0%","+11.6%","PASS"]},{"type":"fails","cells":["40","momentum","112.4","132.4","0.3864","100.0%","-32.0%","FAILS"]},{"type":"fails","cells":["45","momentum","125.4","145.4","0.3864","100.0%","-38.1%","FAILS"]},{"type":"fails","cells":["60","momentum","164.2","184.2","0.3864","100.0%","-51.1%","FAILS"]},{"type":"fails","cells":["90","momentum","241.8","261.8","0.3864","100.0%","-65.6%","FAILS"]}]},"":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true}],"rows":[{"type":"","cells":["5","momentum","21.8","41.8","0.3864","100.0%"]},{"type":"","cells":["10","momentum","34.8","54.8","0.3864","100.0%"]},{"type":"","cells":["15","momentum","47.7","67.7","0.3864","100.0%"]},{"type":"","cells":["20","momentum","60.6","80.6","0.3864","100.0%"]},{"type":"","cells":["40","momentum","112.4","132.4","0.3864","100.0%"]},{"type":"","cells":["45","momentum","125.4","145.4","0.3864","100.0%"]},{"type":"","cells":["60","momentum","164.2","184.2","0.3864","100.0%"]},{"type":"","cells":["90","momentum","241.8","261.8","0.3864","100.0%"]}]}}},"pitch|measured_eol|0":{"figures":[{"label":"Inertia","value":"264.0","unit":"kg m²","note":"stated","bad":false,"headline":false},{"label":"Max rate","value":"0.732","unit":"deg/s","note":"3.37 N m s about pitch","bad":false,"headline":false},{"label":"Max acceleration","value":"0.0824","unit":"deg/s²","note":"0.380 N m about pitch","bad":false,"headline":false},{"label":"Crossover","value":"6.5","unit":"deg","note":"torque limited below it","bad":false,"headline":false}],"tables":{"pitch_40":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true},{"key":"margin","title":"Time margin","number":true},{"key":"verdict","title":"","number":false}],"rows":[{"type":"","cells":["5","torque","15.6","35.6","0.6419","87.7%","+153.0%","PASS"]},{"type":"","cells":["10","momentum","22.5","42.5","0.7317","100.0%","+111.5%","PASS"]},{"type":"","cells":["15","momentum","29.4","49.4","0.7317","100.0%","+82.3%","PASS"]},{"type":"","cells":["20","momentum","36.2","56.2","0.7317","100.0%","+60.1%","PASS"]},{"type":"","cells":["40","momentum","63.5","83.5","0.7317","100.0%","+7.7%","PASS"]},{"type":"fails","cells":["45","momentum","70.4","90.4","0.7317","100.0%","-0.4%","FAILS"]},{"type":"fails","cells":["60","momentum","90.9","110.9","0.7317","100.0%","-18.8%","FAILS"]},{"type":"fails","cells":["90","momentum","131.9","151.9","0.7317","100.0%","-40.7%","FAILS"]}]},"":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true}],"rows":[{"type":"","cells":["5","torque","15.6","35.6","0.6419","87.7%"]},{"type":"","cells":["10","momentum","22.5","42.5","0.7317","100.0%"]},{"type":"","cells":["15","momentum","29.4","49.4","0.7317","100.0%"]},{"type":"","cells":["20","momentum","36.2","56.2","0.7317","100.0%"]},{"type":"","cells":["40","momentum","63.5","83.5","0.7317","100.0%"]},{"type":"","cells":["45","momentum","70.4","90.4","0.7317","100.0%"]},{"type":"","cells":["60","momentum","90.9","110.9","0.7317","100.0%"]},{"type":"","cells":["90","momentum","131.9","151.9","0.7317","100.0%"]}]}}},"pitch|measured_eol|1":{"figures":[{"label":"Inertia","value":"264.0","unit":"kg m²","note":"stated","bad":false,"headline":false},{"label":"Max rate","value":"0.366","unit":"deg/s","note":"1.69 N m s about pitch","bad":false,"headline":false},{"label":"Max acceleration","value":"0.0412","unit":"deg/s²","note":"0.190 N m about pitch","bad":false,"headline":false},{"label":"Crossover","value":"3.2","unit":"deg","note":"torque limited below it","bad":false,"headline":false}],"tables":{"pitch_40":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true},{"key":"margin","title":"Time margin","number":true},{"key":"verdict","title":"","number":false}],"rows":[{"type":"","cells":["5","momentum","22.5","42.5","0.3659","100.0%","+111.5%","PASS"]},{"type":"","cells":["10","momentum","36.2","56.2","0.3659","100.0%","+60.1%","PASS"]},{"type":"","cells":["15","momentum","49.9","69.9","0.3659","100.0%","+28.8%","PASS"]},{"type":"","cells":["20","momentum","63.5","83.5","0.3659","100.0%","+7.7%","PASS"]},{"type":"fails","cells":["40","momentum","118.2","138.2","0.3659","100.0%","-34.9%","FAILS"]},{"type":"fails","cells":["45","momentum","131.9","151.9","0.3659","100.0%","-40.7%","FAILS"]},{"type":"fails","cells":["60","momentum","172.9","192.9","0.3659","100.0%","-53.3%","FAILS"]},{"type":"fails","cells":["90","momentum","254.9","274.9","0.3659","100.0%","-67.3%","FAILS"]}]},"":{"columns":[{"key":"angle","title":"Slew [deg]","number":true},{"key":"profile","title":"Limited by","number":false},{"key":"slew_time","title":"Slew [s]","number":true},{"key":"total_time","title":"With settling [s]","number":true},{"key":"peak_rate","title":"Peak rate [deg/s]","number":true},{"key":"momentum_used","title":"Momentum used","number":true}],"rows":[{"type":"","cells":["5","momentum","22.5","42.5","0.3659","100.0%"]},{"type":"","cells":["10","momentum","36.2","56.2","0.3659","100.0%"]},{"type":"","cells":["15","momentum","49.9","69.9","0.3659","100.0%"]},{"type":"","cells":["20","momentum","63.5","83.5","0.3659","100.0%"]},{"type":"","cells":["40","momentum","118.2","138.2","0.3659","100.0%"]},{"type":"","cells":["45","momentum","131.9","151.9","0.3659","100.0%"]},{"type":"","cells":["60","momentum","172.9","192.9","0.3659","100.0%"]},{"type":"","cells":["90","momentum","254.9","274.9","0.3659","100.0%"]}]}}}},"tables":{"cases":{"columns":[{"key":"c0","title":"Case","number":false},{"key":"c1","title":"Inertia","number":true},{"key":"c2","title":"Roll [kg m²]","number":true},{"key":"c3","title":"Pitch [kg m²]","number":true},{"key":"c4","title":"roll_40 [s]","number":true},{"key":"c5","title":"roll_40 margin [%]","number":true},{"key":"c6","title":"pitch_40 [s]","number":true},{"key":"c7","title":"pitch_40 margin [%]","number":true}],"rows":[{"type":"selected","cells":["first_guess (selected)","from the mass budget","262.3","250.0","83.2","+8.2","80.6","+11.6"]},{"type":"item","cells":["measured_bol","stated","264.7","280.0","83.7","+7.5","86.9","+3.6"]},{"type":"item","cells":["measured_eol","stated","250.0","264.0","80.6","+11.6","83.5","+7.7"]}]}}}},"overview":[{"label":"Launch mass","value":"487.34","unit":"kg","note":"on the ground, wet","bad":false,"headline":true},{"label":"In orbit, wet","value":"470.62","unit":"kg","note":"448.62 kg dry","bad":false,"headline":true},{"label":"Delta-V","value":"116.52","unit":"m/s","note":"with the 5 % margin","bad":false,"headline":true},{"label":"Propellant loaded","value":"22.00","unit":"kg","note":"24.89 kg needed: short by 2.89 kg","bad":true,"headline":true},{"label":"Downlink margin","value":"+12.0","unit":"%","note":"closes","bad":false,"headline":true},{"label":"Storage needed","value":"44.35","unit":"GB","note":"3 orbits without contact, of 2,000 GB","bad":false,"headline":true},{"label":"roll_40","value":"83.2","unit":"s","note":"of 90 s allowed, for first_guess","bad":false,"headline":true},{"label":"pitch_40","value":"80.6","unit":"s","note":"of 90 s allowed, for first_guess","bad":false,"headline":true}],"checks":[{"budget":"deltav","check":"propellant","description":"The propellant loaded covers the propellant required","design":"22.00 kg","limit":"≥ 24.89 kg","spare":"-2.89 kg","margin":"-11.6 %","verdict":"FAILS","passes":false,"files":["manoeuvres.csv","equipment.csv"]},{"budget":"data","check":"downlink","description":"The downlink sends the data generated each day","design":"252.00 GB","limit":"≥ 225.00 GB","spare":"+27.00 GB","margin":"+12.0 %","verdict":"PASS","passes":true,"files":["pl_dataflow_model.yaml"]},{"budget":"data","check":"storage","description":"The mass memory holds the data of 3 orbits without contact","design":"2000.00 GB","limit":"≥ 44.35 GB","spare":"+1955.65 GB","margin":"+4409.5 %","verdict":"PASS","passes":true,"files":["requirements.yaml","pl_dataflow_model.yaml"]},{"budget":"agility","check":"roll_40","description":"A 40° roll slew within 90 s, settling included, for first_guess","design":"83.19 s","limit":"≤ 90.00 s","spare":"+6.81 s","margin":"+8.2 %","verdict":"PASS","passes":true,"files":["requirements.yaml","agility_config.yaml"]},{"budget":"agility","check":"pitch_40","description":"A 40° pitch slew within 90 s, settling included, for first_guess","design":"80.65 s","limit":"≤ 90.00 s","spare":"+9.35 s","margin":"+11.6 %","verdict":"PASS","passes":true,"files":["requirements.yaml","agility_config.yaml"]}],"notes":[]}}</script>
 <script>/*!
 (The MIT License)
 
@@ -1235,10 +1288,13 @@ async function readPicked(entry) {
 //   commentTarget(kind, path)     the block of a comment: [block, label, depth]
 //   runChecks()                   its checks, which end with showProblems()
 //
-// and, if it needs them, the hooks in `page`. While the page has changes that
-// are not saved, the frame keeps them in the browser's storage, as a draft, and
-// offers it back after a reload. The help comes from the page's
-// #help script, which Python fills from quicksat/editor/help/.
+// A tab may draw itself, with its own `draw()`, and give its own `count()` of
+// problems for its title. The page may also use the hooks in `page`.
+//
+// While the page has changes that are not saved, the frame keeps them in the
+// browser's storage, as a draft, and offers it back after a reload. The help
+// comes from the page's #help script, which Python fills from
+// quicksat/editor/help/.
 
 /** What a page may add to the frame's work. */
 const page = {
@@ -1258,6 +1314,12 @@ const page = {
   kindOfFile: () => null,
   /** The path that the folder's opener looks for a saved file under, to read a draft back. */
   draftPath: (file) => file.path,
+  /** Whether a request to the editor's server is going on, so that the status can wait. */
+  serverBusy: () => false,
+  /** What the server's status says, such as the viewer pages in its output folder. */
+  onStatus: () => {},
+  /** After the editor's server starts answering, or stops. */
+  serverChanged: () => {},
 };
 
 /** What the page shows: the tab, the Setup step, the open explanations, and more. */
@@ -1367,9 +1429,11 @@ function drawView() {
   drawTabs();
   const scroll = document.querySelector(".page.active .sheet, .page.active .step-body");
   const top = scroll ? scroll.scrollTop : 0;
+  const tab = TABS.find((t) => t.id === state.tab);
   if (state.tab === "setup") drawSetup();
   else if (state.tab === "files") drawFiles();
-  else drawSheet(TABS.find((t) => t.id === state.tab));
+  else if (tab.draw) tab.draw();
+  else drawSheet(tab);
   const again = document.querySelector(".page.active .sheet, .page.active .step-body");
   if (again) again.scrollTop = top;
   showProblems();
@@ -1458,7 +1522,7 @@ function showProblems() {
   chip.textContent = errors.length ? `${errors.length} problem${errors.length > 1 ? "s" : ""}` : "basic checks pass";
   chip.className = "chip " + (errors.length ? "bad" : "good");
   for (const tab of TABS) {
-    const n = errors.filter((p) => (tab.sections || []).includes(p.section)).length;
+    const n = tab.count ? tab.count() : errors.filter((p) => (tab.sections || []).includes(p.section)).length;
     const count = document.querySelector(`#tabs button[data-tab=${tab.id}] .count`);
     if (count) { count.textContent = n; count.hidden = !n; }
   }
@@ -2220,6 +2284,7 @@ async function restoreDraft() {
 
 /** Start the page, once the page's own parts are ready. */
 function startPage() {
+  startServer();
   $("#checks-chip").addEventListener("click", () => {
     const pop = $("#popover");
     if (!pop.hidden && pop.dataset.kind === "checks") pop.hidden = true;
@@ -2237,6 +2302,79 @@ function startPage() {
   showStep(0);
   updateBanner();
   offerDraft();
+}
+
+// quicksat editor: the editor's local server, as the page sees it.
+//
+// A page that the server sends holds `DATA.server`: the start of its addresses,
+// and the server's key, which each address ends with. The page asks the server
+// every few seconds whether it still answers, and every 10 min while it is out
+// of view, so that the server knows that a page is open. A page opened from a
+// file has no server. Stop the server, in the header, stops it when the user is
+// done. The page hears of each change through `page.serverChanged`.
+
+/** The server, as the page last found it. */
+const server = {
+  /** `none` on a page opened from a file, `up` while the server answers, `down` once it has stopped, `moved` once it has a new key. */
+  state: "none",
+};
+
+/** The server's address for a name, such as `status`, with the key at its end. */
+const serverUrl = (name) => `${DATA.server.base}${name}?key=${DATA.server.key}`;
+
+/** Ask the server whether it still answers, and tell the page if that changed. */
+async function checkServer() {
+  if (!DATA.server || page.serverBusy()) return;
+  let now = "down";
+  try {
+    const response = await fetch(serverUrl("status"), { cache: "no-store" });
+    if (response.ok) {
+      now = "up";
+      page.onStatus(await response.json());
+    } else if (response.status === 404) now = "moved";
+  } catch {
+    now = "down";
+  }
+  setServer(now);
+}
+
+/** Note the server's state, and tell the page, if it changed. */
+function setServer(now) {
+  if (now === server.state) return;
+  server.state = now;
+  $("#stop-server").hidden = now !== "up";
+  page.serverChanged();
+}
+
+/** Stop the server, after a confirm. The page stays open, with how to start the server again. */
+async function stopServer() {
+  if (server.state !== "up") return;
+  const lost = unsaved() ? " Some changes on this page are not saved yet. After the stop, you can still download them from the Files tab." : "";
+  if (!confirm(`Stop the editor's server? This page stays open, but it can no longer use quicksat or save into the folder.${lost}`)) return;
+  let result;
+  try {
+    const response = await fetch(serverUrl("stop"), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    result = await response.json();
+  } catch {
+    // no answer: the server may have stopped already
+    checkServer();
+    return;
+  }
+  if (result.ok) setServer("down");
+  else alert(result.error);
+}
+
+/** Start asking the server, on a page that it sent. The frame's `startPage` calls this first. */
+function startServer() {
+  if (!DATA.server) return;
+  server.state = "up";
+  // every few seconds in view, and every 10 min out of it: the server stops by
+  // itself once no page has asked for `DATA.server.idle_h`
+  setInterval(() => document.visibilityState === "visible" && checkServer(), 4000);
+  setInterval(() => document.visibilityState !== "visible" && checkServer(), 600000);
+  window.addEventListener("focus", checkServer);
+  $("#stop-server").addEventListener("click", stopServer);
+  $("#stop-server").hidden = false;
 }
 
 // quicksat sizing editor: the project, read from the folder's files, the names
@@ -2308,6 +2446,7 @@ function known(where, obj, keys) {
 
 const NAMES = {
   mission: "mission.yaml",
+  requirements: "requirements.yaml",
   mass: "mass_budget_config.yaml",
   equipment: "equipment.csv",
   data: "pl_dataflow_model.yaml",
@@ -2317,6 +2456,7 @@ const NAMES = {
 };
 
 const MASS_CLASSES = ["equipment", "propellant"];
+const AXES = ["roll", "pitch"];
 const LAUNCHER = "Launcher";
 const MANOEUVRE_TYPES = ["altitude_change", "collision_avoidance", "inclination_change", "deorbit", "given"];
 const VALUE_UNITS = {
@@ -2344,6 +2484,42 @@ function readMission(file) {
     inclination: readQ(m.inclination, "deg", "inclination"),
     duration: readQ(m.duration, "yr", "duration"),
     comments: textOf(m.comments),
+  };
+}
+
+function readRequirements(file) {
+  const m = mapOf(file && file.data);
+  if (file) known(file.name, m, ["agility", "data"]);
+  const a = mapOf(m.agility), d = mapOf(m.data);
+  const slews = mapOf(a.slews);
+  if (file) {
+    known(`${file.name} › agility`, a, ["slews"]);
+    known(`${file.name} › data`, d, ["orbits_without_contact"]);
+  }
+  return {
+    comments: textOf(m.comments),
+    agility: {
+      comments: textOf(a.comments),
+      slews: {
+        comments: textOf(slews.comments),
+        items: Object.entries(slews).filter(([name]) => name !== RESERVED).map(([name, value]) => {
+          const v = mapOf(value);
+          const where = `agility › slews › ${name}`;
+          known(`${file.name} › ${where}`, v, ["axis", "angle", "duration"]);
+          return {
+            name,
+            axis: textOf(v.axis).trim(),
+            angle: readQ(v.angle, "deg", `${where} › angle`),
+            duration: readQ(v.duration, "s", `${where} › duration`),
+            comments: textOf(v.comments),
+          };
+        }),
+      },
+    },
+    data: {
+      orbits_without_contact: readNum(d.orbits_without_contact, "orbits without contact"),
+      comments: textOf(d.comments),
+    },
   };
 }
 
@@ -2400,7 +2576,7 @@ function readData(file) {
   if (file) {
     known(`${file.name} › generation`, g, ["raw_datarate", "compression_ratio", "duty_cycle"]);
     known(`${file.name} › downlink`, d, ["rate", "contacts_per_day", "avg_contact_duration"]);
-    known(`${file.name} › storage`, s, ["orbits_without_contact"]);
+    known(`${file.name} › storage`, s, ["capacity"]);
   }
   return {
     comments: textOf(m.comments),
@@ -2417,7 +2593,7 @@ function readData(file) {
       comments: textOf(d.comments),
     },
     storage: {
-      orbits_without_contact: readNum(s.orbits_without_contact, "orbits without contact", file ? "" : 1),
+      capacity: readQ(s.capacity, "GB", "capacity"),
       comments: textOf(s.comments),
     },
   };
@@ -2458,12 +2634,15 @@ const envelope = () => ({ body: { x: q("", "m"), y: q("", "m"), z: q("", "m") },
 
 function readAgility(file) {
   const m = mapOf(file && file.data);
-  if (file) known(file.name, m, ["inertia_cases", "wheels", "settling_time"]);
+  if (file) known(file.name, m, ["selected_case", "inertia_cases", "wheels", "settling_time"]);
   const cases = mapOf(m.inertia_cases);
   const w = mapOf(m.wheels);
   if (file) known(`${file.name} › wheels`, w, ["count", "elevation", "momentum", "torque", "momentum_use_factor", "torque_derating"]);
+  const names = Object.keys(cases).filter((name) => name !== RESERVED);
   return {
     comments: textOf(m.comments),
+    // a new file selects its first case; a file without a selection is left to the checks
+    selected: file ? textOf(m.selected_case).trim() : names[0] || "",
     cases: {
       comments: textOf(cases.comments),
       items: Object.entries(cases).filter(([name]) => name !== RESERVED).map(([name, value]) => {
@@ -2506,7 +2685,7 @@ function readProject(data) {
 }
 
 /** Each file's reader, by the file's kind. */
-const READERS = { mission: readMission, mass: readMass, equipment: readEquipment, data: readData, deltav: readDeltaV, manoeuvres: readManoeuvres, agility: readAgility };
+const READERS = { mission: readMission, requirements: readRequirements, mass: readMass, equipment: readEquipment, data: readData, deltav: readDeltaV, manoeuvres: readManoeuvres, agility: readAgility };
 
 /** The folder's files: as Python wrote them into the page, or as the user opened them. */
 let DATA = JSON.parse($("#project").textContent);
@@ -2522,6 +2701,7 @@ const locationNames = () => project.mass.locations.items.map((l) => l.name);
 
 /** Where a name is used: a list of short descriptions. */
 function usesOf(kind, name) {
+  if (kind === "case") return project.agility.selected === name ? ["the agility budget, as its selected case"] : [];
   if (kind !== "location") return [];
   const rows = project.equipment.filter((r) => r.location === name).map((r) => r.id || "a row");
   return rows.length > 3 ? [...rows.slice(0, 3), `${rows.length - 3} more`] : rows;
@@ -2529,6 +2709,7 @@ function usesOf(kind, name) {
 
 function rename(kind, from, to) {
   if (kind === "location") for (const r of project.equipment) if (r.location === from) r.location = to;
+  if (kind === "case" && project.agility.selected === from) project.agility.selected = to;
 }
 
 // What the page shows from the fields, refreshed as they change without a redraw
@@ -2657,6 +2838,7 @@ const SECTIONS = {
       const head = (key) => el("b", { text: `${BUDGETS[key].title} budget` });
       body.append(filesTable([
         { head: el("b", { text: "Mission, which every budget but the mass reads" }), rows: rows(["mission"]) },
+        { head: el("b", { text: "Requirements, which the data and agility budgets check against" }), rows: rows(["requirements"]) },
         ...Object.keys(BUDGETS).map((key) => ({ head: head(key), rows: rows(BUDGETS[key].files) })),
       ]));
       body.append(el("p", { class: "hint", text: "The notebooks in sample/sizing/ read these files: mass_budget, data_budget, delta_v_budget, and agility_roll and agility_pitch." }));
@@ -2672,6 +2854,48 @@ const SECTIONS = {
       qField(g, "Duration", M, "duration", ["yr", "d"], "the design life");
       body.append(missionLine());
       body.append(commentsBox(M, "Your comments on the mission", { note: "They go in the comments field at the top of mission.yaml." }));
+    },
+  },
+
+  slews: {
+    title: "Slews the mission needs", file: "requirements",
+    render(body) {
+      const S = project.requirements.agility.slews;
+      const table = el("table", { class: "items" });
+      table.append(el("tr", {}, ["name", "axis", "angle", "within", "", ""].map((h) => el("th", { text: h }))));
+      S.items.forEach((item, index) => {
+        const tr = el("tr");
+        tr.append(
+          el("td", {}, nameInput(item, null, () => S.items.map((x) => x.name))),
+          el("td", {}, selectInput(item, "axis", AXES)),
+          el("td", {}, quantityInput(item, "angle", ["deg"])),
+          el("td", {}, el("span", { class: "ctl" }, quantityInput(item, "duration", ["s", "min"]), el("span", { class: "hint", text: "settling included" }))),
+          el("td", {}, commentsButton(item, 6, null, tr)),
+          el("td", { class: "tools" }, itemTools(S.items, index, { copy: (r) => ({ ...r, name: `${r.name}_copy`, angle: { ...r.angle }, duration: { ...r.duration } }) })));
+        table.append(tr);
+      });
+      if (S.items.length) body.append(el("div", { class: "scroll-x" }, table));
+      else body.append(el("p", { class: "hint", text: "No slew yet: the agility budget has nothing to check." }));
+      body.append(el("div", { class: "add-row" }, el("button", {
+        class: "btn", text: "+ slew",
+        onclick: () => {
+          let name = "slew";
+          for (let n = 2; S.items.some((x) => x.name === name); n++) name = `slew_${n}`;
+          S.items.push({ name, axis: "roll", angle: q("", "deg"), duration: q("", "s"), comments: "" });
+          changed(true);
+        },
+      })));
+      body.append(commentsBox(S, "Your comments on the slews"));
+    },
+  },
+
+  required_storage: {
+    title: "Time without contact", file: "requirements",
+    render(body) {
+      const D = project.requirements.data;
+      const g = grid(body);
+      row(g, "Orbits without contact", numberInput(D, "orbits_without_contact", { min: 0 }), "the longest run with no usable pass; empty for none");
+      body.append(commentsBox(D, "Your comments on the time without contact"));
     },
   },
 
@@ -2796,7 +3020,7 @@ const SECTIONS = {
     render(body) {
       const S = project.data.storage;
       const g = grid(body);
-      row(g, "Orbits without contact", numberInput(S, "orbits_without_contact", { min: 0 }), "the memory's sizing case");
+      qField(g, "Capacity", S, "capacity", ["GB", "TB", "Gbit", "Tbit"], "usable, after any space kept for other data");
       body.append(commentsBox(S, "Your comments on the storage"));
     },
   },
@@ -2850,15 +3074,18 @@ const SECTIONS = {
   cases: {
     title: "Inertia cases", file: "agility",
     render(body) {
-      const C = project.agility.cases;
+      const A = project.agility;
+      const C = A.cases;
+      const g = grid(body);
+      row(g, "Selected case", selectInput(A, "selected", C.items.map((c) => c.name), { cls: "wide", blank: "none" }), "the case the budget checks; the others are kept for comparison");
       const table = el("table", { class: "items" });
       C.items.forEach((item, index) => {
         const first = el("tr", { class: "first" });
         const second = el("tr", { class: "second" });
         first.append(el("td", {}, el("span", { class: "ctl gap" },
-          nameInput(item, null, () => C.items.map((c) => c.name)),
+          nameInput(item, "case", () => C.items.map((c) => c.name)),
           radioRow(item, "kind", [["envelope", "envelope estimate"], ["stated", "stated inertia"]]),
-          el("span", { class: "push ctl" }, commentsButton(item, 1, null, second), itemTools(C.items, index)))));
+          el("span", { class: "push ctl" }, commentsButton(item, 1, null, second), itemTools(C.items, index, { kind: "case", name: item.name })))));
         const fields = item.kind === "envelope"
           ? [el("span", { class: "hint", text: "body" }),
              ...["x", "y", "z"].map((axis) => el("span", { class: "ctl" }, axis, quantityInput(item.body, axis, ["m"]))),
@@ -2877,6 +3104,7 @@ const SECTIONS = {
           let name = "case";
           for (let n = 2; C.items.some((c) => c.name === name); n++) name = `case_${n}`;
           C.items.push({ name, kind: "envelope", ...envelope(), inertia: { roll: q("", "kg*m**2"), pitch: q("", "kg*m**2") }, comments: "" });
+          if (!A.selected) A.selected = name;
           changed(true);
         },
       })));
@@ -2931,9 +3159,9 @@ const SECTIONS = {
 // ---------------------------------------------------------------- the checks
 
 /** What the page's checks leave to the notebooks, for the checks pop-over. */
-const CHECKS_NOTE = "The budgets themselves come from the notebooks.";
+const CHECKS_NOTE = "The Budgets tab shows the budgets, as quicksat works them out.";
 
-/** The page's own checks: names, units and ranges. The budgets themselves need the notebooks. */
+/** The page's own checks: names, units and ranges. quicksat works out the budgets themselves. */
 function runChecks() {
   const problems = [];
   const add = (section, text, level = "error") => problems.push({ section, text, level });
@@ -2970,6 +3198,19 @@ function runChecks() {
   positive("mission", "the duration", M.duration);
   const km = toKm(M.altitude);
   if (km != null && km > 2000) add("mission", `${fmt(km, 0)} km is above low Earth orbit; quicksat's budgets are meant for it`, "note");
+
+  // Requirements
+  {
+    const R = project.requirements;
+    const S = R.agility.slews.items;
+    unique("slews", "slew", S.map((x) => x.name));
+    for (const x of S) {
+      if (!AXES.includes(x.axis)) add("slews", `slew ${x.name}: the axis must be roll or pitch`);
+      positive("slews", `slew ${x.name}: the angle`, x.angle);
+      positive("slews", `slew ${x.name}: the time`, x.duration);
+    }
+    if (R.data.orbits_without_contact !== "") atLeast("required_storage", "the orbits without contact", R.data.orbits_without_contact, 0);
+  }
 
   // Mass
   {
@@ -3013,7 +3254,7 @@ function runChecks() {
     if (blank(D.rate)) add("downlink", "the rate is missing");
     atLeast("downlink", "the contacts per day", D.contacts_per_day, 0);
     if (blank(D.avg_contact_duration)) add("downlink", "the average contact is missing");
-    atLeast("storage", "the orbits without contact", S.orbits_without_contact, 0);
+    positive("storage", "the capacity", S.capacity);
   }
 
   // Delta-V
@@ -3041,6 +3282,8 @@ function runChecks() {
     const A = project.agility;
     unique("cases", "case", A.cases.items.map((c) => c.name));
     if (!A.cases.items.length) add("cases", "there must be at least one case");
+    else if (!A.selected) add("cases", "no case is selected");
+    else if (!A.cases.items.some((c) => c.name === A.selected)) add("cases", `the selected case "${A.selected}" is not one of the cases`);
     for (const c of A.cases.items) {
       if (c.kind === "envelope") {
         for (const axis of ["x", "y", "z"]) positive("cases", `case ${c.name}: the body's ${axis}`, c.body[axis]);
@@ -3096,6 +3339,29 @@ function missionYaml() {
   return finish(lines);
 }
 
+function requirementsYaml() {
+  const R = project.requirements;
+  const S = R.agility.slews;
+  const lines = start(R.comments);
+  if (S.items.length || R.agility.comments.trim() || S.comments.trim()) {
+    helpLines(lines, 0, "slews");
+    lines.push("agility:");
+    commentsLines(lines, 2, R.agility.comments);
+    if (!S.items.length && !S.comments.trim()) lines.push("  slews: {}");
+    else lines.push("  slews:");
+    commentsLines(lines, 4, S.comments);
+    for (const slew of S.items) {
+      itemLines(lines, 4, slew.name, [["axis", ys(slew.axis)], ["angle", yq(slew.angle)], ["duration", yq(slew.duration)]], slew.comments);
+    }
+    lines.push("");
+  }
+  if (R.data.orbits_without_contact !== "" || R.data.comments.trim()) {
+    helpLines(lines, 0, "required_storage");
+    block(lines, 0, "data", [["orbits_without_contact", yn(R.data.orbits_without_contact)]], R.data.comments);
+  }
+  return finish(lines);
+}
+
 function massYaml() {
   const C = project.mass;
   const L = C.locations;
@@ -3124,7 +3390,7 @@ function dataYaml() {
   const blocks = {
     generation: [["raw_datarate", yq(D.generation.raw_datarate)], ["compression_ratio", yn(D.generation.compression_ratio)], ["duty_cycle", yq(D.generation.duty_cycle)]],
     downlink: [["rate", yq(D.downlink.rate)], ["contacts_per_day", yn(D.downlink.contacts_per_day)], ["avg_contact_duration", yq(D.downlink.avg_contact_duration)]],
-    storage: [["orbits_without_contact", yn(D.storage.orbits_without_contact)]],
+    storage: [["capacity", yq(D.storage.capacity)]],
   };
   for (const [key, pairs] of Object.entries(blocks)) {
     helpLines(lines, 0, key);
@@ -3159,6 +3425,9 @@ function manoeuvresCsv() {
 function agilityYaml() {
   const A = project.agility;
   const lines = start(A.comments);
+  helpLines(lines, 0, "selected_case");
+  if (A.selected) lines.push(`selected_case: ${ys(A.selected)}`);
+  lines.push("");
   helpLines(lines, 0, "inertia_cases");
   lines.push("inertia_cases:");
   commentsLines(lines, 2, A.cases.comments);
@@ -3184,11 +3453,349 @@ function agilityYaml() {
 function projectFiles() {
   const n = project.names;
   const files = [{ kind: "mission", path: n.mission, text: missionYaml(), note: "the reference orbit and the design life" }];
+  files.push({ kind: "requirements", path: n.requirements, text: requirementsYaml(), note: "what the mission asks of the spacecraft" });
   files.push({ kind: "mass", path: n.mass, text: massYaml(), note: "margins and harness" }, { kind: "equipment", path: n.equipment, text: equipmentCsv(), note: "the equipment list" });
   files.push({ kind: "data", path: n.data, text: dataYaml(), note: "the payload data flow" });
   files.push({ kind: "deltav", path: n.deltav, text: deltavYaml(), note: "the delta-V settings" }, { kind: "manoeuvres", path: n.manoeuvres, text: manoeuvresCsv(), note: "the manoeuvres" });
   files.push({ kind: "agility", path: n.agility, text: agilityYaml(), note: "the agility settings" });
   return files;
+}
+
+// quicksat sizing editor: the Budgets tab, every budget as quicksat works it out.
+//
+// Python works out the budgets, with the same methods as the notebooks: when it
+// writes the page, and on the editor's server a moment after each change. The
+// results arrive as text, so the page formats no number of its own. Without the
+// server, the tab shows the results from when the page was written, and says
+// which files have changed since.
+
+/** The budgets, as the tab shows them, and its controls. */
+const budgets = {
+  /** The results shown: from when Python wrote the page, or from the server's last work-out. */
+  results: DATA.results || null,
+  /** When the server worked them out, or null for the page's own. */
+  at: null,
+  /** The files' texts that the results come from, by kind, to tell when the page has changed since. */
+  texts: null,
+  running: false,
+  /** Whether a change came in while a work-out was going on. */
+  again: false,
+  /** Why the last work-out failed, or "". */
+  error: "",
+  timer: null,
+  /** The tab's page: overview, mass, deltav, data or agility. */
+  view: "overview",
+  inOrbit: true,
+  subtotals: false,
+  massComments: false,
+  deltavComments: false,
+  axis: "roll",
+  case: null,
+  degraded: false,
+  /** The slew that the slew table checks against, by name, or "" for none. */
+  target: null,
+};
+
+const BUDGET_VIEWS = [
+  { id: "overview", title: "Overview", intro: "Each budget's deciding figures, and every check against its limit." },
+  { id: "mass", title: "Mass", files: ["equipment", "mass"], intro: "The mass budget, as mass_budget.ipynb shows it." },
+  { id: "deltav", title: "Delta-V", files: ["manoeuvres", "deltav", "mission"], intro: "The delta-V budget and its propellant, as delta_v_budget.ipynb shows them." },
+  { id: "data", title: "Data", files: ["data", "mission", "requirements"], intro: "The payload data flow and the storage, as data_budget.ipynb shows them." },
+  { id: "agility", title: "Agility", files: ["agility", "mission", "requirements"], intro: "The slews about each axis, as agility_roll.ipynb and agility_pitch.ipynb show them." },
+];
+
+// ---------------------------------------------------------------- the work-out
+
+/** The files' texts on the page now, by kind. */
+const budgetTexts = () => Object.fromEntries(projectFiles().map((file) => [file.kind, file.text]));
+
+/** The kinds of the files that changed since the results were worked out. */
+function changedSince() {
+  if (!budgets.texts) return [];
+  const now = budgetTexts();
+  return Object.keys(now).filter((kind) => now[kind] !== budgets.texts[kind]);
+}
+
+/** Work the budgets out again a moment after a change, while the server answers. */
+function scheduleBudgets() {
+  clearTimeout(budgets.timer);
+  if (server.state === "up" && changedSince().length) budgets.timer = setTimeout(workOutBudgets, 600);
+  refreshBudgets();
+}
+
+/** Send the page's files to the server, which works out every budget. */
+async function workOutBudgets() {
+  if (server.state !== "up") return;
+  if (budgets.running) { budgets.again = true; return; }
+  const texts = budgetTexts();
+  budgets.running = true;
+  refreshBudgets();
+  let result;
+  try {
+    const response = await fetch(serverUrl("budgets"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ files: Object.entries(texts).map(([kind, text]) => ({ kind, text })) }),
+    });
+    const text = await response.text();
+    try {
+      result = JSON.parse(text);
+    } catch {
+      result = { ok: false, error: `The server refused the work-out: ${text}` };
+    }
+  } catch {
+    result = { ok: false, error: "The server did not answer. It may have stopped: see its window." };
+  }
+  budgets.running = false;
+  if (result.ok) {
+    budgets.results = result.results;
+    budgets.texts = texts;
+    budgets.at = new Date();
+    budgets.error = "";
+  } else budgets.error = result.error;
+  if (budgets.again || (result.ok && changedSince().length)) {
+    budgets.again = false;
+    workOutBudgets();
+  }
+  refreshBudgets();
+  if (!result.ok) checkServer();
+}
+
+/** Redraw what shows the budgets: the tab's title, and the tab when it is open. */
+function refreshBudgets() {
+  showProblems();
+  if (state.tab === "budgets") drawBudgets();
+}
+
+// ---------------------------------------------------------------- what the results say
+
+const resultsOf = (key) => (budgets.results ? budgets.results.budgets[key] : null);
+const checksOf = (key) => (budgets.results ? budgets.results.checks.filter((check) => check.budget === key) : []);
+
+/** The budgets with a failing check, for the tab's title. */
+const failingBudgets = () => new Set((budgets.results ? budgets.results.checks : []).filter((check) => !check.passes).map((check) => check.budget)).size;
+
+/** A budget's mark in the list: whether its checks pass, or why there are none. */
+function budgetMark(key) {
+  if (key === "overview") {
+    const failing = failingBudgets();
+    return failing ? ["✕", "problem", `${failing} budget${failing > 1 ? "s" : ""} with a failing check`] : ["✓", "visited", "every check passes"];
+  }
+  const results = resultsOf(key);
+  if (!results) return ["–", "off", "the folder holds no files for it"];
+  if (results.error) return ["!", "problem", "quicksat cannot work it out"];
+  const checks = checksOf(key);
+  if (!checks.length) return ["–", "", "no check"];
+  return checks.every((check) => check.passes) ? ["✓", "visited", "its checks pass"] : ["✕", "problem", "a check fails"];
+}
+
+// ---------------------------------------------------------------- drawing
+
+/** A table of text, as Python sent it. `hide` leaves out columns by their key. */
+function budgetTable(table, { hide = [] } = {}) {
+  const shown = table.columns.map((column, i) => [column, i]).filter(([column]) => !hide.includes(column.key));
+  const node = el("table", { class: "items budget" },
+    el("tr", {}, shown.map(([column]) => el("th", { class: column.number ? "right" : "", text: column.title }))));
+  for (const row of table.rows) {
+    node.append(el("tr", { class: `rt-${row.type}` },
+      shown.map(([column, i]) => el("td", { class: [column.number ? "right" : "", `col-${column.key}`].join(" "), text: row.cells[i] }))));
+  }
+  return el("div", { class: "scroll-x" }, node);
+}
+
+/** A card, as on the other tabs, with a note of where its table comes from. */
+function budgetCard(title, body, { files = "", source = "", wide = false } = {}) {
+  return el("div", { class: "card" + (wide ? " wide" : "") },
+    el("div", { class: "card-head" },
+      el("span", { class: "title" }, el("b", { text: title })),
+      files ? el("span", { class: "file", text: files }) : null,
+      el("span", { class: "spacer" }),
+      source ? el("span", { class: "source", text: source, title: "The same table as the notebook's, from the same method" }) : null),
+    el("div", { class: "card-body" }, body));
+}
+
+function figuresRow(figures) {
+  return el("div", { class: "figs" }, figures.map((figure) => el("div", { class: "fig" + (figure.bad ? " bad" : "") },
+    el("div", { class: "k", text: figure.label }),
+    el("div", { class: "v" }, figure.value, figure.unit ? el("u", { text: figure.unit }) : null),
+    el("div", { class: "s", text: figure.note }))));
+}
+
+/** The checks, with their verdicts and the files their limits come from. */
+function checksTable(checks) {
+  const table = el("table", { class: "items budget checks" },
+    el("tr", {}, ["", "check", "", "design", "limit", "spare", "margin", "from"].map((h, i) => el("th", { class: i >= 3 && i <= 6 ? "right" : "", text: h }))));
+  for (const check of checks) {
+    const tone = check.passes ? "" : "neg";
+    table.append(el("tr", { class: check.passes ? "" : "bad-row" },
+      el("td", {}, el("span", { class: `verdict ${check.passes ? "pass" : "fail"}`, text: check.verdict })),
+      el("td", { class: "name", text: check.check }),
+      el("td", { class: "wrap", text: check.description }),
+      el("td", { class: "right", text: check.design }),
+      el("td", { class: "right", text: check.limit }),
+      el("td", { class: `right ${tone}`, text: check.spare }),
+      el("td", { class: `right ${tone}`, text: check.margin }),
+      el("td", { class: "file wrap", text: check.files.join(", ") })));
+  }
+  return el("div", { class: "scroll-x" }, table);
+}
+
+/** Two choices or more, as the editors' radio rows draw them. */
+function choiceRow(options, current, choose) {
+  return el("div", { class: "radio-row" }, options.map(([value, label]) => el("label", {
+    class: value === current ? "on" : "",
+    text: label,
+    onclick: () => { choose(value); drawBudgets(); },
+  })));
+}
+
+function tick(label, value, choose) {
+  return el("label", { class: "tick" }, el("input", { type: "checkbox", checked: value, onchange: (e) => { choose(e.target.checked); drawBudgets(); } }), label);
+}
+
+/** What a budget's page shows when there are no results for it. */
+function missingBudget(key) {
+  const results = resultsOf(key);
+  if (!budgets.results) return el("p", { class: "hint", text: "The page holds no results. Write the page again, or start the editor's server." });
+  if (!results) return el("p", { class: "hint", text: "The folder holds no files for this budget, so there is nothing to work out." });
+  return el("div", { class: "budget-error" }, el("b", { text: "quicksat cannot work out this budget: " }), results.error);
+}
+
+function overviewBody() {
+  const results = budgets.results;
+  if (!results) return [missingBudget("overview")];
+  const parts = [figuresRow(results.overview)];
+  parts.push(budgetCard("Checks", results.checks.length
+    ? [checksTable(results.checks), el("p", { class: "hint", text: "The margin is the spare as a share of what the design needs or uses. The requirements come from requirements.yaml, on the Requirements tab." })]
+    : el("p", { class: "hint", text: "No budget has a check yet. The delta-V budget checks its propellant, and the data and agility budgets check the requirements in requirements.yaml." }), { wide: true }));
+  for (const note of results.notes) parts.push(el("div", { class: "budget-error", text: note }));
+  return parts;
+}
+
+/** A budget's checks, above its tables, when it has any. */
+function ownChecks(key) {
+  const checks = checksOf(key);
+  return checks.length ? budgetCard("Checks", checksTable(checks), { wide: true }) : null;
+}
+
+function massBody() {
+  const results = resultsOf("mass");
+  if (!results || results.error) return [missingBudget("mass")];
+  const t = results.tables;
+  const variant = t.budget[`${budgets.inOrbit ? 1 : 0}${budgets.subtotals ? 1 : 0}`];
+  return [
+    figuresRow(results.figures),
+    el("div", { class: "controls" },
+      choiceRow([[true, "In orbit"], [false, "On the ground, with the launcher's side"]], budgets.inOrbit, (v) => { budgets.inOrbit = v; }),
+      tick("subsystem subtotals", budgets.subtotals, (v) => { budgets.subtotals = v; }),
+      tick("comments", budgets.massComments, (v) => { budgets.massComments = v; })),
+    budgetCard("Mass budget", budgetTable(variant, { hide: budgets.massComments ? [] : ["comments"] }), { files: fileList(["equipment", "mass"]), source: "MassBudget.tabulated_mass()", wide: true }),
+    el("div", { class: "pair" },
+      budgetCard("By location", budgetTable(t.by_location), { source: "by_location()" }),
+      budgetCard("By subsystem", budgetTable(t.by_subsystem), { source: "by_subsystem()" }),
+      budgetCard("Through the mission", budgetTable(t.points), { source: "on_ground_mass(), in_orbit_mass()" })),
+  ];
+}
+
+function deltavBody() {
+  const results = resultsOf("deltav");
+  if (!results || results.error) return [missingBudget("deltav")];
+  const t = results.tables;
+  return [
+    figuresRow(results.figures),
+    ownChecks("deltav"),
+    el("div", { class: "controls" }, tick("comments", budgets.deltavComments, (v) => { budgets.deltavComments = v; })),
+    budgetCard("Delta-V budget", budgetTable(t.budget, { hide: budgets.deltavComments ? [] : ["comments"] }), { files: fileList(["manoeuvres", "deltav"]), source: "DeltaVBudget.tabulated_deltav()", wide: true }),
+    el("div", { class: "pair" },
+      budgetCard("By phase", budgetTable(t.by_phase), { source: "by_phase()" }),
+      budgetCard("By type", budgetTable(t.by_type), { source: "by_type()" }),
+      t.propellant ? budgetCard("Propellant", budgetTable(t.propellant), { source: "propellant_mass()" }) : null),
+  ];
+}
+
+function dataBody() {
+  const results = resultsOf("data");
+  if (!results || results.error) return [missingBudget("data")];
+  const t = results.tables;
+  return [
+    figuresRow(results.figures),
+    ownChecks("data"),
+    el("div", { class: "pair two" },
+      budgetCard("Data budget", budgetTable(t.budget), { files: fileList(["data", "mission"]), source: "DataBudget.tabulated_data()" }),
+      budgetCard("Storage", budgetTable(t.storage), { source: "storage_required()" })),
+  ];
+}
+
+function agilityBody() {
+  const results = resultsOf("agility");
+  if (!results || results.error) return [missingBudget("agility")];
+  if (!results.cases.includes(budgets.case)) budgets.case = results.selected;
+  const targets = results.slews.filter((slew) => slew.axis === budgets.axis);
+  if (budgets.target === null || (budgets.target && !targets.some((slew) => slew.name === budgets.target))) budgets.target = targets.length ? targets[0].name : "";
+  const variant = results.variants[`${budgets.axis}|${budgets.case}|${budgets.degraded ? 1 : 0}`];
+  const caseSelect = el("select", { onchange: (e) => { budgets.case = e.target.value; drawBudgets(); } },
+    results.cases.map((name) => el("option", { value: name, text: name === results.selected ? `${name} (selected)` : name })));
+  caseSelect.value = budgets.case;
+  const targetSelect = el("select", { onchange: (e) => { budgets.target = e.target.value; drawBudgets(); } },
+    [...targets.map((slew) => el("option", { value: slew.name, text: `${slew.name}: ${slew.text}` })), el("option", { value: "", text: "no slew" })]);
+  targetSelect.value = budgets.target;
+  const table = variant && !variant.error ? variant.tables[budgets.target] : null;
+  return [
+    ownChecks("agility"),
+    el("div", { class: "controls" },
+      choiceRow([["roll", "Roll"], ["pitch", "Pitch"]], budgets.axis, (v) => { budgets.axis = v; budgets.target = null; }),
+      el("label", { class: "tick" }, "inertia case ", caseSelect),
+      tick("one wheel failed", budgets.degraded, (v) => { budgets.degraded = v; }),
+      el("label", { class: "tick" }, "check against ", targetSelect)),
+    budgets.case !== results.selected ? el("p", { class: "other-case", text: `Not the selected case: the checks use ${results.selected}, as agility_config.yaml selects.` }) : null,
+    variant && variant.error ? el("div", { class: "budget-error" }, el("b", { text: `quicksat cannot work out ${budgets.case}: ` }), variant.error) : figuresRow(variant.figures),
+    table ? budgetCard("Slew table", budgetTable(table), { files: fileList(["agility", "mission"]), source: "AgilityBudget.tabulated_agility()", wide: true }) : null,
+    budgetCard("Inertia cases", budgetTable(results.tables.cases), { source: "for each case, as agility_roll.ipynb compares them", wide: true }),
+  ];
+}
+
+const fileList = (kinds) => kinds.map((kind) => project.names[kind]).join(", ");
+
+/** The line that says where the figures come from, and how fresh they are. */
+function budgetsState() {
+  const changed = changedSince().map((kind) => project.names[kind]);
+  const command = DATA.server ? DATA.server.command : `python -m quicksat.editor serve ${DATA.label || "FOLDER"}`;
+  if (server.state === "up") {
+    if (budgets.error) return el("div", { class: "budget-error" }, el("b", { text: "The budgets were not worked out again: " }), budgets.error);
+    if (budgets.running || changed.length) return el("div", { class: "budget-state", text: "Working out the budgets again, from the files on this page…" });
+    const at = budgets.at ? `at ${budgets.at.toLocaleTimeString()}` : "when the page was loaded";
+    return el("div", { class: "budget-state", text: `Worked out by quicksat ${at}, from the files on this page, saved or not. They follow each change.` });
+  }
+  const why = server.state === "none"
+    ? "This page was opened from a file, so these figures are the ones quicksat worked out when Python wrote it."
+    : server.state === "moved"
+      ? "The editor's server was started again, so this page's key no longer works. These figures stop following your changes."
+      : "The editor's server has stopped, so these figures stop following your changes.";
+  const stale = changed.length ? ` ${nameList(changed)} changed since, so they may be out of date.` : "";
+  return el("div", { class: "stale-banner" }, `${why}${stale} To work them out as you edit, run the editor's server, and open the address it prints:`,
+    el("pre", { class: "command", text: command }));
+}
+
+/** The Budgets tab: the list of budgets, and the page of the one chosen. */
+function drawBudgets() {
+  const nav = el("nav", { class: "steps" }, el("div", { class: "group", text: "Budgets" }));
+  for (const view of BUDGET_VIEWS) {
+    const [mark, cls, title] = budgetMark(view.id);
+    nav.append(el("button", { class: [view.id === budgets.view ? "current" : "", cls].join(" "), title, onclick: () => { budgets.view = view.id; drawBudgets(); } },
+      el("span", { class: "num", text: mark }), view.title));
+  }
+  const view = BUDGET_VIEWS.find((v) => v.id === budgets.view);
+  const body = { overview: overviewBody, mass: massBody, deltav: deltavBody, data: dataBody, agility: agilityBody }[view.id]();
+  const scroll = document.querySelector("#page-budgets .step-body");
+  const top = scroll ? scroll.scrollTop : 0;
+  $("#page-budgets").replaceChildren(nav,
+    el("div", { class: "step" },
+      el("div", { class: "step-head" },
+        el("div", {}, el("div", { class: "where", text: view.files ? `Budgets · ${fileList(view.files)}` : "Budgets" }), el("h2", { text: view.title })),
+        el("p", { class: "intro", text: view.intro })),
+      el("div", { class: "step-body" + (server.state !== "up" && changedSince().length ? " stale" : "") }, budgetsState(), ...body.filter(Boolean))));
+  const again = document.querySelector("#page-budgets .step-body");
+  if (again) again.scrollTop = top;
 }
 
 // quicksat sizing editor: the tabs and the Setup steps, where the comments
@@ -3198,7 +3805,9 @@ function projectFiles() {
 
 const TABS = [
   { id: "setup", title: "Setup" },
+  { id: "budgets", title: "Budgets", draw: drawBudgets, count: failingBudgets },
   { id: "mission", title: "Mission", sections: ["mission"], intro: "The reference orbit and the design life, from mission.yaml. The data, delta-V and agility budgets read them." },
+  { id: "requirements", title: "Requirements", sections: ["slews", "required_storage"], intro: "What the mission asks of the spacecraft, from requirements.yaml. The agility and data budgets check their figures against it." },
   { id: "mass", title: "Mass", budget: "mass", top: () => overallBox("mass"), sections: ["locations"], intro: "The mass budget's settings: each location's margins and harness. The equipment list has a tab of its own." },
   { id: "equipment", title: "Equipment", budget: "mass", sections: ["equipment"], intro: "Every item of the spacecraft, from equipment.csv. The totals under the table add the rows as entered." },
   { id: "data", title: "Data", budget: "data", top: () => overallBox("data"), sections: ["generation", "downlink", "storage"], intro: "The payload data flow: what the payload makes, what the link sends, and the memory between passes." },
@@ -3210,6 +3819,7 @@ const TABS = [
 const STEPS = [
   { group: "Start", title: "Folder", sections: ["folder"] },
   { group: "Mission", title: "Reference orbit and design life", sections: ["mission"] },
+  { group: "Requirements", title: "What the mission asks", sections: ["slews", "required_storage"] },
   { group: "Mass", title: "Locations: margins and harness", sections: ["locations"], top: () => overallBox("mass") },
   { title: "Equipment", sections: ["equipment"] },
   { group: "Data", title: "Payload data generation", sections: ["generation"], top: () => overallBox("data") },
@@ -3227,6 +3837,7 @@ const STEPS = [
 function fileComments(path) {
   const n = project.names;
   if (path === n.mission) return commentsBox(M, "Your comments on the mission", { note: "They go in the comments field at the top of the file." });
+  if (path === n.requirements) return commentsBox(project.requirements, "Your comments on the requirements", { note: "They go in the comments field at the top of the file." });
   for (const key of ["mass", "data", "deltav", "agility"]) {
     if (path === n[key]) return commentsBox(project[key], `Your comments on ${BUDGETS[key].label}`, { note: "They go in the comments field at the top of the file." });
   }
@@ -3244,6 +3855,17 @@ function commentTarget(kind, path) {
   const [first, second] = path;
   const find = (list, name) => list.find((x) => x.name === name);
   if (kind === "mission") return [M, "the mission", 0];
+  if (kind === "requirements") {
+    const R = project.requirements;
+    const S = R.agility.slews;
+    if (first === "agility") {
+      const [, , name] = path;
+      if (second !== "slews") return [R.agility, "agility", 1];
+      return name != null && find(S.items, name) ? [find(S.items, name), `slews › ${name}`, 3] : [S, "agility › slews", 2];
+    }
+    if (first === "data") return [R.data, "data", 1];
+    return [R, "the requirements", 0];
+  }
   if (kind === "mass") {
     const L = project.mass.locations;
     if (first === "locations") return second != null && find(L.items, second) ? [find(L.items, second), `locations › ${second}`, 2] : [L, "locations", 1];
@@ -3268,7 +3890,7 @@ function commentTarget(kind, path) {
 const PAGE_TITLE = "quicksat Sizing Editor";
 
 /** The kinds of the folder's YAML files, whose `#` comments the page reviews. */
-const YAML_KINDS = ["mission", "mass", "data", "deltav", "agility"];
+const YAML_KINDS = ["mission", "requirements", "mass", "data", "deltav", "agility"];
 
 /** The folder's files, by kind, in the order the Start step lists them. */
 const FILES = Object.keys(NAMES).map((kind) => ({ kind }));
@@ -3312,6 +3934,7 @@ const OPENERS = {
     },
   },
   mission: fileOpener("mission", "a mission file"),
+  requirements: fileOpener("requirements", "a requirements file"),
   mass: fileOpener("mass", "a mass settings file"),
   equipment: fileOpener("equipment", "an equipment list"),
   data: fileOpener("data", "a data flow file"),
@@ -3324,12 +3947,21 @@ const OPENERS = {
 
 Object.assign(page, {
   beforeDraw: () => live.clear(),
-  afterChange: () => { for (const update of live) update(); },
+  afterChange: () => {
+    for (const update of live) update();
+    scheduleBudgets();
+  },
   // the folder's opener finds each file by its usual name
   draftPath: (file) => NAMES[file.kind],
+  serverChanged: () => {
+    if (server.state === "up" && changedSince().length) workOutBudgets();
+    refreshBudgets();
+  },
 });
 
 startPage();
+// the results that Python worked out come from the files as the page first holds them
+budgets.texts = budgetTexts();
 </script>
 </body>
 </html>

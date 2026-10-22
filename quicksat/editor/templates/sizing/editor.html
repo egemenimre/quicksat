@@ -22,9 +22,59 @@
 .totals th:first-child, .totals td:first-child { text-align: left; }
 .totals td { padding: 2px 14px 2px 0; text-align: right; color: var(--text); }
 .totals tr.sum td { border-top: 1px solid var(--line); color: var(--accent); }
+
+/* The Budgets tab: the list of budgets, as the Setup steps are listed, and the
+   figures and tables of the one chosen, as quicksat works them out */
+#page-budgets { grid-template-columns: 190px minmax(0, 1fr); }
+#page-budgets .step-head .intro { color: var(--muted); margin: 0 0 0 14px; }
+#page-budgets .steps button.off { color: var(--dim); }
+.budget-state { color: var(--muted); font-size: 11px; }
+/* figures that the page's changes have left out of date */
+#page-budgets .stale .figs, #page-budgets .stale .card { opacity: 0.55; }
+.stale-banner, .budget-error { border: 1px solid var(--warn-line); background: var(--warn-bg); color: var(--amber); border-radius: 3px; padding: 6px 10px; font-size: 11px; }
+.budget-error { border-color: var(--fail-line); background: var(--fail-bg); color: var(--red); white-space: pre-wrap; }
+.budget-error b { color: var(--text); font-weight: 400; }
+.stale-banner pre.command { margin: 6px 0 0; color: var(--text); white-space: pre-wrap; }
+.figs { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.fig { border: 1px solid var(--line); border-radius: 3px; background: #0a1526; padding: 7px 10px; }
+.fig .k { color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; }
+.fig .v { font-size: 16px; color: var(--text); margin: 2px 0; }
+.fig .v u { text-decoration: none; color: var(--muted); font-size: 11px; margin-left: 4px; }
+.fig .s { color: var(--muted); font-size: 10.5px; }
+.fig.bad { border-color: var(--fail-line); background: var(--fail-bg); }
+.fig.bad .v { color: var(--red); }
+#page-budgets .card { margin: 0; }
+.card-head .source { color: var(--dim); font-size: 10.5px; }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; align-items: start; }
+.pair.two { grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); }
+.controls { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.controls .tick { color: var(--muted); display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.other-case { margin: 0; color: var(--amber); font-size: 11px; }
+.items.budget td { padding: 3px 8px; white-space: nowrap; }
+.items.budget th { padding: 3px 8px; }
+.items.budget .right { text-align: right; }
+.items.budget td.col-comments, .items.budget td.wrap { white-space: normal; }
+.items.budget td.col-comments { color: var(--muted); min-width: 220px; }
+.items.budget td.file { color: var(--dim); }
+.items.budget td.name { color: var(--muted); }
+.items.budget td.neg { color: var(--red); }
+.items.budget tr.bad-row td { background: rgba(248, 113, 113, 0.06); }
+.items.budget tr.rt-location_subtotal td, .items.budget tr.rt-subsystem_subtotal td, .items.budget tr.rt-phase_subtotal td, .items.budget tr.rt-subtotal td { color: var(--muted); font-style: italic; }
+.items.budget tr.rt-location_total td, .items.budget tr.rt-margin td { border-bottom: 1px solid var(--line-2); }
+.items.budget tr.rt-location_total td { font-weight: 600; padding-bottom: 8px; }
+.items.budget tr.rt-dry_total td, .items.budget tr.rt-wet_total td, .items.budget tr.rt-total td, .items.budget tr.rt-storage td { color: var(--accent); font-weight: 600; border-top: 1px solid var(--line-2); }
+.items.budget tr.rt-propellant td { color: var(--amber); }
+.items.budget tr.rt-fails td { color: var(--red); }
+.items.budget tr.rt-selected td { color: var(--accent); }
+.verdict { display: inline-block; padding: 0 6px; border-radius: 3px; font-size: 10px; letter-spacing: 0.06em; border: 1px solid; }
+.verdict.pass { color: var(--green); border-color: var(--ok-line); background: var(--ok-bg); }
+.verdict.fail { color: var(--red); border-color: var(--fail-line); background: var(--fail-bg); }
+
 @media (max-width: 900px) {
   #page-setup { grid-template-columns: minmax(0, 1fr); }
   #page-files { grid-template-columns: minmax(0, 1fr); }
+  #page-budgets { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  #page-budgets .step-head .intro { display: none; }
 }
 </style>
 </head>
@@ -35,6 +85,7 @@
   <nav class="tabs" id="tabs"></nav>
   <div class="spacer"></div>
   <button class="chip" id="checks-chip" title="The page's basic checks"></button>
+  <button class="btn danger" id="stop-server" hidden title="Stop the editor's server when you are done. The page stays open.">Stop the server</button>
 </header>
 <div class="banner" id="draft" hidden></div>
 <div class="banner" id="banner" hidden></div>
@@ -44,7 +95,9 @@
       <nav class="steps" id="steps"></nav>
       <div class="step" id="step"></div>
     </section>
+    <section class="page" id="page-budgets"></section>
     <section class="page" id="page-mission"><div class="sheet" id="sheet-mission"></div></section>
+    <section class="page" id="page-requirements"><div class="sheet" id="sheet-requirements"></div></section>
     <section class="page" id="page-mass"><div class="sheet" id="sheet-mass"></div></section>
     <section class="page" id="page-equipment"><div class="sheet" id="sheet-equipment"></div></section>
     <section class="page" id="page-data"><div class="sheet" id="sheet-data"></div></section>

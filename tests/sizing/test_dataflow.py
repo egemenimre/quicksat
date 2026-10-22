@@ -13,6 +13,7 @@ The fixture is the sample satellite, in a 500 km orbit of 5677 s:
     downlink     800 Mbit/s for 7 contacts a day of 6 min = 42 min/day
                                                     ->  252.00 GB/day
     margin       252.00 / 225.00 - 1 = +12%
+    storage      3 orbits without contact x 14.78 GB = 44.35 GB, in a 2 TB memory
 """
 
 import pytest
@@ -21,6 +22,7 @@ from astropy.tests.helper import assert_quantity_allclose
 from quicksat import Q_, u
 from quicksat.dataflow.budget import DataBudget, DataFlowModel
 from quicksat.utils.mission import Mission
+from quicksat.utils.requirements import Requirements
 
 MODEL = """
 generation:
@@ -32,15 +34,19 @@ downlink:
   contacts_per_day: 7
   avg_contact_duration: 6 min
 storage:
-  orbits_without_contact: 3
+  capacity: 2 TB
 """
 
 MISSION = "altitude: 500 km\ninclination: 97.4 deg\nduration: 7 yr\n"
 
+REQUIREMENTS = "data:\n  orbits_without_contact: 3\n"
 
-def build(model=MODEL, mission=MISSION):
+
+def build(model=MODEL, mission=MISSION, requirements: str | None = REQUIREMENTS):
     return DataBudget(
-        DataFlowModel.from_yaml_text(model), Mission.from_yaml_text(mission)
+        DataFlowModel.from_yaml_text(model),
+        Mission.from_yaml_text(mission),
+        Requirements.from_yaml_text(requirements) if requirements else None,
     )
 
 
@@ -77,14 +83,49 @@ def test_margin(budget):
 # --- storage -----------------------------------------------------------------
 
 
-def test_storage_defaults_to_the_configured_orbits(budget):
+def test_storage_defaults_to_the_required_orbits(budget):
+    assert budget.required_orbits == 3
     assert_quantity_allclose(budget.storage_required(), budget.generated_per_orbit * 3)
+    assert_quantity_allclose(budget.storage_required(), Q_(44.351, "GB"), rtol=1e-4)
+
+
+def test_storage_with_no_requirement_needs_its_orbits():
+    budget = build(requirements=None)
+    assert budget.required_orbits is None
+    with pytest.raises(ValueError, match="no data requirement"):
+        budget.storage_required()
+    assert_quantity_allclose(budget.storage_required(3), Q_(44.351, "GB"), rtol=1e-4)
 
 
 def test_storage_scales_with_its_argument(budget):
     one = budget.storage_required(1)
     assert_quantity_allclose(budget.storage_required(6), 6 * one)
     assert_quantity_allclose(budget.storage_required(0), Q_(0.0, "GB"))
+
+
+# --- the checks --------------------------------------------------------------
+
+
+def test_the_downlink_and_the_memory_are_checked(budget):
+    downlink, storage = budget.checks()
+    assert downlink.name == "downlink"
+    assert_quantity_allclose(downlink.margin, budget.margin)
+    assert downlink.passes
+    assert storage.name == "storage"
+    assert_quantity_allclose(storage.design, Q_(2000, "GB"))
+    assert_quantity_allclose(storage.limit, budget.storage_required())
+    assert storage.passes
+
+
+def test_a_memory_too_small_fails_its_check():
+    budget = build(model=MODEL.replace("capacity: 2 TB", "capacity: 40 GB"))
+    storage = budget.checks()[1]
+    assert not storage.passes
+    assert_quantity_allclose(storage.spare, Q_(-4.351, "GB"), rtol=1e-3)
+
+
+def test_with_no_requirement_only_the_downlink_is_checked():
+    assert [check.name for check in build(requirements=None).checks()] == ["downlink"]
 
 
 # --- the case the tool exists to catch ---------------------------------------
@@ -126,6 +167,8 @@ def test_a_negative_margin_when_generation_outruns_downlink():
             "avg_contact_duration: 6 kg",
             "time dimensions",
         ),
+        ("capacity: 2 TB", "capacity: 2 km", "data volume dimensions"),
+        ("capacity: 2 TB", "capacity: -2 TB", "must not be negative"),
     ],
 )
 def test_validation_failures(old, new, expected):
@@ -146,11 +189,14 @@ def test_missing_file():
 
 def test_input_files_load(data_dir):
     budget = DataBudget.from_yaml_file(
-        data_dir / "pl_dataflow_model.yaml", data_dir / "mission.yaml"
+        data_dir / "pl_dataflow_model.yaml",
+        data_dir / "mission.yaml",
+        data_dir / "requirements.yaml",
     )
     assert_quantity_allclose(
         budget.margin, Q_(0.12, u.dimensionless_unscaled), rtol=1e-3
     )
+    assert all(check.passes for check in budget.checks())
 
 
 # --- the report --------------------------------------------------------------
@@ -167,6 +213,13 @@ def test_report_rows_match_the_properties(budget):
     assert_quantity_allclose(
         Q_(value("Data generation rate"), "Mbit/s"), budget.effective_datarate
     )
+    assert value("Mass memory") == pytest.approx(2000)
+
+
+def test_with_no_requirement_the_report_has_no_storage_required():
+    items = list(build(requirements=None).tabulated_data().data["item"])
+    assert "Mass memory" in items
+    assert "Storage required" not in items
 
 
 def test_report_hides_row_type_but_keeps_it(budget):

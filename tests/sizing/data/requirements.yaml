@@ -1,0 +1,20 @@
+# What the mission asks of the spacecraft. Each budget checks its figures
+# against its own section. Every section is optional.
+
+agility:
+  # Each slew the mission needs, under a name of your choice. The duration
+  # includes the settling time.
+  slews:
+    roll_40:
+      axis: roll
+      angle: 40 deg
+      duration: 90 s
+    pitch_40:
+      axis: pitch
+      angle: 40 deg
+      duration: 90 s
+
+data:
+  # The longest run of orbits with no usable contact. The mass memory must
+  # hold the data generated over it.
+  orbits_without_contact: 3

@@ -400,3 +400,18 @@ def test_an_explicit_dry_mass_overrides_the_attached_budget(tmp_path, mass_budge
     """The what-if path: ask for another spacecraft without touching the file."""
     budget = DeltaVBudget.from_csv(*write_budget(tmp_path), mass_budget=mass_budget)
     assert budget.propellant_mass(Q_(600, "kg")) > budget.propellant_mass()
+
+
+def test_the_propellant_loaded_is_checked_against_the_propellant_required(
+    tmp_path, mass_budget
+):
+    budget = DeltaVBudget.from_csv(*write_budget(tmp_path), mass_budget=mass_budget)
+    (check,) = budget.checks()
+    assert check.name == "propellant"
+    assert_quantity_allclose(check.design, Q_(20, "kg"))
+    assert_quantity_allclose(check.limit, budget.propellant_mass())
+    assert check.passes == (budget.propellant_mass() <= Q_(20, "kg"))
+
+
+def test_with_no_mass_budget_there_is_no_check(budget):
+    assert budget.checks() == []

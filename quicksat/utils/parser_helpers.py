@@ -185,6 +185,10 @@ time. This rejects `800 MHz` as well as `500 km`. `800 Mbps` does not parse at a
 so write `800 Mbit/s`.
 """
 
+DataVolumeQty = non_negative_quantity(u.byte, "data volume")
+"""Annotated Quantity type for data volumes, such as a memory's `2 TB`. A volume
+in bits, such as `16 Tbit`, is accepted too."""
+
 TimeQty = non_negative_quantity(u.s, "time")
 """Annotated Quantity type restricted to non-negative durations."""
 

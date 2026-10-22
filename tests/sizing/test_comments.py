@@ -19,6 +19,7 @@ from quicksat.dataflow.budget import DataFlowModel
 from quicksat.delta_v.budget import DeltaVConfig
 from quicksat.mass.budget import MassBudgetConfig
 from quicksat.utils.mission import Mission
+from quicksat.utils.requirements import Requirements
 
 MISSION = """
 comments: the reference orbit
@@ -42,7 +43,7 @@ DATA = """
 comments: daytime imaging only
 generation: {raw_datarate: 1000 Mbit/s, compression_ratio: 2.4, duty_cycle: 5 %, comments: VNIR}
 downlink: {rate: 800 Mbit/s, contacts_per_day: 7, avg_contact_duration: 6 min, comments: X-band}
-storage: {orbits_without_contact: 3, comments: the sizing case}
+storage: {capacity: 2 TB, comments: the SSDR}
 """
 
 DELTA_V = """
@@ -54,6 +55,7 @@ collision_avoidance: {return_burn: false, comments: the drag make-up absorbs it}
 
 AGILITY = """
 comments: two axes
+selected_case: first_guess
 inertia_cases:
   comments: the names are the notebook's
   first_guess:
@@ -73,12 +75,24 @@ wheels:
 settling_time: 20 s
 """
 
+REQUIREMENTS = """
+comments: from the mission requirements document
+agility:
+  comments: the imaging slews
+  slews:
+    comments: one per axis
+    roll_40: {axis: roll, angle: 40 deg, duration: 90 s, comments: across track}
+    pitch_40: {axis: pitch, angle: 40 deg, duration: 90 s}
+data: {orbits_without_contact: 3, comments: the longest gap}
+"""
+
 FILES = [
     (Mission, MISSION),
     (MassBudgetConfig, MASS),
     (DataFlowModel, DATA),
     (DeltaVConfig, DELTA_V),
     (AgilityConfig, AGILITY),
+    (Requirements, REQUIREMENTS),
 ]
 
 
@@ -95,6 +109,9 @@ def test_the_notes_on_a_section_are_not_an_item():
     agility = AgilityConfig.from_yaml_text(AGILITY)
     assert list(agility.inertia_cases) == ["first_guess", "measured"]
     assert agility.for_case("first_guess").comments == "from a box"
+    requirements = Requirements.from_yaml_text(REQUIREMENTS)
+    assert requirements.agility is not None
+    assert list(requirements.agility.slews) == ["roll_40", "pitch_40"]
 
 
 @pytest.mark.parametrize(
@@ -105,6 +122,7 @@ def test_the_notes_on_a_section_are_not_an_item():
         (DataFlowModel, DATA, ("duty_cycle", "duty_cyle")),
         (DeltaVConfig, DELTA_V, ("return_burn", "return_brn")),
         (AgilityConfig, AGILITY, ("torque_derating", "torque_derate")),
+        (Requirements, REQUIREMENTS, ("orbits_without_contact", "orbits_without")),
     ],
 )
 def test_an_unknown_key_is_refused(model, text, typo):

@@ -31,6 +31,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from quicksat import MU_EARTH, Q_, R_EARTH, u
 from quicksat.delta_v.report import tabulate
+from quicksat.utils.checks import Check
 from quicksat.utils.mission import Mission
 
 if TYPE_CHECKING:  # a type annotation only, so quicksat.mass stays unimported
@@ -511,6 +512,29 @@ class DeltaVBudget:
             u.dimensionless_unscaled
         )
         return (dry_mass * (np.exp(ratio) - 1)).to("kg")
+
+    def checks(self) -> list[Check]:
+        """
+        The budget's check: the propellant loaded against the propellant required.
+
+        The propellant loaded is the equipment list's, through the attached mass
+        budget. Without a mass budget, there is nothing to compare, and no check.
+
+        Returns
+        -------
+        checks : list of Check
+            The propellant check, or none without a mass budget
+        """
+        if self.mass_budget is None:
+            return []
+        return [
+            Check(
+                "propellant",
+                "The propellant loaded covers the propellant required",
+                self.mass_budget.propellant_mass(),
+                self.propellant_mass(),
+            )
+        ]
 
     def tabulated_deltav(
         self,

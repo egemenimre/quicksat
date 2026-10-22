@@ -64,10 +64,10 @@ _VENDOR = _PACKAGE / "scenario" / "templates" / "vendor"
 _ORBIT_FILES = ("tle_file", "omm_file", "trajectory_file")
 """The orbit's keys that name a file."""
 
-SHARED_SCRIPTS = ("base.js", "files.js", "open.js", "frame.js")
+SHARED_SCRIPTS = ("base.js", "files.js", "open.js", "frame.js", "server.js")
 """The scripts in `templates/shared/` that every editor page runs first: the
-field controls, the file writing, the opening of files in the browser, and the
-page's frame. `templates/shared/editor.css` holds the styles they share."""
+field controls, the file writing, the opening of files in the browser, the
+page's frame, and the editor's server as the page sees it. `templates/shared/editor.css` holds the styles they share."""
 
 SCRIPTS = (
     "elements.js",

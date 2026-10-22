@@ -43,7 +43,8 @@ MASS = """locations:
 
 @pytest.fixture(scope="module")
 def sizing_dir() -> Path:
-    """The sizing test folder: the mission, data, delta-V and agility files, and no mass files."""
+    """The sizing test folder: the mission, requirements, data, delta-V and agility
+    files, and no mass files."""
     return TESTS / "sizing" / "data"
 
 
@@ -70,11 +71,19 @@ def test_the_data_holds_each_file_or_none(sizing_dir):
     data = sizing_data(sizing_dir)
     assert data["format"] == FORMAT
     present = {kind for kind, file in data["files"].items() if file}
-    assert present == {"mission", "data", "deltav", "manoeuvres", "agility"}
+    assert present == {
+        "mission",
+        "requirements",
+        "data",
+        "deltav",
+        "manoeuvres",
+        "agility",
+    }
     assert data["files"]["mission"]["data"]["altitude"] == "500 km"
     assert data["files"]["manoeuvres"]["header"][0] == "manoeuvre_id"
     assert [(check["file"], check["ok"]) for check in data["checks"]] == [
         ("mission.yaml", True),
+        ("requirements.yaml", True),
         ("pl_dataflow_model.yaml", True),
         ("manoeuvres.csv with delta_v_config.yaml", True),
         ("agility_config.yaml", True),

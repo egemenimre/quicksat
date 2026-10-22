@@ -6,10 +6,17 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ### Added
 
+- `requirements.yaml`, a sizing file of what the mission asks of the spacecraft. Its `agility` section lists the slews the mission needs, each with its axis, angle and time. Its `data` section gives the orbits without contact that the mass memory must cover. `Requirements`, in `quicksat.utils.requirements`, reads it. The file and each section are optional. The sample, the reference and the test folders have one.
+- `checks()` on the delta-V, data and agility budgets: the propellant loaded against the propellant required, the downlink against the data generated, the mass memory against the storage required, and each slew against its time. A `Check`, in `quicksat.utils.checks`, gives the spare, the margin and the verdict, and `tabulate()` lays checks out. The notebooks show them, in place of the verdicts they worked out in their own cells.
+- The Sizing Editor edits `requirements.yaml` on a Requirements tab and a Setup step, the mass memory's capacity, and the selected inertia case.
+- The Sizing Editor's Budgets tab shows every sizing budget as quicksat works it out: an overview of each budget's deciding figures and every check, and a page for each budget with the tables its notebook shows. Its title counts the budgets with a failing check. `quicksat.editor.budgets` works the budgets out. A page opened from a file shows them as they were when Python wrote it, and says which files have changed since.
+- `python -m quicksat.editor serve FOLDER` serves the Sizing Editor for a folder of sizing files, with no output folder. The Budgets tab then follows each change on the page, as the server works out every budget again. The server answers `budgets`, and the page has the Stop the server button.
 - The Scenario Editor and the Sizing Editor keep a draft of the changes not saved in the browser's storage. When the page is reloaded or opened again, a bar offers to restore the draft or discard it, and says if a folder file has changed on disk since. A change on the page discards the draft, and it goes once every file is saved.
 
 ### Changed
 
+- The data file's `storage` block holds the mass memory's `capacity`, in place of `orbits_without_contact`, which moved to `requirements.yaml`. `DataBudget` and `DataBudget.from_yaml_file` take the requirements. `storage_required()` needs its orbits passed in when the budget has no data requirement. The data table gains a row for the mass memory, and shows the storage required only with a data requirement.
+- `agility_config.yaml` names a `selected_case`, which must be one of its inertia cases. `AgilityBudget` and `AgilityBudget.from_yaml_file` fly it when no case is named, and take the requirements.
 - `turn_between` takes `toward`, a quaternion for each end, in place of `reference`, one rotation for all of them. `SlewWindow` holds `path_seconds` and `path`, its target attitude sampled through the turn, in place of `end_rotation`.
 
 ### Fixed

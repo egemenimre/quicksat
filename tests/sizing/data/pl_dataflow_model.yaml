@@ -19,5 +19,6 @@ downlink:
   avg_contact_duration: 6 min
 
 storage:
-  # The sizing case for the mass memory.
-  orbits_without_contact: 3
+  # The mass memory's usable capacity, after any space kept for other data.
+  # How long it must hold the data is in requirements.yaml.
+  capacity: 2 TB

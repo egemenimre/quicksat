@@ -31,8 +31,10 @@ from pydantic import BeforeValidator, ConfigDict, Field, model_validator
 from quicksat import Q_, u
 from quicksat.agility.report import tabulate
 
-if TYPE_CHECKING:  # a type annotation only, so quicksat.mass stays unimported
+if TYPE_CHECKING:  # type annotations only, so quicksat.mass stays unimported
     from quicksat.mass.budget import MassBudget
+    from quicksat.utils.requirements import Requirements
+from quicksat.utils.checks import Check
 from quicksat.utils.mission import Mission
 from quicksat.utils.parser_helpers import (
     AngleQty,
@@ -223,13 +225,16 @@ class WheelAssembly(Commented):
 
 class AgilityConfig(Commented):
     """
-    The agility inputs: what is slewed, what slews it, and the time allowed.
+    The agility inputs: what is slewed, and what slews it.
 
     The time allowed for a slew is left out on purpose. It is a requirement placed on a
-    spacecraft, not a property of it, so it is passed to each call.
+    spacecraft, not a property of it, so it is in the requirements file.
 
     Parameters
     ----------
+    selected_case : str
+        The inertia case that the budget sizes and checks. The others are kept for
+        comparison, such as the spacecraft at other stages of the mission
     inertia_cases : dict of str to InertiaCase
         Mass properties cases, keyed by any names you choose. Nothing in the code
         depends on them
@@ -243,9 +248,21 @@ class AgilityConfig(Commented):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
+    selected_case: str
     inertia_cases: Annotated[dict[str, InertiaCase], BeforeValidator(without_comments)]
     wheels: WheelAssembly
     settling_time: TimeQty
+
+    @model_validator(mode="after")
+    def _selects_a_listed_case(self):
+        """Checks that the selected case is one of the inertia cases."""
+        if self.selected_case not in self.inertia_cases:
+            known = ", ".join(sorted(self.inertia_cases)) or "none"
+            raise ValueError(
+                f"The selected case '{self.selected_case}' is not one of the "
+                f"inertia cases. Configured: {known}"
+            )
+        return self
 
     def for_case(self, name: str) -> InertiaCase:
         """
@@ -335,14 +352,16 @@ class AgilityBudget:
         The shared mission, for ground track speed
     axis : Axis
         Which axis the slews are about
-    case : str
-        Which inertia case to use. It is required, because with a default a reader would
-        have to guess which spacecraft produced a number
+    case : str, optional
+        Which inertia case to use. Defaults to the config's selected case
     mass_budget : MassBudget, optional
         Where the mass comes from, for an envelope case. Read at the case's own
         propellant fraction. Unused by a case that states its inertia
     mass : Quantity, optional
         A mass to slew, overriding the budget. For a trial case or a test fixture
+    requirements : Requirements, optional
+        The shared requirements, for the slews the mission needs. Without them,
+        there is no check
 
     Raises
     ------
@@ -355,17 +374,19 @@ class AgilityBudget:
         config: AgilityConfig,
         mission: Mission,
         axis: Axis,
-        case: str,
+        case: str | None = None,
         mass_budget: "MassBudget | None" = None,
         mass=None,
+        requirements: "Requirements | None" = None,
     ):
         self.config = config
         self.mission = mission
         self.axis = Axis(axis)
-        self.case_name = case
-        self.case = config.for_case(case)
+        self.case_name = config.selected_case if case is None else case
+        self.case = config.for_case(self.case_name)
         self.mass_budget = mass_budget
         self._mass = mass
+        self.requirements = requirements
 
     @property
     def mass(self):
@@ -409,9 +430,10 @@ class AgilityBudget:
         config_path: str | Path,
         mission_path: str | Path,
         axis: Axis,
-        case: str,
+        case: str | None = None,
         mass_budget: "MassBudget | None" = None,
         mass=None,
+        requirements_path: str | Path | None = None,
     ) -> "AgilityBudget":
         """
         Build an agility budget from a config and a mission file.
@@ -427,18 +449,23 @@ class AgilityBudget:
             Filepath of the shared mission (YAML)
         axis : Axis
             Which axis the slews are about
-        case : str
-            Which inertia case to fly
+        case : str, optional
+            Which inertia case to fly. Defaults to the config's selected case
         mass_budget : MassBudget, optional
             Where the mass comes from, for an envelope case
         mass : Quantity, optional
             A mass to slew, overriding the budget
+        requirements_path : str | Path, optional
+            Filepath of the shared requirements (YAML)
 
         Returns
         -------
         budget : AgilityBudget
             The assembled budget
         """
+        # here, as the requirements module reads `Axis` from this one
+        from quicksat.utils.requirements import Requirements
+
         return cls(
             AgilityConfig.from_yaml_file(Path(config_path)),
             Mission.from_yaml_file(Path(mission_path)),
@@ -446,6 +473,9 @@ class AgilityBudget:
             case,
             mass_budget,
             mass,
+            Requirements.from_yaml_file(Path(requirements_path))
+            if requirements_path is not None
+            else None,
         )
 
     @property
@@ -847,6 +877,32 @@ class AgilityBudget:
             In km
         """
         return (self.mission.ground_track_speed * time).to("km")
+
+    def checks(self) -> list[Check]:
+        """
+        The budget's checks: each slew the requirements ask about this axis,
+        against its time, for this inertia case and with every wheel working.
+
+        Returns
+        -------
+        checks : list of Check
+            One per slew about this axis. None without the agility requirements
+        """
+        if self.requirements is None or self.requirements.agility is None:
+            return []
+        return [
+            Check(
+                name,
+                f"A {slew.angle.to_value('deg'):g}° {self.axis.value} slew within "
+                f"{slew.duration.to_value('s'):g} s, settling included, for "
+                f"{self.case_name}",
+                self.total_time(slew.angle).to("s"),
+                slew.duration.to("s"),
+                at_most=True,
+            )
+            for name, slew in self.requirements.agility.slews.items()
+            if slew.axis == self.axis
+        ]
 
     def tabulated_agility(
         self, angles=None, degraded: bool = False, target_duration=None
