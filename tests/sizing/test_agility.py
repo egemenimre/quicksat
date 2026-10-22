@@ -335,7 +335,7 @@ def test_pitch_checks_only_the_pitch_slews(config, mission):
 def test_with_no_requirement_there_is_no_check(budget):
     assert budget.checks() == []
     budget.requirements = Requirements.from_yaml_text(
-        "data: {orbits_without_contact: 3}"
+        "data: {orbits_without_downlink: 3}"
     )
     assert budget.checks() == []
 

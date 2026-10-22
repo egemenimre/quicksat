@@ -95,7 +95,7 @@ class Storage(Commented):
     The onboard memory.
 
     How long the memory must hold the data is a requirement, not a property of
-    the memory. So it is in the requirements file, as `orbits_without_contact`.
+    the memory. So it is in the requirements file, as `orbits_without_downlink`.
 
     Parameters
     ----------
@@ -194,7 +194,7 @@ class DataBudget:
     mission : Mission
         The shared mission, for the period and the orbits in a day
     requirements : Requirements, optional
-        The shared requirements, for the orbits without contact that the memory
+        The shared requirements, for the orbits without downlink that the memory
         must cover. Without them, the storage needs its orbits passed in, and
         there is no storage check
     """
@@ -344,9 +344,9 @@ class DataBudget:
             u.dimensionless_unscaled
         )
 
-    def storage_required(self, orbits_without_contact: float | None = None):
+    def storage_required(self, orbits_without_downlink: float | None = None):
         """
-        Onboard storage needed to cover a run of orbits with no usable contact.
+        Onboard storage needed to cover a run of orbits with no payload data downlink.
 
         This sizes the memory for the gap between passes, not for a backlog that grows
         from day to day. The two are the same only while the budget closes. With a
@@ -355,7 +355,7 @@ class DataBudget:
 
         Parameters
         ----------
-        orbits_without_contact : float, optional
+        orbits_without_downlink : float, optional
             Orbits to cover. Defaults to the requirement's
 
         Returns
@@ -367,20 +367,20 @@ class DataBudget:
         ValueError
             If no orbits are given and there is no data requirement
         """
-        if orbits_without_contact is None:
-            orbits_without_contact = self.required_orbits
-            if orbits_without_contact is None:
+        if orbits_without_downlink is None:
+            orbits_without_downlink = self.required_orbits
+            if orbits_without_downlink is None:
                 raise ValueError(
-                    "No orbits without contact given, and no data requirement. Pass "
+                    "No orbits without downlink given, and no data requirement. Pass "
                     "the orbits, or build the data budget with requirements=... to "
                     "take them from there."
                 )
-        return (self.generated_per_orbit * orbits_without_contact).to("GB")
+        return (self.generated_per_orbit * orbits_without_downlink).to("GB")
 
     @property
     def required_orbits(self) -> float | None:
         """
-        The orbits without contact that the requirements ask the memory to
+        The orbits without downlink that the requirements ask the memory to
         cover.
 
         Returns
@@ -390,7 +390,7 @@ class DataBudget:
         """
         if self.requirements is None or self.requirements.data is None:
             return None
-        return self.requirements.data.orbits_without_contact
+        return self.requirements.data.orbits_without_downlink
 
     def checks(self) -> list[Check]:
         """
@@ -420,7 +420,7 @@ class DataBudget:
                 Check(
                     "storage",
                     f"The mass memory holds the data of {orbits:g} orbits "
-                    "without contact",
+                    "without downlink",
                     self.model.storage.capacity.to("GB"),
                     self.storage_required(),
                 )

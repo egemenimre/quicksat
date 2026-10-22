@@ -13,7 +13,7 @@ The fixture is the sample satellite, in a 500 km orbit of 5677 s:
     downlink     800 Mbit/s for 7 contacts a day of 6 min = 42 min/day
                                                     ->  252.00 GB/day
     margin       252.00 / 225.00 - 1 = +12%
-    storage      3 orbits without contact x 14.78 GB = 44.35 GB, in a 2 TB memory
+    storage      3 orbits without downlink x 14.78 GB = 44.35 GB, in a 2 TB memory
 """
 
 import pytest
@@ -39,7 +39,7 @@ storage:
 
 MISSION = "altitude: 500 km\ninclination: 97.4 deg\nduration: 7 yr\n"
 
-REQUIREMENTS = "data:\n  orbits_without_contact: 3\n"
+REQUIREMENTS = "data:\n  orbits_without_downlink: 3\n"
 
 
 def build(model=MODEL, mission=MISSION, requirements: str | None = REQUIREMENTS):

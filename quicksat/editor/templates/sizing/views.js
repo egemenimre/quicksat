@@ -19,7 +19,7 @@ const TABS = [
 const STEPS = [
   { group: "Start", title: "Folder", sections: ["folder"] },
   { group: "Mission", title: "Reference orbit and design life", sections: ["mission"] },
-  { group: "Requirements", title: "What the mission asks", sections: ["slews", "required_storage"] },
+  { group: "Requirements", title: "Mission requirements", sections: ["slews", "required_storage"] },
   { group: "Mass", title: "Locations: margins and harness", sections: ["locations"], top: () => overallBox("mass") },
   { title: "Equipment", sections: ["equipment"] },
   { group: "Data", title: "Payload data generation", sections: ["generation"], top: () => overallBox("data") },

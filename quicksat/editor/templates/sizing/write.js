@@ -46,9 +46,9 @@ function requirementsYaml() {
     }
     lines.push("");
   }
-  if (R.data.orbits_without_contact !== "" || R.data.comments.trim()) {
+  if (R.data.orbits_without_downlink !== "" || R.data.comments.trim()) {
     helpLines(lines, 0, "required_storage");
-    block(lines, 0, "data", [["orbits_without_contact", yn(R.data.orbits_without_contact)]], R.data.comments);
+    block(lines, 0, "data", [["orbits_without_downlink", yn(R.data.orbits_without_downlink)]], R.data.comments);
   }
   return finish(lines);
 }

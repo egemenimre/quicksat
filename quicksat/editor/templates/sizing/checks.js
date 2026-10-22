@@ -53,7 +53,7 @@ function runChecks() {
       positive("slews", `slew ${x.name}: the angle`, x.angle);
       positive("slews", `slew ${x.name}: the time`, x.duration);
     }
-    if (R.data.orbits_without_contact !== "") atLeast("required_storage", "the orbits without contact", R.data.orbits_without_contact, 0);
+    if (R.data.orbits_without_downlink !== "") atLeast("required_storage", "the orbits without downlink", R.data.orbits_without_downlink, 0);
   }
 
   // Mass

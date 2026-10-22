@@ -2,7 +2,9 @@
 
 This guide shows how to make every sizing budget pass at the same time. The budgets share their inputs, so a change that closes one budget can make another fail. More propellant closes the delta-V budget, but it adds mass, and a heavier spacecraft turns more slowly.
 
-quicksat writes nothing back from one budget to another. It does not rerun the other notebooks for you either. So you carry each result into the input files by hand, run every budget again, and repeat. You stop when a whole round passes every check and needs no change to any file.
+quicksat writes nothing back from one budget to another. So you carry each result into the input files by hand, work out every budget again, and repeat. You stop when a whole round passes every check and needs no change to any file.
+
+The Sizing Editor's Budgets tab works out every budget at once. With the editor's server, it does so after each change, so a round is a change in the editor and a look at the tab. The notebooks work out one budget each, and show each step.
 
 The guide works through one example on the sample satellite: a direct re-entry at the end of life. It takes four rounds to close.
 
@@ -17,7 +19,7 @@ Some links are read when you run a notebook. The others are figures that you cop
 | `mission.yaml` | delta-V | the orbit's velocity and radius, and the design life for the recurring manoeuvres | read when the notebook runs |
 | `mission.yaml` | data | the orbital period, for the storage between contacts | read when the notebook runs |
 | `mission.yaml` | agility | the ground track speed, for the ground passed during a slew | read when the notebook runs |
-| `requirements.yaml` | data | the orbits without contact that the mass memory must cover | read when the notebook runs |
+| `requirements.yaml` | data | the orbits without downlink that the mass memory must cover | read when the notebook runs |
 | `requirements.yaml` | agility | the slews the mission needs, and the time each may take | read when the notebook runs |
 | mass budget | delta-V | the in-orbit dry mass, for the rocket equation | read when the notebook runs |
 | mass budget | agility | the in-orbit mass, at the case's share of propellant, for the inertia of an estimated case such as `first_guess` | read when the notebook runs |
@@ -30,16 +32,26 @@ Some links are read when you run a notebook. The others are figures that you cop
 
 An inertia case with a stated inertia, such as `measured_bol`, takes no mass from the mass budget. It does not follow your changes. Update it when a new mass properties report comes in.
 
-## 2. Run every budget, in order
+## 2. Work out every budget
 
-Run the notebooks in this order, because each one reads what the ones before it check:
+**In the Sizing Editor.** Serve the folder, and open the Budgets tab:
+
+```bash
+python -m quicksat.editor serve my_satellite
+```
+
+Its overview lists every check below, with its spare and its margin, and the tab's title counts the budgets with a failing check. Each budget's page has its tables, as the notebook shows them. The budgets follow each change on the page, saved or not, so each round below is an edit on the page. Save the files once a round closes, and put them back in the folder.
+
+**In the notebooks.** Run them in this order, because each one reads what the ones before it check:
 
 1. `mass_budget.ipynb`
 2. `delta_v_budget.ipynb`
 3. `agility_roll.ipynb` and `agility_pitch.ipynb`
 4. `data_budget.ipynb`
 
-Run all of them in each round, even those you expect not to change. Then note the figures that decide whether the design closes:
+Run all of them in each round, even those you expect not to change.
+
+Either way, note the figures that decide whether the design closes:
 
 | Budget | It closes when |
 | --- | --- |
@@ -48,7 +60,7 @@ Run all of them in each round, even those you expect not to change. Then note th
 | Data | its checks pass: the margin is zero or above, and the mass memory holds the storage required. |
 | Mass | the launch mass is within the launcher's capability. quicksat holds no launcher limit, so compare it yourself. |
 
-The delta-V, agility and data notebooks show their checks in a table, with each check's spare, margin and verdict. Write these figures down for each round. A small table, one row per round, shows the changes from round to round.
+The Budgets tab's overview, and the delta-V, agility and data notebooks, show the checks in a table, with each check's spare, margin and verdict. Write these figures down for each round. A small table, one row per round, shows the changes from round to round.
 
 ## 3. Make the change, and run the first round
 
@@ -101,6 +113,7 @@ Each round's change should be smaller than the one before. In the example, the s
 
 When the design has closed:
 
+- **Save the files.** If you worked in the Sizing Editor, save the files from the page, and put them back in the folder. Then run the notebooks once, so that their stored figures match the files.
 - **Update each notebook's change-log cell.** Set `LAST_CHANGE` and `CHANGE_NOTE` in every notebook whose inputs changed, so that its figures can be read against the change that produced them.
 - **Save the notebooks with their outputs.** Then the stored figures match the files.
 

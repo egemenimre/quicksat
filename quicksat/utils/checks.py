@@ -72,7 +72,7 @@ class Check:
         For a limit the design must reach, it is the design over the limit, less
         one. For a limit it must not pass, it is the limit over the design, less
         one, as `AgilityBudget.time_margin` gives. A need of zero, such as no
-        orbits without contact, gives an infinite margin.
+        orbits without downlink, gives an infinite margin.
 
         Returns
         -------

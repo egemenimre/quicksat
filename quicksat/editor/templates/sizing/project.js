@@ -115,7 +115,7 @@ function readRequirements(file) {
   const slews = mapOf(a.slews);
   if (file) {
     known(`${file.name} › agility`, a, ["slews"]);
-    known(`${file.name} › data`, d, ["orbits_without_contact"]);
+    known(`${file.name} › data`, d, ["orbits_without_downlink"]);
   }
   return {
     comments: textOf(m.comments),
@@ -138,7 +138,7 @@ function readRequirements(file) {
       },
     },
     data: {
-      orbits_without_contact: readNum(d.orbits_without_contact, "orbits without contact"),
+      orbits_without_downlink: readNum(d.orbits_without_downlink, "orbits without downlink"),
       comments: textOf(d.comments),
     },
   };
@@ -260,10 +260,15 @@ function readAgility(file) {
   const w = mapOf(m.wheels);
   if (file) known(`${file.name} › wheels`, w, ["count", "elevation", "momentum", "torque", "momentum_use_factor", "torque_derating"]);
   const names = Object.keys(cases).filter((name) => name !== RESERVED);
+  // a case is always selected: the first, when the file names none or one it lacks
+  let selected = textOf(m.selected_case).trim();
+  if (!names.includes(selected)) {
+    if (file && names.length) notice("changed", selected ? `selected_case: "${selected}" is not one of the inertia cases, so ${names[0]} is selected` : `selected_case is missing, so ${names[0]} is selected`);
+    selected = names[0] || "";
+  }
   return {
     comments: textOf(m.comments),
-    // a new file selects its first case; a file without a selection is left to the checks
-    selected: file ? textOf(m.selected_case).trim() : names[0] || "",
+    selected,
     cases: {
       comments: textOf(cases.comments),
       items: Object.entries(cases).filter(([name]) => name !== RESERVED).map(([name, value]) => {
@@ -322,7 +327,7 @@ const locationNames = () => project.mass.locations.items.map((l) => l.name);
 
 /** Where a name is used: a list of short descriptions. */
 function usesOf(kind, name) {
-  if (kind === "case") return project.agility.selected === name ? ["the agility budget, as its selected case"] : [];
+  if (kind === "case") return project.agility.selected === name ? ["the agility budget, as its selected case: the first case left takes its place"] : [];
   if (kind !== "location") return [];
   const rows = project.equipment.filter((r) => r.location === name).map((r) => r.id || "a row");
   return rows.length > 3 ? [...rows.slice(0, 3), `${rows.length - 3} more`] : rows;

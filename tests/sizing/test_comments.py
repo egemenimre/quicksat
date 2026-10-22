@@ -83,7 +83,7 @@ agility:
     comments: one per axis
     roll_40: {axis: roll, angle: 40 deg, duration: 90 s, comments: across track}
     pitch_40: {axis: pitch, angle: 40 deg, duration: 90 s}
-data: {orbits_without_contact: 3, comments: the longest gap}
+data: {orbits_without_downlink: 3, comments: the longest gap}
 """
 
 FILES = [
@@ -122,7 +122,7 @@ def test_the_notes_on_a_section_are_not_an_item():
         (DataFlowModel, DATA, ("duty_cycle", "duty_cyle")),
         (DeltaVConfig, DELTA_V, ("return_burn", "return_brn")),
         (AgilityConfig, AGILITY, ("torque_derating", "torque_derate")),
-        (Requirements, REQUIREMENTS, ("orbits_without_contact", "orbits_without")),
+        (Requirements, REQUIREMENTS, ("orbits_without_downlink", "orbits_without")),
     ],
 )
 def test_an_unknown_key_is_refused(model, text, typo):

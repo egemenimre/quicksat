@@ -79,8 +79,8 @@ class DataRequirements(Commented):
 
     Parameters
     ----------
-    orbits_without_contact : float
-        The longest run of orbits with no usable contact. The mass memory must
+    orbits_without_downlink : float
+        The longest run of orbits with no payload data downlink. The mass memory must
         hold the data generated over it
     comments : str, optional
         The user's notes on the block. quicksat does not read them
@@ -88,7 +88,7 @@ class DataRequirements(Commented):
 
     model_config = ConfigDict(extra="forbid")
 
-    orbits_without_contact: float = Field(ge=0)
+    orbits_without_downlink: float = Field(ge=0)
 
 
 class Requirements(Commented):

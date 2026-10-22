@@ -97,21 +97,22 @@ def test_a_check_says_where_its_limit_comes_from(folder):
     checks = {check["check"]: check for check in budget_results(folder)["checks"]}
     assert checks["propellant"]["files"] == ["manoeuvres.csv", "equipment.csv"]
     assert checks["storage"]["files"] == ["requirements.yaml", "pl_dataflow_model.yaml"]
-    assert checks["roll_40"]["description"].endswith("for first_guess")
+    assert checks["roll_40"]["description"].endswith("for the inertia case first_guess")
 
 
-def test_the_agility_tables_cover_each_axis_case_and_slew(folder):
+def test_the_agility_tables_cover_the_selected_case_about_each_axis(folder):
+    """The other cases are compared in the table of cases only."""
     agility = budget_results(folder)["budgets"]["agility"]
     assert agility["selected"] == "first_guess"
-    assert set(agility["variants"]) == {
-        f"{axis}|{case}|{degraded}"
-        for axis in ("roll", "pitch")
-        for case in agility["cases"]
-        for degraded in (0, 1)
-    }
-    tables = agility["variants"]["roll|measured_bol|0"]["tables"]
-    assert set(tables) == {"", "roll_40"}
+    assert set(agility["variants"]) == {"roll|0", "roll|1", "pitch|0", "pitch|1"}
+    assert set(agility["variants"]["roll|0"]["tables"]) == {"", "roll_40"}
     assert [figure["label"] for figure in agility["figures"]] == ["roll_40", "pitch_40"]
+    rows = agility["tables"]["cases"]["rows"]
+    assert [row["cells"][0] for row in rows] == [
+        "first_guess (selected)",
+        "measured_bol",
+        "measured_eol",
+    ]
 
 
 def test_a_budget_without_its_files_has_no_results():
@@ -119,8 +120,10 @@ def test_a_budget_without_its_files_has_no_results():
     results = budget_results(SIZING)
     assert results["budgets"]["mass"] is None
     agility = results["budgets"]["agility"]
-    assert "needs a mass" in agility["variants"]["roll|first_guess|0"]["error"]
-    assert "error" not in agility["variants"]["roll|measured_bol|0"]
+    assert "needs a mass" in agility["variants"]["roll|0"]["error"]
+    # a stated case needs no mass, so the table of cases still has its inertia
+    measured = agility["tables"]["cases"]["rows"][1]["cells"]
+    assert measured[:3] == ["measured_bol", "stated", "264.7"]
     # the selected case cannot be worked out, so it gives no check
     assert not [check for check in results["checks"] if check["budget"] == "agility"]
 

@@ -25,7 +25,7 @@ There are eight files. The mission and the requirements files are shared. Each o
 | File | Describes | Used by |
 | --- | --- | --- |
 | `mission.yaml` | The orbit and the design life | data, delta-V, agility |
-| `requirements.yaml` | What the mission asks of the satellite: the slews and the time without contact | data, agility |
+| `requirements.yaml` | What the mission asks of the satellite: the slews and the duration without image downlink | data, agility |
 | `equipment.csv` | Every item on the satellite, with its mass | mass |
 | `mass_budget_config.yaml` | Margins and harness for each location | mass |
 | `pl_dataflow_model.yaml` | Payload data generation, downlink and the mass memory | data |
@@ -55,7 +55,7 @@ Details: [`mission_ref.ipynb`](../../sizing/mission_ref.ipynb), section "The fil
 
 ### `requirements.yaml`
 
-What the mission asks of the satellite, as opposed to what the satellite is. Each section belongs to the budget that checks it, and each is optional. `agility` lists the slews the mission needs, each under a name of your choice, with its axis, its angle and the time it may take. `data` holds the longest run of orbits without a usable contact, which the mass memory must cover.
+What the mission asks of the satellite, as opposed to what the satellite is. Each section belongs to the budget that checks it, and each is optional. `agility` lists the slews the mission needs, each under a name of your choice, with its axis, its angle and the time it may take. `data` holds the longest run of orbits without a payload data downlink, which the mass memory must cover.
 
 Details: [`agility_ref.ipynb`](../../sizing/agility_ref.ipynb), section "The time allowed is a requirement, not config", and [`data_budget_ref.ipynb`](../../sizing/data_budget_ref.ipynb), section "Storage".
 

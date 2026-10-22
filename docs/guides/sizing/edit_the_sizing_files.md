@@ -64,7 +64,7 @@ The page keeps no draft. Save before you close it or reload it, or your changes 
 The **Budgets** tab, after Setup, shows every budget as quicksat works it out, with the same methods as the notebooks. A list on its left holds the overview and the four budgets, each with a mark: ✓ when its checks pass, ✕ when one fails, and – when it has no check. The tab's title shows how many budgets have a failing check, so you see the effect of a change from any tab.
 
 - **Overview** gives each budget's deciding figures, and every check: what is checked, the design's figure, the limit, the spare, the margin, and the files that the limit comes from.
-- **Mass, Delta-V, Data and Agility** each give the budget's table, the one its notebook shows, with the smaller tables beside it. The controls match the notebook's options, such as the mass in orbit or on the ground, the axis, the inertia case, and one wheel failed. The agility checks use the selected inertia case, which the Agility tab sets.
+- **Mass, Delta-V, Data and Agility** each give the budget's table, the one its notebook shows, with the smaller tables beside it. The controls match the notebook's options, such as the mass in orbit or on the ground, the axis, and one wheel failed. The Agility page shows the selected inertia case, which the Agility tab and its Setup step set. Its table of inertia cases compares the others.
 
 A page that the server sent says when it last worked out the budgets. A page opened from a file shows the figures from when Python wrote it. Once you change a file, it names the files changed since, and greys the figures, as they may be out of date.
 

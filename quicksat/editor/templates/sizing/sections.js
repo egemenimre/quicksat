@@ -59,7 +59,7 @@ const SECTIONS = {
   },
 
   slews: {
-    title: "Slews the mission needs", file: "requirements",
+    title: "Agility requirements", file: "requirements",
     render(body) {
       const S = project.requirements.agility.slews;
       const table = el("table", { class: "items" });
@@ -91,12 +91,12 @@ const SECTIONS = {
   },
 
   required_storage: {
-    title: "Time without contact", file: "requirements",
+    title: "Duration without image downlink", file: "requirements",
     render(body) {
       const D = project.requirements.data;
       const g = grid(body);
-      row(g, "Orbits without contact", numberInput(D, "orbits_without_contact", { min: 0 }), "the longest run with no usable pass; empty for none");
-      body.append(commentsBox(D, "Your comments on the time without contact"));
+      row(g, "Orbits without downlink", numberInput(D, "orbits_without_downlink", { min: 0 }), "the longest run with no pass to send the payload data; empty for none");
+      body.append(commentsBox(D, "Your comments on the duration without image downlink"));
     },
   },
 
@@ -277,8 +277,10 @@ const SECTIONS = {
     render(body) {
       const A = project.agility;
       const C = A.cases;
+      // a case is always selected: after a delete of the selected one, the first case left
+      if (C.items.length && !C.items.some((c) => c.name === A.selected)) A.selected = C.items[0].name;
       const g = grid(body);
-      row(g, "Selected case", selectInput(A, "selected", C.items.map((c) => c.name), { cls: "wide", blank: "none" }), "the case the budget checks; the others are kept for comparison");
+      row(g, "Selected case", selectInput(A, "selected", C.items.map((c) => c.name), { cls: "wide" }), "the case the budget checks; the others are kept for comparison");
       const table = el("table", { class: "items" });
       C.items.forEach((item, index) => {
         const first = el("tr", { class: "first" });
@@ -305,7 +307,6 @@ const SECTIONS = {
           let name = "case";
           for (let n = 2; C.items.some((c) => c.name === name); n++) name = `case_${n}`;
           C.items.push({ name, kind: "envelope", ...envelope(), inertia: { roll: q("", "kg*m**2"), pitch: q("", "kg*m**2") }, comments: "" });
-          if (!A.selected) A.selected = name;
           changed(true);
         },
       })));

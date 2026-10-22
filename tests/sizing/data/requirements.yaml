@@ -15,6 +15,6 @@ agility:
       duration: 90 s
 
 data:
-  # The longest run of orbits with no usable contact. The mass memory must
-  # hold the data generated over it.
-  orbits_without_contact: 3
+  # The longest run of orbits with no payload data downlink. The mass memory
+  # must hold the data generated over it.
+  orbits_without_downlink: 3

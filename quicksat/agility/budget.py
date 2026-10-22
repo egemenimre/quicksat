@@ -894,8 +894,8 @@ class AgilityBudget:
             Check(
                 name,
                 f"A {slew.angle.to_value('deg'):g}° {self.axis.value} slew within "
-                f"{slew.duration.to_value('s'):g} s, settling included, for "
-                f"{self.case_name}",
+                f"{slew.duration.to_value('s'):g} s, settling included, for the "
+                f"inertia case {self.case_name}",
                 self.total_time(slew.angle).to("s"),
                 slew.duration.to("s"),
                 at_most=True,

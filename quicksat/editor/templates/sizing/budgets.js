@@ -24,17 +24,16 @@ const budgets = {
   view: "overview",
   inOrbit: true,
   subtotals: false,
-  massComments: false,
-  deltavComments: false,
+  massComments: true,
+  deltavComments: true,
   axis: "roll",
-  case: null,
   degraded: false,
   /** The slew that the slew table checks against, by name, or "" for none. */
   target: null,
 };
 
 const BUDGET_VIEWS = [
-  { id: "overview", title: "Overview", intro: "Each budget's deciding figures, and every check against its limit." },
+  { id: "overview", title: "Overview", intro: "Summary dashboard for the budgets." },
   { id: "mass", title: "Mass", files: ["equipment", "mass"], intro: "The mass budget, as mass_budget.ipynb shows it." },
   { id: "deltav", title: "Delta-V", files: ["manoeuvres", "deltav", "mission"], intro: "The delta-V budget and its propellant, as delta_v_budget.ipynb shows them." },
   { id: "data", title: "Data", files: ["data", "mission", "requirements"], intro: "The payload data flow and the storage, as data_budget.ipynb shows them." },
@@ -223,7 +222,7 @@ function massBody() {
   return [
     figuresRow(results.figures),
     el("div", { class: "controls" },
-      choiceRow([[true, "In orbit"], [false, "On the ground, with the launcher's side"]], budgets.inOrbit, (v) => { budgets.inOrbit = v; }),
+      choiceRow([[true, "In orbit"], [false, "On the ground (incl. launcher's side)"]], budgets.inOrbit, (v) => { budgets.inOrbit = v; }),
       tick("subsystem subtotals", budgets.subtotals, (v) => { budgets.subtotals = v; }),
       tick("comments", budgets.massComments, (v) => { budgets.massComments = v; })),
     budgetCard("Mass budget", budgetTable(variant, { hide: budgets.massComments ? [] : ["comments"] }), { files: fileList(["equipment", "mass"]), source: "MassBudget.tabulated_mass()", wide: true }),
@@ -266,26 +265,21 @@ function dataBody() {
 function agilityBody() {
   const results = resultsOf("agility");
   if (!results || results.error) return [missingBudget("agility")];
-  if (!results.cases.includes(budgets.case)) budgets.case = results.selected;
   const targets = results.slews.filter((slew) => slew.axis === budgets.axis);
   if (budgets.target === null || (budgets.target && !targets.some((slew) => slew.name === budgets.target))) budgets.target = targets.length ? targets[0].name : "";
-  const variant = results.variants[`${budgets.axis}|${budgets.case}|${budgets.degraded ? 1 : 0}`];
-  const caseSelect = el("select", { onchange: (e) => { budgets.case = e.target.value; drawBudgets(); } },
-    results.cases.map((name) => el("option", { value: name, text: name === results.selected ? `${name} (selected)` : name })));
-  caseSelect.value = budgets.case;
+  const variant = results.variants[`${budgets.axis}|${budgets.degraded ? 1 : 0}`];
   const targetSelect = el("select", { onchange: (e) => { budgets.target = e.target.value; drawBudgets(); } },
     [...targets.map((slew) => el("option", { value: slew.name, text: `${slew.name}: ${slew.text}` })), el("option", { value: "", text: "no slew" })]);
   targetSelect.value = budgets.target;
-  const table = variant && !variant.error ? variant.tables[budgets.target] : null;
+  const table = variant.error ? null : variant.tables[budgets.target];
   return [
     ownChecks("agility"),
     el("div", { class: "controls" },
       choiceRow([["roll", "Roll"], ["pitch", "Pitch"]], budgets.axis, (v) => { budgets.axis = v; budgets.target = null; }),
-      el("label", { class: "tick" }, "inertia case ", caseSelect),
       tick("one wheel failed", budgets.degraded, (v) => { budgets.degraded = v; }),
-      el("label", { class: "tick" }, "check against ", targetSelect)),
-    budgets.case !== results.selected ? el("p", { class: "other-case", text: `Not the selected case: the checks use ${results.selected}, as agility_config.yaml selects.` }) : null,
-    variant && variant.error ? el("div", { class: "budget-error" }, el("b", { text: `quicksat cannot work out ${budgets.case}: ` }), variant.error) : figuresRow(variant.figures),
+      el("label", { class: "tick" }, "check against ", targetSelect),
+      el("span", { class: "hint", text: `For the inertia case ${results.selected}, which the Agility tab selects.` })),
+    variant.error ? el("div", { class: "budget-error" }, el("b", { text: `quicksat cannot work out the inertia case ${results.selected}: ` }), variant.error) : figuresRow(variant.figures),
     table ? budgetCard("Slew table", budgetTable(table), { files: fileList(["agility", "mission"]), source: "AgilityBudget.tabulated_agility()", wide: true }) : null,
     budgetCard("Inertia cases", budgetTable(results.tables.cases), { source: "for each case, as agility_roll.ipynb compares them", wide: true }),
   ];

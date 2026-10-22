@@ -200,7 +200,7 @@ def _assemble(budget: "DataBudget") -> pd.DataFrame:
                 "Storage required",
                 budget.storage_required().to_value("GB"),
                 "GB",
-                f"{orbits:g} orbits without contact",
+                f"{orbits:g} orbits without downlink",
                 "storage",
             )
         )

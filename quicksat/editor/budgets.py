@@ -311,7 +311,7 @@ def _data(data: DataBudget) -> dict:
                 "Storage needed",
                 _q(needed, "GB"),
                 "GB",
-                f"{orbits:g} orbits without contact, of {_q(capacity, 'GB', '{:,.0f}')} GB",
+                f"{orbits:g} orbits without downlink, of {_q(capacity, 'GB', '{:,.0f}')} GB",
                 bad=needed > capacity,
                 headline=True,
             )
@@ -345,7 +345,7 @@ def _data(data: DataBudget) -> dict:
             "budget": _report(
                 data.tabulated_data().data, data_report._HEADERS, {"value": "{:,.2f}"}
             ),
-            "storage": _rows(["Time without contact", "Storage [GB]"], runs),
+            "storage": _rows(["Duration without image downlink", "Storage [GB]"], runs),
         },
     }
 
@@ -434,28 +434,27 @@ class _Agility:
             requirements=self.requirements,
         )
 
-    def variants(self, case: str) -> dict:
+    def variants(self) -> dict:
         """
-        A case's figures and slew tables, about each axis, with every wheel and
-        with one failed, by `axis|case|degraded`. An error in their place when
-        quicksat cannot work out the case.
+        The selected case's figures and slew tables, about each axis, with every
+        wheel and with one failed, by `axis|degraded`. An error in their place
+        when quicksat cannot work out the case. The other cases are compared in
+        the table of cases only.
         """
         variants = {}
         for axis in (Axis.ROLL, Axis.PITCH):
             targets = {n: s for n, s in self.slews.items() if s.axis == axis}
             for degraded in (False, True):
-                key = f"{axis.value}|{case}|{int(degraded)}"
+                key = f"{axis.value}|{int(degraded)}"
+                # the page shows any failure, whatever its kind
                 try:
-                    budget = self.budget(axis, case)
+                    budget = self.budget(axis, self.config.selected_case)
+                    frame = budget.slew_table(degraded=degraded)
                     variants[key] = {
                         "figures": _axis_figures(budget, degraded),
-                        "tables": _slew_tables(
-                            budget.slew_table(degraded=degraded), targets
-                        ),
+                        "tables": _slew_tables(frame, targets),
                     }
-                except (
-                    Exception
-                ) as error:  # the page shows any failure, whatever its kind
+                except Exception as error:
                     variants[key] = {"error": str(error)}
         return variants
 
@@ -503,16 +502,14 @@ class _Agility:
         titles = ["Case", "Inertia", "Roll [kg m²]", "Pitch [kg m²]"]
         for name in self.slews:
             titles += [f"{name} [s]", f"{name} margin [%]"]
-        variants = {}
-        for case in self.config.inertia_cases:
-            variants |= self.variants(case)
         return {
             "figures": [
                 _figure(
                     check.name,
                     _q(check.design, "s", "{:,.1f}"),
                     "s",
-                    f"of {_q(check.limit, 's', '{:g}')} s allowed, for {selected}",
+                    f"of {_q(check.limit, 's', '{:g}')} s allowed, for the inertia "
+                    f"case {selected}",
                     bad=not check.passes,
                     headline=True,
                 )
@@ -528,7 +525,7 @@ class _Agility:
                 }
                 for name, slew in self.slews.items()
             ],
-            "variants": variants,
+            "variants": self.variants(),
             "tables": {
                 "cases": _rows(
                     titles, [self.case_row(case) for case in self.config.inertia_cases]

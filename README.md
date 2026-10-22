@@ -64,7 +64,7 @@ Each guide takes you through one task, from the samples to files of your own. Pi
 
 The sizing sample is a small Earth observation satellite on a 500 km sun-synchronous orbit. Its files are in `sample/sizing/data/`. The workflow:
 
-1. **Edit the files.** Double-click [`sample/sizing/editor/editor.html`](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/editor/editor.html) to open the Sizing Editor in your browser. Its Setup tab takes you through every file, step by step, and the other tabs edit one budget each. Save the files, as a zip or one by one, and put them back in `sample/sizing/data/`. The files are YAML and CSV, with units written out, such as `750 g` or `800 Mbit/s`, so they can be edited by hand too.
+1. **Edit the files.** Double-click [`sample/sizing/editor/editor.html`](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/editor/editor.html) to open the Sizing Editor in your browser. Its Setup tab takes you through every file, step by step, and the other tabs edit one file or one budget each. Save the files, as a zip or one by one, and put them back in `sample/sizing/data/`. The files are YAML and CSV, with units written out, such as `750 g` or `800 Mbit/s`, so they can be edited by hand too.
 2. **See the budgets.** The editor's Budgets tab shows every budget's tables and checks, as quicksat works them out. A page opened from a file shows them as they were when the page was written. To have them follow each change, serve the page, and open the address the server prints:
 
    ```bash
@@ -77,7 +77,7 @@ The sizing sample is a small Earth observation satellite on a 500 km sun-synchro
 | Budget | What it gives | Sample | Reference |
 |---|---|---|---|
 | Mission | The reference orbit and the design life, which every budget shares | | [mission](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/mission_ref.ipynb) |
-| Requirements | What the mission asks of the satellite: the slews it needs, and the time without contact, which the agility and data budgets check | | [agility](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/agility_ref.ipynb), [data](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/data_budget_ref.ipynb) |
+| Requirements | What the mission asks of the satellite: the slews it needs, and the duration without image downlink, which the agility and data budgets check | | [agility](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/agility_ref.ipynb), [data](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/data_budget_ref.ipynb) |
 | Mass | Dry and wet mass, by location, subsystem and owner, with two layers of margin | [mass](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/mass_budget.ipynb) | [mass](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/mass_budget_ref.ipynb) |
 | Data | Data made against data sent down each day, and the memory needed between passes against the memory flown | [data](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/data_budget.ipynb) | [data](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/data_budget_ref.ipynb) |
 | Delta-V | Delta-V by phase and type, and the propellant it needs | [delta-V](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/delta_v_budget.ipynb) | [delta-V](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/delta_v_ref.ipynb) |

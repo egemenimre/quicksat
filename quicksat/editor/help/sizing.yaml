@@ -50,7 +50,7 @@ duration:
     The design life. It scales the recurring manoeuvres.
 
 slews:
-  title: Slews the mission needs
+  title: Agility requirements
   info: |-
     <p>Each slew that the mission needs: an angle about roll or pitch, and the time it may take. The names are yours. Different operations may ask different times of the same spacecraft, so there may be several slews about one axis.</p>
     <span class="k">Within</span><p>The time for the whole manoeuvre, with the settling time after it.</p>
@@ -59,12 +59,12 @@ slews:
     Each slew the mission needs, under a name of your choice: the axis, the angle and the time it may take, settling included.
 
 required_storage:
-  title: Time without contact
+  title: Duration without image downlink
   info: |-
-    <p>The longest run of orbits with no usable pass. It need not be a whole number. Leave it empty when there is no such requirement.</p>
-    <span class="k">What follows</span><p>The data budget works out the data generated over this time, and checks that the mass memory holds it.</p>
+    <p>The longest run of orbits with no pass that can send the payload data down, in orbits. It sizes the payload data storage. It need not be a whole number. Leave it empty when there is no such requirement.</p>
+    <span class="k">What follows</span><p>The data budget works out the payload data generated over this run, and checks that the mass memory holds it.</p>
   file: >-
-    The longest run of orbits with no usable contact. The mass memory must hold the data generated over it.
+    The longest run of orbits with no payload data downlink. The mass memory must hold the data generated over it.
 
 locations:
   title: "Locations: margins and harness"
@@ -111,7 +111,7 @@ storage:
   title: Storage
   info: |-
     <p>The mass memory's usable capacity, after any space kept for other data, such as housekeeping or a file system. It takes its unit, such as <code>2 TB</code> or <code>512 Gbit</code>.</p>
-    <span class="k">What follows</span><p>The data budget compares what the payload makes with what the link sends. It then checks that the memory holds the data of the time without contact, which is on the Requirements tab.</p>
+    <span class="k">What follows</span><p>The data budget compares what the payload makes with what the link sends. It then checks that the memory holds the data of the duration without image downlink, which is on the Requirements tab.</p>
   file: >-
     The mass memory's usable capacity. How long it must hold the data is in requirements.yaml.
 
@@ -153,7 +153,7 @@ cases:
   title: Inertia cases
   info: |-
     <p>Each case is one spacecraft, with one set of mass properties, such as the spacecraft at the start or the end of its life. The names are yours.</p>
-    <span class="k">Selected case</span><p>The case that the agility budget checks against the slews the mission needs. The others are kept for comparison, and the agility notebooks can ask for any of them by name.</p>
+    <span class="k">Selected case</span><p>The case that the agility budget checks against the slews the mission needs. The Budgets tab shows it in full. The others are kept for comparison: the Budgets tab compares them in its table of inertia cases, and the agility notebooks can ask for any of them by name.</p>
     <span class="k">Envelope estimate</span><p>A uniform box, with a factor on each axis for the arrays, radiators and booms. Its inertia follows the mass from the mass budget, at the propellant level given.</p>
     <span class="k">Stated inertia</span><p>The roll and pitch inertia, as a mass properties report gives them. It is a fixed number: nothing checks that it still matches the mass budget.</p>
     <p>A case is one or the other, never both, so each figure has one source.</p>

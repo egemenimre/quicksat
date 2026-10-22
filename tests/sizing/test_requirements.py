@@ -20,7 +20,7 @@ agility:
     roll_40: {axis: roll, angle: 40 deg, duration: 90 s}
     pitch_40: {axis: pitch, angle: 40 deg, duration: 1.5 min}
 data:
-  orbits_without_contact: 3
+  orbits_without_downlink: 3
 """
 
 
@@ -30,7 +30,7 @@ def test_the_sections_load():
     pitch = requirements.agility.slews["pitch_40"]
     assert pitch.axis is Axis.PITCH
     assert_quantity_allclose(pitch.duration, Q_(90, "s"))
-    assert requirements.data.orbits_without_contact == 3
+    assert requirements.data.orbits_without_downlink == 3
 
 
 @pytest.mark.parametrize("text", ["", "comments: none yet\n"])
@@ -40,7 +40,7 @@ def test_a_file_with_no_requirement_gives_none(text):
 
 
 def test_each_section_is_optional():
-    requirements = Requirements.from_yaml_text("data:\n  orbits_without_contact: 3\n")
+    requirements = Requirements.from_yaml_text("data:\n  orbits_without_downlink: 3\n")
     assert requirements.agility is None
 
 
@@ -50,7 +50,7 @@ def test_each_section_is_optional():
         ("axis: roll", "axis: yaw", "roll"),
         ("angle: 40 deg, duration: 90 s", "angle: 40 s, duration: 90 s", "angle"),
         ("duration: 90 s", "duration: -90 s", "must not be negative"),
-        ("orbits_without_contact: 3", "orbits_without_contact: -1", "greater than"),
+        ("orbits_without_downlink: 3", "orbits_without_downlink: -1", "greater than"),
     ],
 )
 def test_validation_failures(old, new, expected):
