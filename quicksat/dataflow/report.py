@@ -44,7 +44,8 @@ def tabulate(budget: "DataBudget") -> Styler:
     The data budget laid out as a document.
 
     One row per quantity, in the order the chain computes them: the mission, then
-    generation, then downlink, then the margin they produce, then storage.
+    generation, then downlink, then the margin they produce. The mass memory comes
+    last, with the storage required when the budget has a data requirement.
 
     Parameters
     ----------
@@ -185,13 +186,24 @@ def _assemble(budget: "DataBudget") -> pd.DataFrame:
             "margin",
         ),
         _row(
-            "Storage required",
-            budget.storage_required().to_value("GB"),
+            "Mass memory",
+            budget.model.storage.capacity.to_value("GB"),
             "GB",
-            f"{budget.model.storage.orbits_without_contact:g} orbits without contact",
-            "storage",
+            "usable capacity",
+            "input",
         ),
     ]
+    orbits = budget.required_orbits
+    if orbits is not None:
+        rows.append(
+            _row(
+                "Storage required",
+                budget.storage_required().to_value("GB"),
+                "GB",
+                f"{orbits:g} orbits without downlink",
+                "storage",
+            )
+        )
     return pd.DataFrame(rows, columns=list(_COLUMNS))
 
 

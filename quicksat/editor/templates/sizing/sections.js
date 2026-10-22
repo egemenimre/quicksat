@@ -39,6 +39,7 @@ const SECTIONS = {
       const head = (key) => el("b", { text: `${BUDGETS[key].title} budget` });
       body.append(filesTable([
         { head: el("b", { text: "Mission, which every budget but the mass reads" }), rows: rows(["mission"]) },
+        { head: el("b", { text: "Requirements, which the data and agility budgets check against" }), rows: rows(["requirements"]) },
         ...Object.keys(BUDGETS).map((key) => ({ head: head(key), rows: rows(BUDGETS[key].files) })),
       ]));
       body.append(el("p", { class: "hint", text: "The notebooks in sample/sizing/ read these files: mass_budget, data_budget, delta_v_budget, and agility_roll and agility_pitch." }));
@@ -54,6 +55,48 @@ const SECTIONS = {
       qField(g, "Duration", M, "duration", ["yr", "d"], "the design life");
       body.append(missionLine());
       body.append(commentsBox(M, "Your comments on the mission", { note: "They go in the comments field at the top of mission.yaml." }));
+    },
+  },
+
+  slews: {
+    title: "Agility requirements", file: "requirements",
+    render(body) {
+      const S = project.requirements.agility.slews;
+      const table = el("table", { class: "items" });
+      table.append(el("tr", {}, ["name", "axis", "angle", "within", "", ""].map((h) => el("th", { text: h }))));
+      S.items.forEach((item, index) => {
+        const tr = el("tr");
+        tr.append(
+          el("td", {}, nameInput(item, null, () => S.items.map((x) => x.name))),
+          el("td", {}, selectInput(item, "axis", AXES)),
+          el("td", {}, quantityInput(item, "angle", ["deg"])),
+          el("td", {}, el("span", { class: "ctl" }, quantityInput(item, "duration", ["s", "min"]), el("span", { class: "hint", text: "settling included" }))),
+          el("td", {}, commentsButton(item, 6, null, tr)),
+          el("td", { class: "tools" }, itemTools(S.items, index, { copy: (r) => ({ ...r, name: `${r.name}_copy`, angle: { ...r.angle }, duration: { ...r.duration } }) })));
+        table.append(tr);
+      });
+      if (S.items.length) body.append(el("div", { class: "scroll-x" }, table));
+      else body.append(el("p", { class: "hint", text: "No slew yet: the agility budget has nothing to check." }));
+      body.append(el("div", { class: "add-row" }, el("button", {
+        class: "btn", text: "+ slew",
+        onclick: () => {
+          let name = "slew";
+          for (let n = 2; S.items.some((x) => x.name === name); n++) name = `slew_${n}`;
+          S.items.push({ name, axis: "roll", angle: q("", "deg"), duration: q("", "s"), comments: "" });
+          changed(true);
+        },
+      })));
+      body.append(commentsBox(S, "Your comments on the slews"));
+    },
+  },
+
+  required_storage: {
+    title: "Duration without image downlink", file: "requirements",
+    render(body) {
+      const D = project.requirements.data;
+      const g = grid(body);
+      row(g, "Orbits without downlink", numberInput(D, "orbits_without_downlink", { min: 0 }), "the longest run with no pass to send the payload data; empty for none");
+      body.append(commentsBox(D, "Your comments on the duration without image downlink"));
     },
   },
 
@@ -178,7 +221,7 @@ const SECTIONS = {
     render(body) {
       const S = project.data.storage;
       const g = grid(body);
-      row(g, "Orbits without contact", numberInput(S, "orbits_without_contact", { min: 0 }), "the memory's sizing case");
+      qField(g, "Capacity", S, "capacity", ["GB", "TB", "Gbit", "Tbit"], "usable, after any space kept for other data");
       body.append(commentsBox(S, "Your comments on the storage"));
     },
   },
@@ -232,15 +275,20 @@ const SECTIONS = {
   cases: {
     title: "Inertia cases", file: "agility",
     render(body) {
-      const C = project.agility.cases;
+      const A = project.agility;
+      const C = A.cases;
+      // a case is always selected: after a delete of the selected one, the first case left
+      if (C.items.length && !C.items.some((c) => c.name === A.selected)) A.selected = C.items[0].name;
+      const g = grid(body);
+      row(g, "Selected case", selectInput(A, "selected", C.items.map((c) => c.name), { cls: "wide" }), "the case the budget checks; the others are kept for comparison");
       const table = el("table", { class: "items" });
       C.items.forEach((item, index) => {
         const first = el("tr", { class: "first" });
         const second = el("tr", { class: "second" });
         first.append(el("td", {}, el("span", { class: "ctl gap" },
-          nameInput(item, null, () => C.items.map((c) => c.name)),
+          nameInput(item, "case", () => C.items.map((c) => c.name)),
           radioRow(item, "kind", [["envelope", "envelope estimate"], ["stated", "stated inertia"]]),
-          el("span", { class: "push ctl" }, commentsButton(item, 1, null, second), itemTools(C.items, index)))));
+          el("span", { class: "push ctl" }, commentsButton(item, 1, null, second), itemTools(C.items, index, { kind: "case", name: item.name })))));
         const fields = item.kind === "envelope"
           ? [el("span", { class: "hint", text: "body" }),
              ...["x", "y", "z"].map((axis) => el("span", { class: "ctl" }, axis, quantityInput(item.body, axis, ["m"]))),

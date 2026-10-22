@@ -12,10 +12,12 @@ Write the editor page for a folder of input files, from the command line:
 A folder with a `scenario.yaml` gets the Scenario Editor, and a folder of sizing
 files, such as `mission.yaml`, gets the Sizing Editor.
 
-Or serve the Scenario Editor from this computer, with a button that runs the
-files and writes the viewer into the output folder:
+Or serve the editor from this computer. The Scenario Editor gets a button that
+runs the files and writes the viewer into the output folder. The Sizing Editor
+works out the budgets as the files change, and needs no output folder:
 
     python -m quicksat.editor serve sample/power/data sample/power/output
+    python -m quicksat.editor serve sample/sizing/data
 
 See `quicksat.editor.server`.
 
@@ -66,7 +68,7 @@ def main(argv: list[str] | None = None) -> None:
 
 def serve_main(argv: list[str]) -> None:
     """
-    Serve the Scenario Editor for a folder, until the user stops it.
+    Serve the editor for a folder, until the user stops it.
 
     Parameters
     ----------
@@ -75,12 +77,20 @@ def serve_main(argv: list[str]) -> None:
     """
     parser = argparse.ArgumentParser(
         prog="python -m quicksat.editor serve",
-        description="Serve the Scenario Editor for a folder, on this computer "
-        "only. Its Create the viewer button runs the page's files, and writes the "
-        "viewer into the output folder.",
+        description="Serve the editor for a folder, on this computer only. The "
+        "Scenario Editor's Create the viewer button runs the page's files, and "
+        "writes the viewer into the output folder. The Sizing Editor's Budgets tab "
+        "works out the budgets as the files change.",
     )
-    parser.add_argument("folder", help=f"the folder that holds {SCENARIO_FILE}")
-    parser.add_argument("output", help="the folder to write the viewer in")
+    parser.add_argument(
+        "folder",
+        help=f"the folder that holds {SCENARIO_FILE}, or the sizing files",
+    )
+    parser.add_argument(
+        "output",
+        nargs="?",
+        help="the folder to write the viewer in, for the Scenario Editor",
+    )
     parser.add_argument(
         "--port",
         type=int,
@@ -98,7 +108,7 @@ def serve_main(argv: list[str]) -> None:
 
     try:
         server = EditorServer(args.folder, args.output, args.port)
-    except OSError as error:
+    except (OSError, ValueError) as error:
         parser.exit(1, f"error: {error}\n")
     serve(server, open_browser=not args.no_browser)
 

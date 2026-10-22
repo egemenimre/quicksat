@@ -6,10 +6,10 @@
 """
 The sizing editor: a web page that fills in and edits a folder of sizing files.
 
-A sizing folder holds `mission.yaml` and the files of the budgets it sizes: the
-mass budget's settings and equipment list, the payload data flow, the delta-V
-settings and manoeuvres, and the agility settings. Each file has its usual
-name, as the sizing notebooks read them by name.
+A sizing folder holds `mission.yaml`, `requirements.yaml` and the files of the
+budgets it sizes: the mass budget's settings and equipment list, the payload
+data flow, the delta-V settings and manoeuvres, and the agility settings. Each
+file has its usual name, as the sizing notebooks read them by name.
 
 The page is made as the scenario editor's is, from the same shared parts. It is
 a page of its own, because the sizing files share nothing with a scenario: their
@@ -37,6 +37,7 @@ still be read."""
 
 NAMES = {
     "mission": "mission.yaml",
+    "requirements": "requirements.yaml",
     "mass": "mass_budget_config.yaml",
     "equipment": "equipment.csv",
     "data": "pl_dataflow_model.yaml",
@@ -46,7 +47,14 @@ NAMES = {
 }
 """Each sizing file's kind, as the page names it, and its usual name."""
 
-SCRIPTS = ("project.js", "sections.js", "checks.js", "write.js", "views.js")
+SCRIPTS = (
+    "project.js",
+    "sections.js",
+    "checks.js",
+    "write.js",
+    "budgets.js",
+    "views.js",
+)
 """The sizing editor's own scripts in `templates/sizing/`, in the order they run
 after the shared ones."""
 
@@ -67,6 +75,8 @@ def sizing_data(folder: str | Path) -> dict:
         as given when relative, and its name otherwise, so that no local path
         goes into the page. `files`, each file by its kind, or None when it is
         missing. `checks`, what quicksat's loaders said of each budget's files.
+        `results`, every budget as quicksat works it out now, from
+        `budget_results`, for the Budgets tab.
 
     Raises
     ------
@@ -77,8 +87,10 @@ def sizing_data(folder: str | Path) -> dict:
     from quicksat.agility.budget import AgilityConfig
     from quicksat.dataflow.budget import DataFlowModel
     from quicksat.delta_v.budget import DeltaVBudget
+    from quicksat.editor.budgets import budget_results
     from quicksat.mass.budget import MassBudget
     from quicksat.utils.mission import Mission
+    from quicksat.utils.requirements import Requirements
 
     folder = Path(folder)
     paths = {kind: folder / name for kind, name in NAMES.items()}
@@ -97,6 +109,13 @@ def sizing_data(folder: str | Path) -> dict:
     if "mission" in found:
         checks.append(
             _check(name["mission"], lambda: Mission.from_yaml_file(paths["mission"]))
+        )
+    if "requirements" in found:
+        checks.append(
+            _check(
+                name["requirements"],
+                lambda: Requirements.from_yaml_file(paths["requirements"]),
+            )
         )
     if {"mass", "equipment"} <= found.keys():
         checks.append(
@@ -132,6 +151,7 @@ def sizing_data(folder: str | Path) -> dict:
         "label": folder.as_posix() if not folder.is_absolute() else folder.name,
         "files": files,
         "checks": checks,
+        "results": budget_results(folder),
     }
 
 

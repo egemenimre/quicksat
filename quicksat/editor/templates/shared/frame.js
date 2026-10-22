@@ -17,10 +17,13 @@
 //   commentTarget(kind, path)     the block of a comment: [block, label, depth]
 //   runChecks()                   its checks, which end with showProblems()
 //
-// and, if it needs them, the hooks in `page`. While the page has changes that
-// are not saved, the frame keeps them in the browser's storage, as a draft, and
-// offers it back after a reload. The help comes from the page's
-// #help script, which Python fills from quicksat/editor/help/.
+// A tab may draw itself, with its own `draw()`, and give its own `count()` of
+// problems for its title. The page may also use the hooks in `page`.
+//
+// While the page has changes that are not saved, the frame keeps them in the
+// browser's storage, as a draft, and offers it back after a reload. The help
+// comes from the page's #help script, which Python fills from
+// quicksat/editor/help/.
 
 /** What a page may add to the frame's work. */
 const page = {
@@ -40,6 +43,12 @@ const page = {
   kindOfFile: () => null,
   /** The path that the folder's opener looks for a saved file under, to read a draft back. */
   draftPath: (file) => file.path,
+  /** Whether a request to the editor's server is going on, so that the status can wait. */
+  serverBusy: () => false,
+  /** What the server's status says, such as the viewer pages in its output folder. */
+  onStatus: () => {},
+  /** After the editor's server starts answering, or stops. */
+  serverChanged: () => {},
 };
 
 /** What the page shows: the tab, the Setup step, the open explanations, and more. */
@@ -149,9 +158,11 @@ function drawView() {
   drawTabs();
   const scroll = document.querySelector(".page.active .sheet, .page.active .step-body");
   const top = scroll ? scroll.scrollTop : 0;
+  const tab = TABS.find((t) => t.id === state.tab);
   if (state.tab === "setup") drawSetup();
   else if (state.tab === "files") drawFiles();
-  else drawSheet(TABS.find((t) => t.id === state.tab));
+  else if (tab.draw) tab.draw();
+  else drawSheet(tab);
   const again = document.querySelector(".page.active .sheet, .page.active .step-body");
   if (again) again.scrollTop = top;
   showProblems();
@@ -240,7 +251,7 @@ function showProblems() {
   chip.textContent = errors.length ? `${errors.length} problem${errors.length > 1 ? "s" : ""}` : "basic checks pass";
   chip.className = "chip " + (errors.length ? "bad" : "good");
   for (const tab of TABS) {
-    const n = errors.filter((p) => (tab.sections || []).includes(p.section)).length;
+    const n = tab.count ? tab.count() : errors.filter((p) => (tab.sections || []).includes(p.section)).length;
     const count = document.querySelector(`#tabs button[data-tab=${tab.id}] .count`);
     if (count) { count.textContent = n; count.hidden = !n; }
   }
@@ -1002,6 +1013,7 @@ async function restoreDraft() {
 
 /** Start the page, once the page's own parts are ready. */
 function startPage() {
+  startServer();
   $("#checks-chip").addEventListener("click", () => {
     const pop = $("#popover");
     if (!pop.hidden && pop.dataset.kind === "checks") pop.hidden = true;

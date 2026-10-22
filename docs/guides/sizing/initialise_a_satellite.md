@@ -20,19 +20,20 @@ The folder can go anywhere. The code below assumes it is called `my_satellite` a
 
 ## 2. Fill in the input files
 
-There are seven files. The mission file is shared. Each of the other six belongs to one budget.
+There are eight files. The mission and the requirements files are shared. Each of the other six belongs to one budget.
 
 | File | Describes | Used by |
 | --- | --- | --- |
 | `mission.yaml` | The orbit and the design life | data, delta-V, agility |
+| `requirements.yaml` | What the mission asks of the satellite: the slews and the duration without image downlink | data, agility |
 | `equipment.csv` | Every item on the satellite, with its mass | mass |
 | `mass_budget_config.yaml` | Margins and harness for each location | mass |
-| `pl_dataflow_model.yaml` | Payload data generation and downlink | data |
+| `pl_dataflow_model.yaml` | Payload data generation, downlink and the mass memory | data |
 | `manoeuvres.csv` | Every manoeuvre, with its size and count | delta-V |
 | `delta_v_config.yaml` | Engine performance and the delta-V margin | delta-V |
 | `agility_config.yaml` | Inertia, reaction wheels and settling time | agility |
 
-You do not need every budget. The mass budget needs only its own two files. The data, delta-V and agility budgets also need `mission.yaml`. You can leave out the files of any budget you do not want. Start with the mission file, because three budgets read it.
+You do not need every budget. The mass budget needs only its own two files. The data, delta-V and agility budgets also need `mission.yaml`. You can leave out the files of any budget you do not want. The requirements file is optional: without it, the budgets work out their figures and check nothing against a requirement. Start with the mission file, because three budgets read it.
 
 Some fields take a bare percentage, such as `eqpt_margin: 10`. Others take a value with a unit, such as `duty_cycle: 5 %`. Copy the form that the sample file uses for each field.
 
@@ -52,6 +53,12 @@ All three values are required. The design life, `duration`, scales every delta-V
 
 Details: [`mission_ref.ipynb`](../../sizing/mission_ref.ipynb), section "The file".
 
+### `requirements.yaml`
+
+What the mission asks of the satellite, as opposed to what the satellite is. Each section belongs to the budget that checks it, and each is optional. `agility` lists the slews the mission needs, each under a name of your choice, with its axis, its angle and the time it may take. `data` holds the longest run of orbits without a payload data downlink, which the mass memory must cover.
+
+Details: [`agility_ref.ipynb`](../../sizing/agility_ref.ipynb), section "The time allowed is a requirement, not config", and [`data_budget_ref.ipynb`](../../sizing/data_budget_ref.ipynb), section "Storage".
+
 ### `equipment.csv`
 
 One row per item, with no nesting. Each item has a mass with its unit (`7.0 kg` or `750 g`), a margin in percent, and a number of units. Each item also sits at a `location`, in a `subsystem`, under a `responsibility`. The location decides how margins are applied. The subsystem and the responsibility are only used to group the report.
@@ -70,7 +77,7 @@ Details: [`mass_budget_ref.ipynb`](../../sizing/mass_budget_ref.ipynb), section 
 
 ### `pl_dataflow_model.yaml`
 
-Three sections. `generation` holds the instrument data rate, the compression ratio and the share of each orbit spent collecting. `downlink` holds the link rate, the contacts per day and the average contact length. `storage` holds the number of orbits the satellite must survive without a contact.
+Three sections. `generation` holds the instrument data rate, the compression ratio and the share of each orbit spent collecting. `downlink` holds the link rate, the contacts per day and the average contact length. `storage` holds the mass memory's usable capacity. How long the memory must hold the data is in `requirements.yaml`.
 
 The contact numbers are inputs, taken from a mission analysis. The budget does not work them out.
 
@@ -94,11 +101,11 @@ Details: [`delta_v_ref.ipynb`](../../sizing/delta_v_ref.ipynb), sections "The ma
 
 ### `agility_config.yaml`
 
-Three sections. `inertia_cases` holds one or more named sets of mass properties. Each case is either an estimate from the satellite's dimensions or a stated inertia from a mass properties report, never both. `wheels` describes the reaction wheel pyramid. `settling_time` is the time the platform needs after a slew before the payload can work.
+Four sections. `selected_case` names the inertia case that the budget checks. `inertia_cases` holds one or more named sets of mass properties. Each case is either an estimate from the satellite's dimensions or a stated inertia from a mass properties report, never both. `wheels` describes the reaction wheel pyramid. `settling_time` is the time the platform needs after a slew before the payload can work.
 
-The case names are yours. You pick one by name when you build the budget.
+The case names are yours. A budget flies the selected case, unless you name another when you build it.
 
-The file holds no mass and no target slew time. The mass comes from the mass budget, and the target time is given when you ask a question.
+The file holds no mass and no target slew time. The mass comes from the mass budget, and the slews the mission needs are in `requirements.yaml`.
 
 Details: [`agility_ref.ipynb`](../../sizing/agility_ref.ipynb), sections "The config file" and "Inertia cases, and why the two shapes are kept apart".
 
@@ -128,6 +135,7 @@ mass = MassBudget.from_csv(
 data = DataBudget.from_yaml_file(
     DATA / "pl_dataflow_model.yaml",
     DATA / "mission.yaml",
+    DATA / "requirements.yaml",
 )
 
 delta_v = DeltaVBudget.from_csv(
@@ -140,13 +148,13 @@ delta_v = DeltaVBudget.from_csv(
 roll = AgilityBudget.from_yaml_file(
     DATA / "agility_config.yaml",
     DATA / "mission.yaml",
-    Axis.ROLL,
-    "first_guess",  # the name of a case in agility_config.yaml
+    Axis.ROLL,  # the selected case in agility_config.yaml, unless you name another
     mass_budget=mass,
+    requirements_path=DATA / "requirements.yaml",
 )
 ```
 
-Attaching the mass budget lets the delta-V budget work out the propellant mass. It also lets the agility budget take the inertia of an estimated case from the mass budget.
+Attaching the mass budget lets the delta-V budget work out the propellant mass. It also lets the agility budget take the inertia of an estimated case from the mass budget. Giving the requirements lets the data and agility budgets check their figures against them. Each budget's `checks()` lists its checks, and `tabulate()` from `quicksat.utils.checks` lays them out.
 
 Each `from_` method reads `mission.yaml` itself, so the file is read more than once. To share one loaded `Mission` between budgets, use the constructors instead. The data budget reference explains both routes in the section "The class".
 

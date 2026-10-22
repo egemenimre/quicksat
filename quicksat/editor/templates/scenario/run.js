@@ -1,27 +1,19 @@
 // quicksat scenario editor: the viewer, which the editor's local server makes.
 //
-// A page that the server sends holds `DATA.server`: the start of its addresses,
-// the server's key, which each address ends with, and the input and output folders. Its "Create the
-// viewer" button sends the page's files to the server, which runs them with
-// quicksat and writes the viewer into the output folder. The page asks the
-// server every few seconds whether it still answers, and every 10 min while it
-// is out of view, so that the server knows that a page is open. A page opened
-// from a file has no server, so the button is greyed out, with how to start
-// one. Stop the server, in the header, stops it when the user is done.
+// A page that the server sends holds `DATA.server`, with the input and output
+// folders. Its "Create the viewer" button sends the page's files to the server,
+// which runs them with quicksat and writes the viewer into the output folder. A
+// page opened from a file has no server, so the button is greyed out, with how
+// to start one. shared/server.js keeps track of the server.
 
-/** The viewer's state: the server, the run going on, and the last run's answer. */
+/** The viewer's state: the run going on, and the last run's answer. */
 const viewer = {
-  /** `none` on a page opened from a file, `up` while the server answers, `down` once it has stopped, `moved` once it has a new key. */
-  server: DATA.server ? "up" : "none",
   running: false,
   /** The last run's answer from the server, or null. */
   result: null,
   /** The viewer pages in the output folder. */
   pages: DATA.server ? [...DATA.server.viewers] : [],
 };
-
-/** The server's address for a name, such as `status`, with the key at its end. */
-const serverUrl = (name) => `${DATA.server.base}${name}?key=${DATA.server.key}`;
 
 /** The viewer page that a run of these files writes. */
 const viewerPage = () => (project.hasPower && project.hasConsumption ? "power_viewer.html" : "scenario_viewer.html");
@@ -41,57 +33,9 @@ function runFiles() {
   }));
 }
 
-/** Ask the server whether it still answers, and redraw the panels if that changed. */
-async function checkServer() {
-  if (!DATA.server || viewer.running) return;
-  let now = "down";
-  try {
-    const response = await fetch(serverUrl("status"), { cache: "no-store" });
-    if (response.ok) {
-      now = "up";
-      viewer.pages = (await response.json()).viewers;
-    } else if (response.status === 404) now = "moved";
-  } catch {
-    now = "down";
-  }
-  setServer(now);
-}
-
-/** Note the server's state, and redraw what shows it, if it changed. */
-function setServer(now) {
-  if (now === viewer.server) return;
-  viewer.server = now;
-  drawViewerPanels();
-  designerServerChanged();
-  drawStopButton();
-}
-
-/** Show the header's Stop the server button while the server answers. */
-function drawStopButton() {
-  $("#stop-server").hidden = viewer.server !== "up";
-}
-
-/** Stop the server, after a confirm. The page stays open, with how to start the server again. */
-async function stopServer() {
-  if (viewer.server !== "up") return;
-  const lost = unsaved() ? " Some changes on this page are not saved yet. After the stop, you can still download them from the Files tab." : "";
-  if (!confirm(`Stop the editor's server? This page stays open, but it can no longer run quicksat or save into the folder.${lost}`)) return;
-  let result;
-  try {
-    const response = await fetch(serverUrl("stop"), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-    result = await response.json();
-  } catch {
-    // no answer: the server may have stopped already
-    checkServer();
-    return;
-  }
-  if (result.ok) setServer("down");
-  else alert(result.error);
-}
-
 /** Send the page's files to the server, which runs them and writes the viewer. */
 async function createViewer() {
-  if (viewer.server !== "up" || viewer.running) return;
+  if (server.state !== "up" || viewer.running) return;
   viewer.running = true;
   viewer.result = null;
   drawViewerPanels();
@@ -132,7 +76,7 @@ const serveCommand = () => (DATA.server ? DATA.server.command : `python -m quick
 /** Why the button is greyed out, and how to start the server. */
 function serverHelp() {
   const command = el("pre", { class: "command", text: serveCommand() });
-  if (viewer.server === "none") {
+  if (server.state === "none") {
     return el("div", { class: "info" },
       el("h4", { text: "Start the editor's server" }),
       el("p", { text: "This page was opened from a file, so it cannot run quicksat. The editor's server can. It serves this page from your computer, runs the files and writes the viewer." }),
@@ -142,7 +86,7 @@ function serverHelp() {
       el("p", { text: "The changes made on this page are not in the folder yet. Save them first, and put the files back in the folder." }));
   }
   const unsaved = "The changes made on this page are not in the folder yet. Save them first, and put the files back in the folder.";
-  if (viewer.server === "moved") {
+  if (server.state === "moved") {
     return el("div", { class: "info" },
       el("h4", { text: "The server has a new key" }),
       el("p", { text: `The server was started again, so this page's key no longer works. Open the address that the server printed when it started. ${unsaved}` }));
@@ -171,7 +115,7 @@ function runResult() {
 
 /** Fill a viewer panel: the button, the link to the viewer, and the last run. */
 function fillViewerPanel(node) {
-  const up = viewer.server === "up";
+  const up = server.state === "up";
   const page = viewerPage();
   const exists = viewer.pages.includes(page);
   node.replaceChildren(...[
@@ -199,14 +143,4 @@ function viewerPanel() {
 /** Fill every viewer panel on the page again. */
 function drawViewerPanels() {
   for (const node of document.querySelectorAll("[data-viewer-panel]")) fillViewerPanel(node);
-}
-
-if (DATA.server) {
-  // every few seconds in view, and every 10 min out of it: the server stops by
-  // itself once no page has asked for `DATA.server.idle_h`
-  setInterval(() => document.visibilityState === "visible" && checkServer(), 4000);
-  setInterval(() => document.visibilityState !== "visible" && checkServer(), 600000);
-  window.addEventListener("focus", checkServer);
-  $("#stop-server").addEventListener("click", stopServer);
-  drawStopButton();
 }

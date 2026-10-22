@@ -4,10 +4,16 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The editor's local server: the Scenario Editor, served from this computer, with a
-button that runs quicksat and writes the viewer.
+The editor's local server: an editor page, served from this computer, which runs
+quicksat on the page's files.
 
     python -m quicksat.editor serve sample/power/data sample/power/output
+    python -m quicksat.editor serve sample/sizing/data
+
+A folder with a scenario file gets the Scenario Editor, with a button that runs
+quicksat and writes the viewer into the output folder. A folder of sizing files
+gets the Sizing Editor, whose Budgets tab shows every budget worked out by
+quicksat, and needs no output folder.
 
 `serve` starts a server that only this computer can reach, and opens the editor
 in the browser. The page is written from the folder at each load, as
@@ -28,6 +34,10 @@ nothing. The server keeps the viewer page with the run's data inside, and sends
 it to the designer's frame. **Save into the folder** sends the files that
 changed, and `save_files` writes them into the input folder. It refuses a file
 that changed on disk since the page was written.
+
+**The budgets**, on the Sizing Editor's Budgets tab, follow the page's files.
+After each change, the page sends them, and `budget_files` works out every
+budget in a temporary folder, and writes nothing.
 
 **Stop the server**, in the page's header, stops the server, as Ctrl+C does in
 its window. A server started from a shortcut has no window to press Ctrl+C in.
@@ -66,7 +76,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PureWindowsPath
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from quicksat.editor.budgets import budget_results
 from quicksat.editor.editor import _check, editor_data, editor_page
+from quicksat.editor.sizing import NAMES as SIZING_NAMES
+from quicksat.editor.sizing import sizing_data, sizing_page
 from quicksat.power import CONSUMPTION_FILE, POWER_FILE
 from quicksat.power.__main__ import run_folder, summary
 from quicksat.power.config import PowerSystem
@@ -96,7 +109,7 @@ PORTS_TRIED = 20
 
 PREFIX = "/quicksat/"
 """The start of every address the server answers: `editor`, `status`, `run`,
-`design`, `designer`, `save`, `stop` and `viewer/` follow it."""
+`design`, `designer`, `save`, `budgets`, `stop` and `viewer/` follow it."""
 
 IDLE_S = 48 * 3600
 """How long the server runs with no request from a page before it stops by
@@ -383,6 +396,47 @@ def design_files(files: list[dict], repeat: bool) -> dict:
     return _run_inputs(files, _DESIGN_ROLES, work)
 
 
+def budget_files(files: list[dict]) -> dict:
+    """
+    Work out the sizing budgets from the Sizing Editor's files, and write nothing.
+
+    The files go in a temporary folder, under their kinds' usual names, which is
+    deleted afterwards. A file of a kind that the sizing folder does not have is
+    left out.
+
+    Parameters
+    ----------
+    files : list of dict
+        The page's files, each with `kind`, such as `mission` or `equipment`, and
+        `text`
+
+    Returns
+    -------
+    result : dict
+        `ok`, `results`, from `budget_results`, with no temporary path in them,
+        and `seconds`, the time taken. Otherwise `error`, the reason.
+    """
+    start = time.perf_counter()
+    with tempfile.TemporaryDirectory(prefix="quicksat_budgets_") as tmp:
+        root = Path(tmp)
+        for file in files:
+            name = SIZING_NAMES.get(str(file.get("kind")))
+            text = file.get("text")
+            if name is None:
+                continue
+            if not isinstance(text, str):
+                return {"ok": False, "error": f"The page sent {name} with no text."}
+            (root / name).write_text(text, encoding="utf-8")
+        results = budget_results(root)
+    # the messages may name the temporary folder
+    text = json.dumps(results).replace(f"{root}{os.sep}", "").replace(str(root), "")
+    return {
+        "ok": True,
+        "results": json.loads(text),
+        "seconds": round(time.perf_counter() - start, 2),
+    }
+
+
 def file_hash(path: Path) -> str:
     """
     The SHA-256 of a file's bytes, as the page and the server compare it.
@@ -474,14 +528,18 @@ def save_files(folder: str | Path, files: list[dict]) -> dict:
 
 class EditorServer(ThreadingHTTPServer):
     """
-    The Scenario Editor for one folder, served on this computer, with its runs.
+    An editor for one folder, served on this computer, with its runs: the
+    Scenario Editor for a folder with a scenario file, and the Sizing Editor for
+    a folder of sizing files.
 
     Parameters
     ----------
     folder : str | Path
-        The folder that holds the input files. It must hold the scenario file.
-    output : str | Path
-        The folder to write the viewer in
+        The folder that holds the input files: the scenario file, or at least
+        one sizing file
+    output : str | Path, optional
+        The folder to write the viewer in. The Scenario Editor needs it, and the
+        Sizing Editor does not use it.
     port : int, optional
         The port to listen on, and 0 for any free one. By default, `PORT` or the
         next free one after it.
@@ -499,7 +557,7 @@ class EditorServer(ThreadingHTTPServer):
     def __init__(
         self,
         folder: str | Path,
-        output: str | Path,
+        output: str | Path | None = None,
         port: int | None = None,
         scenario_file: str = SCENARIO_FILE,
         power_file: str = POWER_FILE,
@@ -507,14 +565,26 @@ class EditorServer(ThreadingHTTPServer):
         idle_s: float = IDLE_S,
     ):
         self.folder = Path(folder)
-        self.output = Path(output)
         self.names = (scenario_file, power_file, consumption_file)
-        if not (self.folder / scenario_file).is_file():
-            raise FileNotFoundError(f"no scenario file: {self.folder / scenario_file}")
+        # the Sizing Editor, for a folder of sizing files with no scenario file
+        self.sizing = not (self.folder / scenario_file).is_file()
+        if self.sizing and not any(
+            (self.folder / name).is_file() for name in SIZING_NAMES.values()
+        ):
+            raise FileNotFoundError(
+                f"no scenario file and no sizing file, such as mission.yaml: {self.folder}"
+            )
+        if not self.sizing and output is None:
+            raise ValueError(
+                "The Scenario Editor needs an output folder for the viewer."
+            )
+        self.output = Path(output) if output is not None else None
         # 12 characters, 72 bits: a guess costs a request to this computer
         self.key = secrets.token_urlsafe(9)
         self.run_lock = threading.Lock()
         self.save_lock = threading.Lock()
+        # the Sizing Editor's budgets, worked out one request at a time
+        self.budgets_lock = threading.Lock()
         # the Activity Designer's last run, as the page its frame shows
         self.design_page: str | None = None
         self.idle_s = idle_s
@@ -564,6 +634,8 @@ class EditorServer(ThreadingHTTPServer):
 
     def viewer_pages(self) -> list[str]:
         """The viewer pages in the output folder now."""
+        if self.output is None:
+            return []
         return [
             name
             for name in (SCENARIO_PAGE, POWER_PAGE)
@@ -577,6 +649,18 @@ class EditorServer(ThreadingHTTPServer):
         The page holds the SHA-256 of each file it was written from, so that a
         save can tell whether the file changed on disk since.
         """
+        if self.sizing:
+            data = sizing_data(self.folder)
+            data["server"] = {
+                "base": PREFIX,
+                "key": self.key,
+                "folder": _label(self.folder),
+                "command": f"python -m quicksat.editor serve {_argument(self.folder)}",
+                "viewers": [],
+                "idle_h": self.idle_s / 3600,
+            }
+            return sizing_page(data)
+        assert self.output is not None
         data = editor_data(self.folder, *self.names)
         hashes = {
             name: file_hash(self.folder / name)
@@ -611,9 +695,16 @@ _REQUESTS = {
     "run": "a run",
     "design": "a run of the Activity Designer",
     "save": "a save",
+    "budgets": "a work-out of the budgets",
     "stop": "a stop",
 }
 """What each address of a POST request takes, for the message that refuses one."""
+
+_SCENARIO_REQUESTS = ("run", "design", "save", "stop")
+"""The POST requests that the Scenario Editor's server answers."""
+
+_SIZING_REQUESTS = ("budgets", "stop")
+"""The POST requests that the Sizing Editor's server answers."""
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -701,17 +792,19 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _viewer_file(self, name: str) -> None:
         """A file of the output folder: a page, a script or an attitude file."""
-        path = self.server.output / name
+        output = self.server.output
         kind = VIEWER_TYPES.get(Path(name).suffix)
         if (
-            "/" in name
+            output is None
+            or "/" in name
             or "\\" in name
             or name.startswith(".")
             or not kind
-            or not path.is_file()
+            or not (output / name).is_file()
         ):
             self._send(HTTPStatus.NOT_FOUND, b"Not found.", "text/plain")
             return
+        path = output / name
         body = path.read_bytes()
         if path.suffix == ".html":
             # the viewer loads its data by name, so the names carry the key too
@@ -730,7 +823,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.FORBIDDEN, b"Not this server's page.", "text/plain")
             return
         route = self._route()
-        if route not in _REQUESTS:
+        allowed = _SIZING_REQUESTS if self.server.sizing else _SCENARIO_REQUESTS
+        if route is None or route not in allowed:
             self._send(HTTPStatus.NOT_FOUND, b"Not found.", "text/plain")
             return
         refused = {"ok": False, "error": f"The request is not {_REQUESTS[route]}."}
@@ -754,6 +848,8 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if route == "save":
             self._save(files)
+        elif route == "budgets":
+            self._budgets(files)
         else:
             self._run(route, files, bool(request.get("repeat", False)))
 
@@ -778,6 +874,7 @@ class _Handler(BaseHTTPRequestHandler):
                 if result["ok"]:
                     self.server.design_page = designer_page(result.pop("data"))
             else:
+                assert self.server.output is not None
                 result = run_files(files, self.server.output)
         except Exception as error:  # a fault in quicksat: show it, and keep serving
             traceback.print_exc()
@@ -797,6 +894,24 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             print(
                 f"{now}  wrote {self.server.output / result['page']} in {result['seconds']} s",
+                flush=True,
+            )
+        self._json(HTTPStatus.OK, result)
+
+    def _budgets(self, files: list) -> None:
+        """A work-out of the sizing budgets from the page's files, one at a time."""
+        with self.server.budgets_lock:
+            try:
+                result = budget_files(files)
+            except Exception as error:  # a fault in quicksat: show it, and keep serving
+                traceback.print_exc()
+                result = {
+                    "ok": False,
+                    "error": f"quicksat failed: {type(error).__name__}: {error}. The server's window shows the details.",
+                }
+        if not result["ok"]:
+            print(
+                f"{time.strftime('%H:%M:%S')}  no budgets: {result['error']}",
                 flush=True,
             )
         self._json(HTTPStatus.OK, result)
@@ -845,10 +960,12 @@ def serve(server: EditorServer, open_browser: bool = True) -> None:
     open_browser : bool, optional
         Whether to open the editor in the browser
     """
-    print(
-        f"The Scenario Editor for {_label(server.folder)} is at\n\n    {server.url}\n"
-    )
-    print(f"Create the viewer on the page, and it goes in {_label(server.output)}.")
+    editor = "Sizing Editor" if server.sizing else "Scenario Editor"
+    print(f"The {editor} for {_label(server.folder)} is at\n\n    {server.url}\n")
+    if server.output is None:
+        print("The page's Budgets tab works out the budgets as you edit.")
+    else:
+        print(f"Create the viewer on the page, and it goes in {_label(server.output)}.")
     print(
         "Keep this window open while you work. To stop the server, click Stop "
         "the server on the page, or press Ctrl+C. It stops by itself after "

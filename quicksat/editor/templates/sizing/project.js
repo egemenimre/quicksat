@@ -67,6 +67,7 @@ function known(where, obj, keys) {
 
 const NAMES = {
   mission: "mission.yaml",
+  requirements: "requirements.yaml",
   mass: "mass_budget_config.yaml",
   equipment: "equipment.csv",
   data: "pl_dataflow_model.yaml",
@@ -76,6 +77,7 @@ const NAMES = {
 };
 
 const MASS_CLASSES = ["equipment", "propellant"];
+const AXES = ["roll", "pitch"];
 const LAUNCHER = "Launcher";
 const MANOEUVRE_TYPES = ["altitude_change", "collision_avoidance", "inclination_change", "deorbit", "given"];
 const VALUE_UNITS = {
@@ -103,6 +105,42 @@ function readMission(file) {
     inclination: readQ(m.inclination, "deg", "inclination"),
     duration: readQ(m.duration, "yr", "duration"),
     comments: textOf(m.comments),
+  };
+}
+
+function readRequirements(file) {
+  const m = mapOf(file && file.data);
+  if (file) known(file.name, m, ["agility", "data"]);
+  const a = mapOf(m.agility), d = mapOf(m.data);
+  const slews = mapOf(a.slews);
+  if (file) {
+    known(`${file.name} › agility`, a, ["slews"]);
+    known(`${file.name} › data`, d, ["orbits_without_downlink"]);
+  }
+  return {
+    comments: textOf(m.comments),
+    agility: {
+      comments: textOf(a.comments),
+      slews: {
+        comments: textOf(slews.comments),
+        items: Object.entries(slews).filter(([name]) => name !== RESERVED).map(([name, value]) => {
+          const v = mapOf(value);
+          const where = `agility › slews › ${name}`;
+          known(`${file.name} › ${where}`, v, ["axis", "angle", "duration"]);
+          return {
+            name,
+            axis: textOf(v.axis).trim(),
+            angle: readQ(v.angle, "deg", `${where} › angle`),
+            duration: readQ(v.duration, "s", `${where} › duration`),
+            comments: textOf(v.comments),
+          };
+        }),
+      },
+    },
+    data: {
+      orbits_without_downlink: readNum(d.orbits_without_downlink, "orbits without downlink"),
+      comments: textOf(d.comments),
+    },
   };
 }
 
@@ -159,7 +197,7 @@ function readData(file) {
   if (file) {
     known(`${file.name} › generation`, g, ["raw_datarate", "compression_ratio", "duty_cycle"]);
     known(`${file.name} › downlink`, d, ["rate", "contacts_per_day", "avg_contact_duration"]);
-    known(`${file.name} › storage`, s, ["orbits_without_contact"]);
+    known(`${file.name} › storage`, s, ["capacity"]);
   }
   return {
     comments: textOf(m.comments),
@@ -176,7 +214,7 @@ function readData(file) {
       comments: textOf(d.comments),
     },
     storage: {
-      orbits_without_contact: readNum(s.orbits_without_contact, "orbits without contact", file ? "" : 1),
+      capacity: readQ(s.capacity, "GB", "capacity"),
       comments: textOf(s.comments),
     },
   };
@@ -217,12 +255,20 @@ const envelope = () => ({ body: { x: q("", "m"), y: q("", "m"), z: q("", "m") },
 
 function readAgility(file) {
   const m = mapOf(file && file.data);
-  if (file) known(file.name, m, ["inertia_cases", "wheels", "settling_time"]);
+  if (file) known(file.name, m, ["selected_case", "inertia_cases", "wheels", "settling_time"]);
   const cases = mapOf(m.inertia_cases);
   const w = mapOf(m.wheels);
   if (file) known(`${file.name} › wheels`, w, ["count", "elevation", "momentum", "torque", "momentum_use_factor", "torque_derating"]);
+  const names = Object.keys(cases).filter((name) => name !== RESERVED);
+  // a case is always selected: the first, when the file names none or one it lacks
+  let selected = textOf(m.selected_case).trim();
+  if (!names.includes(selected)) {
+    if (file && names.length) notice("changed", selected ? `selected_case: "${selected}" is not one of the inertia cases, so ${names[0]} is selected` : `selected_case is missing, so ${names[0]} is selected`);
+    selected = names[0] || "";
+  }
   return {
     comments: textOf(m.comments),
+    selected,
     cases: {
       comments: textOf(cases.comments),
       items: Object.entries(cases).filter(([name]) => name !== RESERVED).map(([name, value]) => {
@@ -265,7 +311,7 @@ function readProject(data) {
 }
 
 /** Each file's reader, by the file's kind. */
-const READERS = { mission: readMission, mass: readMass, equipment: readEquipment, data: readData, deltav: readDeltaV, manoeuvres: readManoeuvres, agility: readAgility };
+const READERS = { mission: readMission, requirements: readRequirements, mass: readMass, equipment: readEquipment, data: readData, deltav: readDeltaV, manoeuvres: readManoeuvres, agility: readAgility };
 
 /** The folder's files: as Python wrote them into the page, or as the user opened them. */
 let DATA = JSON.parse($("#project").textContent);
@@ -281,6 +327,7 @@ const locationNames = () => project.mass.locations.items.map((l) => l.name);
 
 /** Where a name is used: a list of short descriptions. */
 function usesOf(kind, name) {
+  if (kind === "case") return project.agility.selected === name ? ["the agility budget, as its selected case: the first case left takes its place"] : [];
   if (kind !== "location") return [];
   const rows = project.equipment.filter((r) => r.location === name).map((r) => r.id || "a row");
   return rows.length > 3 ? [...rows.slice(0, 3), `${rows.length - 3} more`] : rows;
@@ -288,6 +335,7 @@ function usesOf(kind, name) {
 
 function rename(kind, from, to) {
   if (kind === "location") for (const r of project.equipment) if (r.location === from) r.location = to;
+  if (kind === "case" && project.agility.selected === from) project.agility.selected = to;
 }
 
 // What the page shows from the fields, refreshed as they change without a redraw

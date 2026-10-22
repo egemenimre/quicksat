@@ -6,6 +6,44 @@ Newest first. When a decision replaces an earlier one, the earlier one is kept i
 
 ---
 
+## 22. The Sizing Editor shows the budgets, as quicksat works them out
+
+**2026-10-21. Implemented. Changes 18: the server also serves the Sizing Editor.**
+
+The Sizing Editor has a Budgets tab. It shows every sizing budget: the tables that the notebooks show, each budget's figures, and the checks of entry 21. A list on the left holds an overview and the four budgets, so one tab is enough. The notebooks keep their role: they explain each budget step by step. The tab answers "where does the design stand now?".
+
+**In the editor, not a viewer of its own.** The Scenario Viewer is a page of its own because it is large, with the 3D view and the timeline, and a run takes seconds. Neither holds for sizing. The results are a few tables per budget, and quicksat works out every budget of the sample in well under a second. The sizing work is a loop of small changes: closing the sample's budgets after a new requirement takes four rounds, in the guide to closing them. With the figures in the editor, a round is an edit and a look at the tab. A separate viewer would also be a second copy of the figures, which goes out of date as soon as a file changes.
+
+**Python works out the figures, and sends them as text.** `quicksat.editor.budgets` reads the folder with quicksat's loaders, and builds each table with the method that the notebook calls, such as `tabulated_mass()`. Each table keeps its report's headings and decimals. The page formats no number of its own, and no budget is written a second time in JavaScript. A budget whose files are missing has no figures. A budget that quicksat cannot work out shows its error, and the others are still worked out.
+
+**With the editor's server, the figures follow each change.** `python -m quicksat.editor serve FOLDER` serves the Sizing Editor for a folder of sizing files, with no output folder. A moment after each change, the page sends its files, saved or not, and the server works out every budget in a temporary folder, one request at a time. It writes nothing. The page and the server share the code that tracks the server, and the Stop the server button, with the Scenario Editor.
+
+**Without the server, the figures are the page's own.** Python works out the budgets when it writes the page, and puts them inside it. The tab says so. Once a file changes on the page, it names the files changed since, and greys the figures.
+
+The Agility page shows the selected inertia case only, as the checks use it. To see another case in full, the user selects it on the Agility tab. The table of inertia cases compares them all, with each slew's time and margin. So Python works out the slew tables of one case only, which halves the time of a work-out, to about 0.35 s for the sample.
+
+---
+
+## 21. The requirements have a file of their own, and the checks are library code
+
+**2026-10-21. Implemented.**
+
+**What is asked, and what is.** A requirement is asked of a spacecraft, and is not a property of one. So the requirements have a file of their own in the sizing folder, `requirements.yaml`, beside `mission.yaml`. Each section belongs to the budget that checks it. `agility` lists the slews the mission needs, each under a name, with its axis, its angle and its time. `data` gives `orbits_without_downlink`, the longest run of orbits with no payload data downlink, which the mass memory must cover. The file and each section are optional: a budget with no requirement still works out its figures. Before, the slew times were written in the agility notebooks' code, and the agility config said on purpose that it held none.
+
+The properties stay in the budgets' own files, as entry 2 says:
+
+- **The mass memory's capacity** is in the data file's `storage` block, which before held the run of orbits to cover, as `orbits_without_contact`. Before, the capacity was only in the equipment's name, `SSDR 2 TB`.
+- **The selected case.** `agility_config.yaml` names a `selected_case`, the inertia case that the budget checks. The other cases are kept for comparison, such as the spacecraft at other stages of the mission. `AgilityBudget` flies it when no case is named. Before, the case was a required argument, so that a reader would not have to guess which spacecraft produced a number. The file now says which.
+- **No launcher limit yet.** The mass budget has no check for now. A launcher's capability would be its first, in `requirements.yaml`.
+
+**The checks are library code.** Each budget with something to meet gives its checks with `checks()`. A `Check`, in `quicksat.utils.checks`, holds the design's figure, the limit, and whether the design must reach the limit or stay at or below it. It gives the spare, the margin and the verdict. The margin is the spare as a share of what the design needs or uses, so a slew's margin is `time_margin`'s. Before, the notebooks worked out the verdicts in their own cells, such as the delta-V notebook's `SHORT`. A page that shows the budgets would have needed a second copy of each. Now the notebooks and the page read the same code.
+
+- **Delta-V:** the propellant loaded against the propellant required. It needs the mass budget, and no requirement.
+- **Data:** the downlink against the data generated, which needs no requirement, and the mass memory against the storage required.
+- **Agility:** each slew about the budget's axis, for its inertia case, with every wheel working.
+
+---
+
 ## 20. The Activity Designer is the viewer in a frame, served by the editor's server
 
 **2026-10-18. Implemented. Changes 18: the server can now save the scenario file.**
@@ -63,7 +101,7 @@ A target can be another satellite, such as a relay of a constellation, as well a
 **What the server does not do.**
 
 - **It does not save the files into the folder.** The run takes the files as they are on the page, saved or not, in a temporary folder that it then deletes. Saving is still a download. Saving rewrites every `#` comment, so the user reviews those first. Changed by 20: the Activity Designer saves the scenario file into the folder.
-- **It serves the Scenario Editor only.** The Sizing Editor works out its budgets on the page, and needs no run.
+- **It serves the Scenario Editor only.** The Sizing Editor works out its budgets on the page, and needs no run. Changed by 22: the server also serves the Sizing Editor, whose Budgets tab follows each change.
 
 **How the server keeps to its user.**
 

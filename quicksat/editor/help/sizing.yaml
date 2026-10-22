@@ -20,11 +20,12 @@
 folder:
   title: Folder
   info: |-
-    <p>This folder holds the input files of quicksat's sizing budgets. Each budget is a notebook, which reads its files and builds one table.</p>
+    <p>This folder holds the input files of quicksat's sizing budgets. Each budget is a notebook, which reads its files and builds one table. The Budgets tab shows them all, as quicksat works them out.</p>
     <p>Saving always writes every budget's files. A folder that lacks a budget's files gets them started here, as new, for you to fill in.</p>
     {{files}}
     <span class="k">What follows</span>
     <p>Data, delta-V and agility read <code>mission.yaml</code>, so the folder always holds it. Delta-V and agility also read the mass budget: delta-V for the dry mass, and agility for the mass of an envelope case. Without the mass files, their notebooks must give a mass instead.</p>
+    <p>The data and agility budgets check their figures against <code>requirements.yaml</code>. Without it, they work out their figures and check nothing against a requirement.</p>
     <p>These files share nothing with a scenario or power folder. The mission's orbit is a reference orbit for the budgets: it has no epoch and no node.</p>
 
 mission:
@@ -47,6 +48,23 @@ inclination:
 duration:
   file: >-
     The design life. It scales the recurring manoeuvres.
+
+slews:
+  title: Agility requirements
+  info: |-
+    <p>Each slew that the mission needs: an angle about roll or pitch, and the time it may take. The names are yours. Different operations may ask different times of the same spacecraft, so there may be several slews about one axis.</p>
+    <span class="k">Within</span><p>The time for the whole manoeuvre, with the settling time after it.</p>
+    <span class="k">What follows</span><p>The agility budget checks each slew about its axis, for the selected inertia case, with every wheel working.</p>
+  file: >-
+    Each slew the mission needs, under a name of your choice: the axis, the angle and the time it may take, settling included.
+
+required_storage:
+  title: Duration without image downlink
+  info: |-
+    <p>The longest run of orbits with no pass that can send the payload data down, in orbits. It sizes the payload data storage. It need not be a whole number. Leave it empty when there is no such requirement.</p>
+    <span class="k">What follows</span><p>The data budget works out the payload data generated over this run, and checks that the mass memory holds it.</p>
+  file: >-
+    The longest run of orbits with no payload data downlink. The mass memory must hold the data generated over it.
 
 locations:
   title: "Locations: margins and harness"
@@ -92,10 +110,10 @@ downlink:
 storage:
   title: Storage
   info: |-
-    <p>The memory is sized to hold the data of this many orbits without a usable pass. It need not be a whole number.</p>
-    <span class="k">What follows</span><p>The data budget compares what the payload makes with what the link sends. It then gives the memory for this case.</p>
+    <p>The mass memory's usable capacity, after any space kept for other data, such as housekeeping or a file system. It takes its unit, such as <code>2 TB</code> or <code>512 Gbit</code>.</p>
+    <span class="k">What follows</span><p>The data budget compares what the payload makes with what the link sends. It then checks that the memory holds the data of the duration without image downlink, which is on the Requirements tab.</p>
   file: >-
-    The memory is sized for this many orbits without a usable contact.
+    The mass memory's usable capacity. How long it must hold the data is in requirements.yaml.
 
 dvconfig:
   title: Propulsion and margin
@@ -134,11 +152,16 @@ manoeuvres:
 cases:
   title: Inertia cases
   info: |-
-    <p>Each case is one spacecraft, with one set of mass properties. The names are yours: the agility notebook asks for a case by its name.</p>
+    <p>Each case is one spacecraft, with one set of mass properties, such as the spacecraft at the start or the end of its life. The names are yours.</p>
+    <span class="k">Selected case</span><p>The case that the agility budget checks against the slews the mission needs. The Budgets tab shows it in full. The others are kept for comparison: the Budgets tab compares them in its table of inertia cases, and the agility notebooks can ask for any of them by name.</p>
     <span class="k">Envelope estimate</span><p>A uniform box, with a factor on each axis for the arrays, radiators and booms. Its inertia follows the mass from the mass budget, at the propellant level given.</p>
     <span class="k">Stated inertia</span><p>The roll and pitch inertia, as a mass properties report gives them. It is a fixed number: nothing checks that it still matches the mass budget.</p>
     <p>A case is one or the other, never both, so each figure has one source.</p>
     <span class="k">Axes</span><p>x is along the track, y across it, and z towards nadir.</p>
+
+selected_case:
+  file: >-
+    The inertia case that the budget checks. The others are kept for comparison.
 
 inertia_cases:
   file: >-
@@ -151,7 +174,7 @@ wheels:
     <span class="k">Nameplate figures</span><p>The momentum and the torque of one wheel, as the vendor quotes them. The elevation is each wheel's angle above the pyramid's base.</p>
     <span class="k">Use policy</span><p>The momentum use factor is the share of the momentum kept for slews. The rest stores disturbances. The torque derating is the share of the torque used in a slew. The rest is kept for control.</p>
     <span class="k">Settling time</span><p>What the platform needs after a slew before the payload can work. It is added once, at the end of a manoeuvre.</p>
-    <span class="k">Not in the file</span><p>The time allowed for a slew. It is asked of a spacecraft, so the notebook passes it to each call.</p>
+    <span class="k">Not in the file</span><p>The time allowed for a slew. It is asked of a spacecraft, so it is on the Requirements tab.</p>
   file: >-
     A pyramid of reaction wheels about yaw. The momentum and the torque are nameplate figures per wheel. The use factor and the derating are the shares used in slews.
 

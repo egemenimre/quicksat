@@ -4,7 +4,12 @@
 # No mass anywhere. The mass budget owns it, and a second copy here would drift --
 # the same reason altitude lives only in mission.yaml. Orbit comes from mission.yaml,
 # for ground track speed. The target duration for a manoeuvre is not here
-# either: that is asked of a spacecraft, not a property of one.
+# either: that is asked of a spacecraft, not a property of one. It is in
+# requirements.yaml.
+
+# The inertia case that the budget sizes and checks. The others are kept for
+# comparison, such as the spacecraft at other stages of the mission.
+selected_case: first_guess
 
 inertia_cases:
   # One case is one spacecraft, one set of mass properties. The names are yours

@@ -96,6 +96,8 @@ The totals show where the new rows land. In the sample, with the 5 % margin:
 
 The sample loads 22.0 kg. It was 2.89 kg short before the two rows, and is now 8.68 kg short.
 
+The Sizing Editor's Budgets tab shows the same figures: the totals on its Delta-V page, and the propellant check on its overview. With the editor's server, they follow each row as you add it.
+
 More propellant needs a larger tank, which adds mass, and the extra mass changes the other budgets. [How to close the sizing budgets](close_the_sizing_budgets.md) goes through those rounds.
 
 Details: [`delta_v_ref.ipynb`](../../sizing/delta_v_ref.ipynb), sections "The manoeuvre file", "The closed forms" and "Counts, and the mission duration".
