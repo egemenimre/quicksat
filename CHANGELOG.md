@@ -4,6 +4,8 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-23
+
 ### Added
 
 - `requirements.yaml`, a sizing file of what the mission asks of the spacecraft. Its `agility` section lists the slews the mission needs, each with its axis, angle and time. Its `data` section gives `orbits_without_downlink`, the longest run of orbits with no payload data downlink, which the mass memory must cover. `Requirements`, in `quicksat.utils.requirements`, reads it. The file and each section are optional. The sample, the reference and the test folders have one.
@@ -127,7 +129,8 @@ Initial release.
 - A ground target search, through OpenStreetMap's Nominatim.
 - `python -m quicksat.editor serve FOLDER OUTPUT` serves the Scenario Editor on this computer, with a button that runs the page's files and writes the viewer.
 
-[Unreleased]: https://github.com/egemenimre/quicksat/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/egemenimre/quicksat/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/egemenimre/quicksat/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/egemenimre/quicksat/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/egemenimre/quicksat/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/egemenimre/quicksat/tree/v0.1.0
