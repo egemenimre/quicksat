@@ -47,13 +47,13 @@ def folder(tmp_path) -> Path:
     return folder
 
 
-def texts(results) -> list:
-    """Every text that the results hold, to check that they are all text."""
+def parts(results) -> list[dict]:
+    """Every dictionary that the results hold, such as a figure or a table's row."""
     if isinstance(results, dict):
-        return [text for value in results.values() for text in texts(value)]
+        return [results, *[part for value in results.values() for part in parts(value)]]
     if isinstance(results, list):
-        return [text for value in results for text in texts(value)]
-    return [results]
+        return [part for value in results for part in parts(value)]
+    return []
 
 
 # ---------------------------------------------------------------- the results
@@ -75,11 +75,38 @@ def test_every_budget_is_worked_out(folder):
     assert results["notes"] == []
 
 
-def test_the_figures_and_the_tables_are_text(folder):
-    """The page formats no number of its own: each figure and each cell is text."""
+def test_the_figures_and_the_tables_are_text_with_their_numbers(folder):
+    """
+    The page formats no number of its own: each figure and each cell is text. Its
+    number comes too, for the export, or None for a cell of text.
+    """
     results = budget_results(folder)
-    for key in ("budgets", "overview"):
-        assert all(isinstance(text, (str, bool)) for text in texts(results[key]))
+    rows = [part for part in parts(results["budgets"]) if "cells" in part]
+    figures = [part for part in parts(results) if "label" in part]
+    assert rows and figures
+    for row in rows:
+        assert all(isinstance(cell, str) for cell in row["cells"])
+        assert len(row["values"]) == len(row["cells"])
+        assert all(value is None or isinstance(value, float) for value in row["values"])
+    for figure in figures:
+        assert isinstance(figure["value"], str)
+        assert figure["number"] is None or isinstance(figure["number"], float)
+
+
+def test_a_number_comes_in_full_beside_its_text(folder):
+    results = budget_results(folder)
+    propellant = results["budgets"]["deltav"]["tables"]["propellant"]
+    [required] = [row for row in propellant["rows"] if row["type"] == "total"]
+    value = required["values"][1]
+    assert required["cells"] == ["Propellant required", f"{value:,.2f}", "kg"]
+    assert value != round(value, 2)
+    # a check's figures too, in the design's unit, with the margin as a share
+    checks = {check["check"]: check for check in results["checks"]}
+    numbers = checks["propellant"]["numbers"]
+    assert numbers["design"] == 30.0 and numbers["limit"] == value
+    assert numbers["unit"] == "kg" and not numbers["at_most"]
+    assert numbers["spare"] == pytest.approx(30.0 - value)
+    assert numbers["margin"] == pytest.approx(30.0 / value - 1)
 
 
 def test_the_mass_table_is_the_notebook_s(folder):

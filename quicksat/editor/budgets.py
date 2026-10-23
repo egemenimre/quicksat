@@ -9,8 +9,9 @@ The sizing budgets' results, as the Sizing Editor's Budgets tab shows them.
 `budget_results` reads a folder of sizing files with quicksat's loaders, works
 out each budget whose files are there, and gives the page its figures, its
 tables and its checks. The tables are the ones the notebooks show, from the same
-methods, with the same headings and decimals. Every figure reaches the page as
-text, so the page formats no number of its own.
+methods, with the same headings and decimals. Every figure and every cell
+reaches the page as text, so the page formats no number of its own. A number
+also comes in full, for the page's Excel export.
 
 A budget whose files are missing has no results. A budget that quicksat cannot
 work out has an error in place of its results, and the others are still worked
@@ -18,6 +19,7 @@ out.
 
 """
 
+import math
 import numbers
 from collections.abc import Callable
 from pathlib import Path
@@ -40,8 +42,8 @@ from quicksat.utils.requirements import Requirements
 
 _MARGINS = (
     ("No margin [kg]", {"eqpt_margin": False, "sys_margin": False}),
-    ("With equipment margin [kg]", {"sys_margin": False}),
-    ("With system margin [kg]", {}),
+    ("With eqpt margin [kg]", {"sys_margin": False}),
+    ("With sys margin [kg]", {}),
 )
 """The three margin levels of the mass budget's grouped views, as the mass
 notebook compares them."""
@@ -56,18 +58,41 @@ def _text(value, spec: str | None = None) -> str:
     return str(value)
 
 
+def _value(value) -> float | None:
+    """A cell's number in full, for the export. None for text, and for an empty or infinite number."""
+    if isinstance(value, numbers.Real) and not isinstance(value, bool):
+        value = float(value)
+        return value if math.isfinite(value) else None
+    return None
+
+
 def _q(quantity, unit: str, spec: str = "{:,.2f}") -> str:
     """A quantity's value in `unit`, as text, without the unit."""
     return spec.format(quantity.to_value(unit))
 
 
+def _v(quantity, unit: str, spec: str = "{:,.2f}") -> tuple[float, str]:
+    """A quantity's value in `unit`, with the format the page shows it in."""
+    return quantity.to_value(unit), spec
+
+
 def _figure(
-    label: str, value: str, unit: str = "", note: str = "", bad=False, headline=False
+    label: str,
+    value: tuple[float, str],
+    unit: str = "",
+    note: str = "",
+    bad=False,
+    headline=False,
 ) -> dict:
-    """One of the figures above a budget's tables. A headline figure also goes on the overview."""
+    """
+    One of the figures above a budget's tables, from its number and its format.
+    A headline figure also goes on the overview.
+    """
+    number, spec = value
     return {
         "label": label,
-        "value": value,
+        "value": _text(number, spec),
+        "number": _value(number),
         "unit": unit,
         "note": note,
         "bad": bool(bad),
@@ -92,7 +117,8 @@ def _report(frame: pd.DataFrame, headers: dict, formats: dict) -> dict:
     -------
     table : dict
         `columns`, each with its `key`, `title` and whether it holds numbers,
-        and `rows`, each with its `type` and its `cells` as text
+        and `rows`, each with its `type`, its `cells` as text, and its `values`:
+        the number of each cell in a column of numbers, and None for the others
     """
     keys = [key for key in frame.columns if key in headers]
     return {
@@ -106,20 +132,41 @@ def _report(frame: pd.DataFrame, headers: dict, formats: dict) -> dict:
                 "type": record.get("row_type")
                 or ("fails" if record.get("verdict") == "FAILS" else ""),
                 "cells": [_text(record[key], formats.get(key)) for key in keys],
+                "values": [
+                    _value(record[key]) if key in formats else None for key in keys
+                ],
             }
             for record in frame.to_dict("records")
         ],
     }
 
 
-def _rows(titles: list[str], rows: list[tuple[str, list[str]]]) -> dict:
-    """A small table of text, with numbers in every column but the first."""
+def _rows(titles: list[str], rows: list[tuple[str, list]], spec="{:,.2f}") -> dict:
+    """
+    A small table, from rows of cells. A cell is text, a number in the table's
+    format `spec`, or a number with its own format, as `(number, format)`.
+    A column holds numbers when one of its cells does.
+    """
+    table = []
+    for kind, cells in rows:
+        pairs = [cell if isinstance(cell, tuple) else (cell, spec) for cell in cells]
+        table.append(
+            {
+                "type": kind,
+                "cells": [_text(value, form) for value, form in pairs],
+                "values": [_value(value) for value, _ in pairs],
+            }
+        )
     return {
         "columns": [
-            {"key": f"c{i}", "title": title, "number": i > 0}
+            {
+                "key": f"c{i}",
+                "title": title,
+                "number": any(row["values"][i] is not None for row in table),
+            }
             for i, title in enumerate(titles)
         ],
-        "rows": [{"type": kind, "cells": cells} for kind, cells in rows],
+        "rows": table,
     }
 
 
@@ -136,10 +183,10 @@ def _mass(mass: MassBudget) -> dict:
     def grouped(view: Callable[..., pd.DataFrame], heading: str) -> dict:
         frames = [view(**flags)["mass"] for _, flags in _MARGINS]
         rows = [
-            ("item", [str(name), *[f"{f[name]:,.2f}" for f in frames]])
+            ("item", [str(name), *[f[name] for f in frames]])
             for name in frames[0].index
         ]
-        rows.append(("total", ["Total", *[f"{f.sum():,.2f}" for f in frames]]))
+        rows.append(("total", ["Total", *[f.sum() for f in frames]]))
         return _rows([heading, *[title for title, _ in _MARGINS]], rows)
 
     points = [
@@ -154,29 +201,29 @@ def _mass(mass: MassBudget) -> dict:
         "figures": [
             _figure(
                 "Launch mass",
-                _q(mass.on_ground_mass(), "kg"),
+                _v(mass.on_ground_mass(), "kg"),
                 "kg",
                 "on the ground, wet",
                 headline=True,
             ),
             _figure(
                 "In orbit, wet",
-                _q(mass.in_orbit_mass(), "kg"),
+                _v(mass.in_orbit_mass(), "kg"),
                 "kg",
                 f"{_q(mass.in_orbit_mass(propellant=0), 'kg')} kg dry",
                 headline=True,
             ),
             _figure(
                 "In orbit, dry",
-                _q(mass.in_orbit_mass(propellant=0), "kg"),
+                _v(mass.in_orbit_mass(propellant=0), "kg"),
                 "kg",
                 "the delta-V budget's dry mass",
             ),
-            _figure("Propellant", _q(mass.propellant_mass(), "kg"), "kg", "loaded"),
+            _figure("Propellant", _v(mass.propellant_mass(), "kg"), "kg", "loaded"),
             _figure(
-                "Platform", _q(mass.platform_mass(), "kg"), "kg", "by location, wet"
+                "Platform", _v(mass.platform_mass(), "kg"), "kg", "by location, wet"
             ),
-            _figure("Payload", _q(mass.payload_mass(), "kg"), "kg", "by location"),
+            _figure("Payload", _v(mass.payload_mass(), "kg"), "kg", "by location"),
         ],
         "tables": {
             "budget": budget,
@@ -184,7 +231,7 @@ def _mass(mass: MassBudget) -> dict:
             "by_subsystem": grouped(mass.by_subsystem, "Subsystem"),
             "points": _rows(
                 ["Point of the mission", "Mass [kg]"],
-                [("item", [label, _q(value, "kg")]) for label, value in points],
+                [("item", [label, _v(value, "kg")]) for label, value in points],
             ),
         },
     }
@@ -193,29 +240,24 @@ def _mass(mass: MassBudget) -> dict:
 def _delta_v(delta_v: DeltaVBudget) -> dict:
     """The delta-V budget's figures and tables."""
     margin = delta_v.config.margin
-    headers = {
-        key: title
-        for key, title in delta_v_report._HEADERS.items()
-        if key != "loss_factor"
-    }
 
     def grouped(frame: pd.DataFrame, heading: str) -> dict:
         values = frame["deltav"]
-        rows = [("item", [str(name), f"{values[name]:,.2f}"]) for name in frame.index]
-        rows.append(("total", ["Total", f"{values.sum():,.2f}"]))
+        rows = [("item", [str(name), values[name]]) for name in frame.index]
+        rows.append(("total", ["Total", values.sum()]))
         return _rows([heading, "ΔV with margin [m/s]"], rows)
 
     figures = [
         _figure(
             "Delta-V",
-            _q(delta_v.total_deltav(), "m/s"),
+            _v(delta_v.total_deltav(), "m/s"),
             "m/s",
             f"with the {margin:g} % margin",
             headline=True,
         ),
         _figure(
             "Before margin",
-            _q(delta_v.total_deltav(margin=False), "m/s"),
+            _v(delta_v.total_deltav(margin=False), "m/s"),
             "m/s",
             f"{len(delta_v.resolve())} manoeuvres",
         ),
@@ -223,7 +265,7 @@ def _delta_v(delta_v: DeltaVBudget) -> dict:
     tables = {
         "budget": _report(
             delta_v.tabulated_deltav(comments=True).data,
-            headers,
+            delta_v_report._HEADERS,
             delta_v_report._FORMATS,
         ),
         "by_phase": grouped(delta_v.by_phase(), "Phase"),
@@ -236,13 +278,13 @@ def _delta_v(delta_v: DeltaVBudget) -> dict:
         figures += [
             _figure(
                 "Propellant needed",
-                _q(required, "kg"),
+                _v(required, "kg"),
                 "kg",
                 f"Isp {delta_v.config.propulsion.isp:g}",
             ),
             _figure(
                 "Propellant loaded",
-                _q(loaded, "kg"),
+                _v(loaded, "kg"),
                 "kg",
                 f"{_q(required, 'kg')} kg needed: "
                 f"{'short by' if spare.value < 0 else 'spare'} {abs(spare.value):,.2f} kg",
@@ -250,27 +292,19 @@ def _delta_v(delta_v: DeltaVBudget) -> dict:
                 headline=True,
             ),
         ]
+        dry = delta_v.mass_budget.in_orbit_mass(propellant=0)
+        isp = delta_v.config.propulsion.isp
         tables["propellant"] = _rows(
-            ["", ""],
+            ["", "Value", "Unit"],
             [
+                ("item", ["In-orbit dry mass", _v(dry, "kg"), "kg"]),
                 (
                     "item",
-                    [
-                        "In-orbit dry mass, from the mass budget",
-                        _q(delta_v.mass_budget.in_orbit_mass(propellant=0), "kg")
-                        + " kg",
-                    ],
+                    ["Delta-V, with margin", _v(delta_v.total_deltav(), "m/s"), "m/s"],
                 ),
-                (
-                    "item",
-                    [
-                        "Delta-V, with margin",
-                        _q(delta_v.total_deltav(), "m/s") + " m/s",
-                    ],
-                ),
-                ("item", ["Specific impulse", f"{delta_v.config.propulsion.isp:g}"]),
-                ("total", ["Propellant required", _q(required, "kg") + " kg"]),
-                ("item", ["Propellant loaded", _q(loaded, "kg") + " kg"]),
+                ("item", ["Specific impulse", _v(isp, "s", "{:g}"), "s"]),
+                ("total", ["Propellant required", _v(required, "kg"), "kg"]),
+                ("item", ["Propellant loaded", _v(loaded, "kg"), "kg"]),
             ],
         )
     return {"figures": figures, "tables": tables}
@@ -284,7 +318,7 @@ def _data(data: DataBudget) -> dict:
     figures = [
         _figure(
             "Downlink margin",
-            f"{margin:+.1f}",
+            (margin, "{:+.1f}"),
             "%",
             "closes" if margin >= 0 else "does not close",
             bad=margin < 0,
@@ -292,24 +326,24 @@ def _data(data: DataBudget) -> dict:
         ),
         _figure(
             "Generated",
-            _q(data.generated_per_day, "GB"),
+            _v(data.generated_per_day, "GB"),
             "GB/day",
             f"{_q(data.generated_per_orbit, 'GB')} GB per orbit",
         ),
         _figure(
             "Downlinked",
-            _q(data.downlinked_per_day, "GB"),
+            _v(data.downlinked_per_day, "GB"),
             "GB/day",
             f"{_q(data.contact_per_day, 'min', '{:,.0f}')} min of contact a day",
         ),
     ]
-    runs = [("item", ["1 orbit", _q(data.storage_required(1), "GB")])]
+    runs = [("item", ["1 orbit", _v(data.storage_required(1), "GB")])]
     if orbits is not None:
         needed = data.storage_required()
         figures.append(
             _figure(
                 "Storage needed",
-                _q(needed, "GB"),
+                _v(needed, "GB"),
                 "GB",
                 f"{orbits:g} orbits without downlink, of {_q(capacity, 'GB', '{:,.0f}')} GB",
                 bad=needed > capacity,
@@ -317,13 +351,13 @@ def _data(data: DataBudget) -> dict:
             )
         )
         runs.append(
-            ("total", [f"{orbits:g} orbits, the requirement", _q(needed, "GB")])
+            ("total", [f"{orbits:g} orbits, the requirement", _v(needed, "GB")])
         )
     else:
         figures.append(
             _figure(
                 "Mass memory",
-                _q(capacity, "GB", "{:,.0f}"),
+                _v(capacity, "GB", "{:,.0f}"),
                 "GB",
                 "usable capacity",
                 headline=True,
@@ -334,10 +368,10 @@ def _data(data: DataBudget) -> dict:
             "item",
             [
                 "A full day",
-                _q(data.storage_required(data.mission.orbits_per_day.value), "GB"),
+                _v(data.storage_required(data.mission.orbits_per_day.value), "GB"),
             ],
         ),
-        ("item", ["Mass memory, usable capacity", _q(capacity, "GB")]),
+        ("item", ["Mass memory, usable capacity", _v(capacity, "GB")]),
     ]
     return {
         "figures": figures,
@@ -371,7 +405,7 @@ def _axis_figures(budget: AgilityBudget, degraded: bool) -> list[dict]:
     return [
         _figure(
             "Inertia",
-            _q(budget.inertia, "kg m2", "{:,.1f}"),
+            _v(budget.inertia, "kg m2", "{:,.1f}"),
             "kg m²",
             f"from the mass budget at {shape.propellant.to_value('percent'):g} % propellant"
             if shape.is_envelope
@@ -379,19 +413,19 @@ def _axis_figures(budget: AgilityBudget, degraded: bool) -> list[dict]:
         ),
         _figure(
             "Max rate",
-            _q(budget.max_rate(degraded), "deg/s", "{:,.3f}"),
+            _v(budget.max_rate(degraded), "deg/s", "{:,.3f}"),
             "deg/s",
             f"{momentum} N m s about {axis}",
         ),
         _figure(
             "Max acceleration",
-            _q(budget.max_acceleration(degraded), "deg/s2", "{:,.4f}"),
+            _v(budget.max_acceleration(degraded), "deg/s2", "{:,.4f}"),
             "deg/s²",
             f"{torque} N m about {axis}",
         ),
         _figure(
             "Crossover",
-            _q(budget.crossover_angle(degraded), "deg", "{:,.1f}"),
+            _v(budget.crossover_angle(degraded), "deg", "{:,.1f}"),
             "deg",
             "torque limited below it",
         ),
@@ -469,17 +503,17 @@ class _Agility:
         except Exception:  # the case's error shows on its own table
             return []
 
-    def case_row(self, case: str) -> tuple[str, list[str]]:
+    def case_row(self, case: str) -> tuple[str, list]:
         """A case's line in the table of cases: its inertia, and its time for each slew."""
         shape = self.config.for_case(case)
         selected = case == self.config.selected_case
-        cells = [
+        cells: list = [
             case + (" (selected)" if selected else ""),
             "from the mass budget" if shape.is_envelope else "stated",
         ]
         for axis in (Axis.ROLL, Axis.PITCH):
             try:
-                cells.append(_q(self.budget(axis, case).inertia, "kg m2", "{:,.1f}"))
+                cells.append(_v(self.budget(axis, case).inertia, "kg m2", "{:,.1f}"))
             except Exception:  # the case's error shows on its own table
                 cells.append("—")
         checks = {check.name: check for check in self.checks(case)}
@@ -487,8 +521,8 @@ class _Agility:
             check = checks.get(name)
             cells += (
                 [
-                    _q(check.design, "s", "{:,.1f}"),
-                    f"{check.margin.to_value('percent'):+.1f}",
+                    _v(check.design, "s", "{:,.1f}"),
+                    _v(check.margin, "percent", "{:+.1f}"),
                 ]
                 if check
                 else ["—", "—"]
@@ -506,7 +540,7 @@ class _Agility:
             "figures": [
                 _figure(
                     check.name,
-                    _q(check.design, "s", "{:,.1f}"),
+                    _v(check.design, "s", "{:,.1f}"),
                     "s",
                     f"of {_q(check.limit, 's', '{:g}')} s allowed, for the inertia "
                     f"case {selected}",
@@ -535,13 +569,36 @@ class _Agility:
         }
 
 
+def _check_numbers(check: Check) -> dict:
+    """
+    A check's figures in full, for the export: the design, the limit and the
+    spare in the design's unit, and the margin as a share, so 0.12 is 12 %.
+    """
+    unit = check.design.unit
+    return {
+        "design": _value(check.design.value),
+        "limit": _value(check.limit.to_value(unit)),
+        "spare": _value(check.spare.value),
+        "margin": _value(check.margin.value),
+        # GB, as the check's own text writes a data volume
+        "unit": str(unit).replace("byte", "B"),
+        "at_most": check.at_most,
+    }
+
+
 def _checks(budget: str, checks: list[Check], files: list[str]) -> list[dict]:
     """A budget's checks, as the page lists them."""
     if not checks:
         return []
     rows = tabulate_checks(checks).data.to_dict("records")
     return [
-        {"budget": budget, **row, "passes": check.passes, "files": files}
+        {
+            "budget": budget,
+            **row,
+            "passes": check.passes,
+            "files": files,
+            "numbers": _check_numbers(check),
+        }
         for check, row in zip(checks, rows, strict=True)
     ]
 

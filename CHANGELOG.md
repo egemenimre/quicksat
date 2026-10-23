@@ -4,6 +4,15 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- The Sizing Editor's Budgets tab has an Export to Excel button. It writes an .xlsx workbook: an overview of the headline figures and the checks, then a sheet for each budget. The mass budget has two sheets, in orbit and on the ground, with comments and without subsystem subtotals. Agility has two, about roll and about pitch, for the selected inertia case with the full set of wheels. Each number is written in full, and shows the decimals that the tab shows. The workbook holds values only, with no formulas. The page writes it, so it needs no server and no Python package.
+
+### Changed
+
+- `budget_results` gives each table row its `values`, the numbers in full beside the text of its `cells`. Each figure has its `number`, and each check its `numbers`. The delta-V table keeps its loss factor column, which the tab hides. The propellant table has a value column and a unit column.
+- On the Budgets tab, the margin columns of the mass budget's tables by location and by subsystem are titled "With eqpt margin" and "With sys margin".
+
 ## [0.4.0] - 2026-10-23
 
 ### Added

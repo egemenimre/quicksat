@@ -65,7 +65,7 @@ Each guide takes you through one task, from the samples to files of your own. Pi
 The sizing sample is a small Earth observation satellite on a 500 km sun-synchronous orbit. Its files are in `sample/sizing/data/`. The workflow:
 
 1. **Edit the files.** Double-click [`sample/sizing/editor/editor.html`](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/editor/editor.html) to open the Sizing Editor in your browser. Its Setup tab takes you through every file, step by step, and the other tabs edit one file or one budget each. Save the files, as a zip or one by one, and put them back in `sample/sizing/data/`. The files are YAML and CSV, with units written out, such as `750 g` or `800 Mbit/s`, so they can be edited by hand too.
-2. **See the budgets.** The editor's Budgets tab shows every budget's tables and checks, as quicksat works them out. A page opened from a file shows them as they were when the page was written. To have them follow each change, serve the page, and open the address the server prints:
+2. **See the budgets.** The editor's Budgets tab shows every budget's tables and checks, as quicksat works them out. Its **Export to Excel** button writes them into an .xlsx workbook, a copy to pass on. A page opened from a file shows them as they were when the page was written. To have them follow each change, serve the page, and open the address the server prints:
 
    ```bash
    python -m quicksat.editor serve sample/sizing/data

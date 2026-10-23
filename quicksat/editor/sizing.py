@@ -53,6 +53,7 @@ SCRIPTS = (
     "checks.js",
     "write.js",
     "budgets.js",
+    "export.js",
     "views.js",
 )
 """The sizing editor's own scripts in `templates/sizing/`, in the order they run

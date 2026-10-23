@@ -2,9 +2,10 @@
 //
 // Python works out the budgets, with the same methods as the notebooks: when it
 // writes the page, and on the editor's server a moment after each change. The
-// results arrive as text, so the page formats no number of its own. Without the
-// server, the tab shows the results from when the page was written, and says
-// which files have changed since.
+// results arrive as text, so the page formats no number of its own, and each
+// number also comes in full, for the export to Excel. Without the server, the tab
+// shows the results from when the page was written, and says which files have
+// changed since.
 
 /** The budgets, as the tab shows them, and its controls. */
 const budgets = {
@@ -241,7 +242,7 @@ function deltavBody() {
     figuresRow(results.figures),
     ownChecks("deltav"),
     el("div", { class: "controls" }, tick("comments", budgets.deltavComments, (v) => { budgets.deltavComments = v; })),
-    budgetCard("Delta-V budget", budgetTable(t.budget, { hide: budgets.deltavComments ? [] : ["comments"] }), { files: fileList(["manoeuvres", "deltav"]), source: "DeltaVBudget.tabulated_deltav()", wide: true }),
+    budgetCard("Delta-V budget", budgetTable(t.budget, { hide: budgets.deltavComments ? ["loss_factor"] : ["loss_factor", "comments"] }), { files: fileList(["manoeuvres", "deltav"]), source: "DeltaVBudget.tabulated_deltav()", wide: true }),
     el("div", { class: "pair" },
       budgetCard("By phase", budgetTable(t.by_phase), { source: "by_phase()" }),
       budgetCard("By type", budgetTable(t.by_type), { source: "by_type()" }),
@@ -323,7 +324,8 @@ function drawBudgets() {
     el("div", { class: "step" },
       el("div", { class: "step-head" },
         el("div", {}, el("div", { class: "where", text: view.files ? `Budgets · ${fileList(view.files)}` : "Budgets" }), el("h2", { text: view.title })),
-        el("p", { class: "intro", text: view.intro })),
+        el("p", { class: "intro", text: view.intro }),
+        el("button", { class: "btn export", text: "Export to Excel", disabled: !budgets.results, title: "Every budget in an .xlsx workbook, a sheet each: a copy, with each number in full", onclick: exportBudgets })),
       el("div", { class: "step-body" + (server.state !== "up" && changedSince().length ? " stale" : "") }, budgetsState(), ...body.filter(Boolean))));
   const again = document.querySelector("#page-budgets .step-body");
   if (again) again.scrollTop = top;
