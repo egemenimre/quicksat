@@ -40,8 +40,8 @@ from quicksat.utils.requirements import Requirements
 
 _MARGINS = (
     ("No margin [kg]", {"eqpt_margin": False, "sys_margin": False}),
-    ("With equipment margin [kg]", {"sys_margin": False}),
-    ("With system margin [kg]", {}),
+    ("With eqpt margin [kg]", {"sys_margin": False}),
+    ("With sys margin [kg]", {}),
 )
 """The three margin levels of the mass budget's grouped views, as the mass
 notebook compares them."""
