@@ -6,6 +6,22 @@ Newest first. When a decision replaces an earlier one, the earlier one is kept i
 
 ---
 
+## 23. The Budgets tab exports an Excel workbook, written by the page
+
+**2026-10-24. Implemented. Changes 22: each number also comes in full.**
+
+Users want the budgets in a spreadsheet, to read and to pass on, with each budget on a sheet of its own. The Budgets tab's Export to Excel button writes one.
+
+**The page writes the file.** An .xlsx file is a zip of a few XML files. The page already writes a zip, for the project's files, so it writes the workbook too, in about 200 lines. This needs no server and no Python package: pandas would need openpyxl or xlsxwriter. The other way was for Python to write the workbook, through the server or a command. The notebooks could have used it too, but it would do nothing while the server is off.
+
+**The numbers come in full.** Python sent each figure as text, rounded as the notebook rounds it. Now each number also comes in full, beside its text. The tab shows the text. The workbook writes the number, with an Excel format taken from the text. So a cell shows the tab's decimals, and holds the number in full.
+
+**Values only.** The workbook holds values only, with no formulas. The sizing files are the single source of the figures, and a workbook that people edit would become a second one. The sheets were protected without a password at first, but that made it hard to select parts of a table, so they are not protected.
+
+**One view of each budget.** The tab has variants that the workbook leaves out. The mass budget is written in orbit and on the ground, with comments and without subsystem subtotals. Agility is written about roll and about pitch, for the selected inertia case, with the full set of wheels. The other budgets have no variants. An overview comes first, with the headline figures, the checks, and where the figures come from. When files changed after the figures were worked out, it names them.
+
+---
+
 ## 22. The Sizing Editor shows the budgets, as quicksat works them out
 
 **2026-10-21. Implemented. Changes 18: the server also serves the Sizing Editor.**
@@ -14,7 +30,7 @@ The Sizing Editor has a Budgets tab. It shows every sizing budget: the tables th
 
 **In the editor, not a viewer of its own.** The Scenario Viewer is a page of its own because it is large, with the 3D view and the timeline, and a run takes seconds. Neither holds for sizing. The results are a few tables per budget, and quicksat works out every budget of the sample in well under a second. The sizing work is a loop of small changes: closing the sample's budgets after a new requirement takes four rounds, in the guide to closing them. With the figures in the editor, a round is an edit and a look at the tab. A separate viewer would also be a second copy of the figures, which goes out of date as soon as a file changes.
 
-**Python works out the figures, and sends them as text.** `quicksat.editor.budgets` reads the folder with quicksat's loaders, and builds each table with the method that the notebook calls, such as `tabulated_mass()`. Each table keeps its report's headings and decimals. The page formats no number of its own, and no budget is written a second time in JavaScript. A budget whose files are missing has no figures. A budget that quicksat cannot work out shows its error, and the others are still worked out.
+**Python works out the figures, and sends them as text.** `quicksat.editor.budgets` reads the folder with quicksat's loaders, and builds each table with the method that the notebook calls, such as `tabulated_mass()`. Each table keeps its report's headings and decimals. The page formats no number of its own, and no budget is written a second time in JavaScript. A budget whose files are missing has no figures. A budget that quicksat cannot work out shows its error, and the others are still worked out. Changed by 23: each number also comes in full, beside its text, for the export to Excel.
 
 **With the editor's server, the figures follow each change.** `python -m quicksat.editor serve FOLDER` serves the Sizing Editor for a folder of sizing files, with no output folder. A moment after each change, the page sends its files, saved or not, and the server works out every budget in a temporary folder, one request at a time. It writes nothing. The page and the server share the code that tracks the server, and the Stop the server button, with the Scenario Editor.
 

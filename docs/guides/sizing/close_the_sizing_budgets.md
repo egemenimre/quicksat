@@ -60,7 +60,7 @@ Either way, note the figures that decide whether the design closes:
 | Data | its checks pass: the margin is zero or above, and the mass memory holds the storage required. |
 | Mass | the launch mass is within the launcher's capability. quicksat holds no launcher limit, so compare it yourself. |
 
-The Budgets tab's overview, and the delta-V, agility and data notebooks, show the checks in a table, with each check's spare, margin and verdict. Write these figures down for each round. A small table, one row per round, shows the changes from round to round.
+The Budgets tab's overview, and the delta-V, agility and data notebooks, show the checks in a table, with each check's spare, margin and verdict. Write these figures down for each round. A small table, one row per round, shows the changes from round to round. In the Sizing Editor, the Budgets tab's **Export to Excel** button writes every budget into a workbook, so you can keep one for each round.
 
 ## 3. Make the change, and run the first round
 
