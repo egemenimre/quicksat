@@ -27,6 +27,18 @@ const TRIGGERS = [
 const SLEW = "slew";
 /** The attitude and mode rows' value after the last activity, in the Activity Designer's run. */
 const UNPLANNED = "unplanned";
+/** The two parts of the spacecraft that each have a mode at a time: the payload, and the platform that carries it. */
+const GROUPS = ["payload", "platform"];
+/** The keys of an activity's modes in the file, by group: `payload_mode` and `platform_mode`. */
+const MODE_KEYS = Object.fromEntries(GROUPS.map((group) => [group, `${group}_mode`]));
+/** The key of an activity's modes that says which mode the payload is in during the slew into the activity. */
+const IN_SLEW = "payload_mode_in_slew";
+/** Its two values, the default first, with their labels on the page. */
+const IN_SLEW_CHOICES = [["prev_activity", "prev activity"], ["this_activity", "this activity"]];
+const PREV_ACTIVITY = IN_SLEW_CHOICES[0][0];
+const groupTitle = (group) => group[0].toUpperCase() + group.slice(1);
+/** A group's consumption file, as the page's files name its kind. */
+const consumptionKind = (group) => `${group}_consumption`;
 /** The key that names an orbit's file, for each kind of file. */
 const ORBIT_KEYS = { tle: "tle_file", omm: "omm_file", trajectory: "trajectory_file" };
 
@@ -210,9 +222,30 @@ function readActivity(raw, index) {
     fields = raw;
   }
   return {
-    title: str(fields.title), end: parseTrigger(fields.end), attitude: str(fields.attitude), mode: str(fields.mode),
+    title: str(fields.title), end: parseTrigger(fields.end), attitude: str(fields.attitude), mode: readModes(fields.mode, where),
     constraint: str(fields.constraint), comments: str(fields.comments),
   };
+}
+
+/**
+ * An activity's modes: the payload's and the platform's, written
+ * `{payload_mode: imaging, platform_mode: imaging}`, and the payload's mode in
+ * the slew into the activity, `in_slew`, from an optional `payload_mode_in_slew`.
+ */
+function readModes(raw, where) {
+  const blankModes = { payload: "", platform: "", in_slew: PREV_ACTIVITY };
+  if (raw === undefined || raw === null || raw === "") return blankModes;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    notice("changed", `${where}: the mode "${raw}" gives neither the payload's nor the platform's, and was left empty`);
+    return blankModes;
+  }
+  knownKeys(raw, [...Object.values(MODE_KEYS), IN_SLEW], `${where} › mode`);
+  let inSlew = str(raw[IN_SLEW]) || PREV_ACTIVITY;
+  if (!IN_SLEW_CHOICES.some(([value]) => value === inSlew)) {
+    notice("changed", `${where}: ${IN_SLEW} "${inSlew}" is neither ${IN_SLEW_CHOICES.map(([value]) => value).join(" nor ")}, and was set to ${PREV_ACTIVITY}`);
+    inSlew = PREV_ACTIVITY;
+  }
+  return { payload: str(raw[MODE_KEYS.payload]), platform: str(raw[MODE_KEYS.platform]), in_slew: inSlew };
 }
 
 function readScenario(raw) {
@@ -386,34 +419,47 @@ function readConsumption(file) {
 
 // ---------------------------------------------------------------- the project
 
-/** The modes: the activities' first, then the park angles', then `columns`, the consumption table's. */
+/**
+ * Each group's modes: the activities' first, then for the platform the park
+ * angles', then `columns`, the consumption tables', by the group.
+ */
 function collectModes(scenario, columns) {
-  const modes = [];
-  const addMode = (mode) => mode && mode !== SLEW && !modes.includes(mode) && modes.push(mode);
-  scenario.activities.forEach((a) => addMode(a.mode));
-  scenario.model.articulations.items.forEach((a) => a.park.forEach((p) => addMode(p.mode)));
-  columns.forEach(addMode);
+  const modes = Object.fromEntries(GROUPS.map((group) => [group, []]));
+  const addMode = (group, mode) => mode && mode !== SLEW && !modes[group].includes(mode) && modes[group].push(mode);
+  for (const group of GROUPS) scenario.activities.forEach((a) => addMode(group, a.mode[group]));
+  scenario.model.articulations.items.forEach((a) => a.park.forEach((p) => addMode("platform", p.mode)));
+  for (const group of GROUPS) columns[group].forEach((mode) => addMode(group, mode));
   return modes;
 }
+
+/** A consumption file with no rows, for a group whose folder has none. */
+const noConsumption = () => ({ modes: [], slewColumn: false, rows: [] });
 
 function readProject(data) {
   const files = data.files;
   const scenario = readingFile("scenario", () => readScenario(files.scenario.data));
-  const consumption = files.consumption ? readingFile("consumption", () => readConsumption(files.consumption)) : { modes: [], slewColumn: false, rows: [] };
-  scenario.modes = collectModes(scenario, consumption.modes);
+  const consumption = Object.fromEntries(GROUPS.map((group) => {
+    const file = files[consumptionKind(group)];
+    return [group, file ? readingFile(consumptionKind(group), () => readConsumption(file)) : noConsumption()];
+  }));
+  scenario.modes = collectModes(scenario, { payload: consumption.payload.modes, platform: consumption.platform.modes });
+  const byGroup = (value) => Object.fromEntries(GROUPS.map((group) => [group, value(group)]));
   return {
     name: data.folder || "quicksat_project",
     names: {
       scenario: files.scenario.name,
       power: files.power ? files.power.name : "power_system.yaml",
-      consumption: files.consumption ? files.consumption.name : "power_consumption.csv",
+      ...Object.fromEntries(GROUPS.map((group) => {
+        const file = files[consumptionKind(group)];
+        return [consumptionKind(group), file ? file.name : `${group}_consumption.csv`];
+      })),
     },
     scenario,
     hasPower: Boolean(files.power),
     power: files.power ? readingFile("power", () => readPower(files.power.data)) : newPower(),
-    hasConsumption: Boolean(files.consumption),
-    slewColumn: consumption.slewColumn,
-    consumption: consumption.rows,
+    hasConsumption: byGroup((group) => Boolean(files[consumptionKind(group)])),
+    slewColumn: byGroup((group) => consumption[group].slewColumn),
+    consumption: byGroup((group) => consumption[group].rows),
   };
 }
 
@@ -443,8 +489,10 @@ const satTargetFiles = () => [...new Set(S.sat_targets.items.map((t) => t.file).
 /** The kind of a satellite target's file among the page's files: one kind for each file. */
 const targetKind = (name) => `target:${name}`;
 const directions = () => [...BUILT_IN_DIRECTIONS, ...targetNames()];
-/** The modes a park angle can name: slew is one while the body turns, when there are slews. */
-const parkModes = () => (S.slew.enabled ? [...S.modes, SLEW] : S.modes);
+/** The modes a park angle can name: the platform's, and slew while the body turns, when there are slews. */
+const parkModes = () => (S.slew.enabled ? [...S.modes.platform, SLEW] : S.modes.platform);
+/** The kind of a group's mode, for its uses and its renames. */
+const modeKind = (group) => `${group} mode`;
 
 /** Where a name is used: a list of short descriptions. */
 function usesOf(kind, name) {
@@ -455,10 +503,13 @@ function usesOf(kind, name) {
     S.attitudes.items.forEach((a) => [a.point[1], a.constrain[1], a.fallback].includes(name) && uses.push(`attitude ${a.name}`));
     S.model.articulations.items.forEach((a) => a.point[1] === name && uses.push(`articulation ${a.name}`));
     S.activities.forEach((a, i) => (["rise", "set"].includes(a.end.kind) && a.end.target === name) && uses.push(`activity ${i + 1}`));
-  } else if (kind === "mode") {
-    S.activities.forEach((a, i) => a.mode === name && uses.push(`activity ${i + 1}`));
-    S.model.articulations.items.forEach((r) => r.park.some((p) => p.mode === name) && uses.push(`articulation ${r.name}`));
-    if (project.hasConsumption) uses.push("a column of the consumption table");
+  } else if (GROUPS.some((group) => kind === modeKind(group))) {
+    const group = GROUPS.find((g) => kind === modeKind(g));
+    S.activities.forEach((a, i) => a.mode[group] === name && uses.push(`activity ${i + 1}`));
+    if (group === "platform") {
+      S.model.articulations.items.forEach((r) => r.park.some((p) => p.mode === name) && uses.push(`articulation ${r.name}`));
+    }
+    if (project.hasConsumption[group]) uses.push(`a column of the ${group}'s consumption table`);
   }
   return uses;
 }
@@ -478,10 +529,11 @@ function rename(kind, from, to) {
     });
     S.model.articulations.items.forEach((a) => a.point[1] === from && (a.point[1] = to));
     S.activities.forEach((a) => a.end.target === from && (a.end.target = to));
-  } else if (kind === "mode") {
-    S.activities.forEach((a) => a.mode === from && (a.mode = to));
-    S.model.articulations.items.forEach((r) => r.park.forEach((p) => p.mode === from && (p.mode = to)));
-    project.consumption.forEach((row) => {
+  } else if (GROUPS.some((group) => kind === modeKind(group))) {
+    const group = GROUPS.find((g) => kind === modeKind(g));
+    S.activities.forEach((a) => a.mode[group] === from && (a.mode[group] = to));
+    if (group === "platform") S.model.articulations.items.forEach((r) => r.park.forEach((p) => p.mode === from && (p.mode = to)));
+    project.consumption[group].forEach((row) => {
       row.power[to] = row.power[from];
       delete row.power[from];
     });

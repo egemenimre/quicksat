@@ -2,7 +2,7 @@
 
 This guide takes you round the loop of the scenario and power work. You edit the input files in the editor, run them, read the results, and look at the run in the viewer. Then you change something, and go round again.
 
-The loop is the same for a scenario folder and for a power folder. A power folder holds its own copy of the scenario, so its editor edits the scenario, the power system and the consumption together.
+The loop is the same for a scenario folder and for a power folder. A power folder holds its own copy of the scenario, so its editor edits the scenario, the power system and the two consumption files, the payload's and the platform's, together.
 
 There are two ways round the loop. The editor's server runs the files from the page: edit, click **Create the viewer**, and look. Its Activity Designer shows the run above the list of activities as you build it. Or open a page on disk, save the files, put them back in the folder, and run a command. Step 2 starts either one.
 
@@ -57,7 +57,7 @@ The first Setup step lists the folder's files: where each came from, whether it 
 
 **Satellite targets** adds them from a file, with **Add from a file…** or a drop: a TLE or OMM file of one satellite or of a group, or a trajectory file. A group lists its satellites, with their epochs, for you to choose from. The page holds each file, and saves and runs it with the scenario. Each target's epoch shows against the start, in amber when it is more than 7 days away.
 
-Names are chosen from lists. An activity picks its attitude and its mode, and an articulation picks its part of the model. Renaming an attitude, a target or a mode changes every use of it. Deleting one that is in use asks again, and says what uses it.
+Names are chosen from lists. An activity picks its attitude, its payload mode and its platform mode, and an articulation picks its part of the model. Renaming an attitude, a target or a mode changes every use of it. The Operations tab lists the payload's modes and the platform's apart, and each consumption table has a column for each of its group's modes. Deleting one that is in use asks again, and says what uses it.
 
 **Show 3D**, at the top right, opens the 3D panel. It shows the model, its parts and the body axes. Click a row, such as a panel, an articulation or an attitude, to see it there: a panel's normal and area, an articulation's axis with a slider to turn it, or an attitude's two axes. The panel starts open on the steps that need it, and you can hide it on any step or tab.
 
@@ -67,7 +67,7 @@ The page keeps no draft. Save before you close it or reload it, or your changes 
 
 ### Design the activities, with the server
 
-With the server, the Activities tab is the **Activity Designer**. The run sits above the list of activities: the orbit in 3D and the ground track, with the current data beside them, and the timeline with the illumination, the attitude, the mode and each target's passes. A dashed line marks each whole orbit.
+With the server, the Activities tab is the **Activity Designer**. The run sits above the list of activities: the orbit in 3D and the ground track, with the current data beside them, and the timeline with the illumination, the attitude, the payload's and the platform's modes and each target's passes. A dashed line marks each whole orbit.
 
 **Generate scenario** runs the scenario as it is on the page, and shows the result above the list. It writes nothing. The first run after the server starts takes about 20 s. Later ones take a second or two for the samples. The tab runs once by itself when you first open it.
 

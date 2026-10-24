@@ -44,11 +44,12 @@ SCENARIO = TESTS / "scenario" / "data"
 NAMES = {
     "scenario": "scenario.yaml",
     "power": "power_system.yaml",
-    "consumption": "power_consumption.csv",
+    "payload_consumption": "payload_consumption.csv",
+    "platform_consumption": "platform_consumption.csv",
 }
 
 
-def page_files(folder: Path, kinds=("scenario", "power", "consumption")) -> list[dict]:
+def page_files(folder: Path, kinds=tuple(NAMES)) -> list[dict]:
     """A folder's files as the page sends them: the model in base64, the rest as text."""
     files = [
         {"kind": kind, "name": NAMES[kind], "text": (folder / NAMES[kind]).read_text()}
@@ -81,6 +82,14 @@ def test_run_power(tmp_path):
     assert [c["file"] for c in result["checks"]] == list(NAMES.values())
     assert all(c["ok"] for c in result["checks"])
     assert "Loads met" in result["report"]
+
+
+def test_run_power_needs_both_consumption_files(tmp_path):
+    """Without the platform's consumption file, the scenario runs alone."""
+    files = page_files(POWER, ("scenario", "power", "payload_consumption"))
+    result = run_files(files, tmp_path)
+    assert result["ok"], result.get("error")
+    assert result["page"] == "scenario_viewer.html"
 
 
 def test_run_scenario(tmp_path):
@@ -411,7 +420,8 @@ def test_design_runs_the_scenario_once_without_the_power():
     assert [row["number"] for row in result["rows"]] == list(
         range(1, len(activities) + 1)
     )
-    assert data["tracks"]["mode"][-1]["value"] == "unplanned"
+    for name in ("payload_mode", "platform_mode"):
+        assert data["tracks"][name][-1]["value"] == "unplanned"
 
 
 def test_design_with_repeats_plans_the_whole_run():
@@ -420,7 +430,8 @@ def test_design_with_repeats_plans_the_whole_run():
     assert result["data"]["designer"]["repeat"] is True
     assert result["pass_s"] < result["duration_s"]
     tracks = result["data"]["tracks"]
-    assert all(p["value"] != "unplanned" for p in tracks["attitude"] + tracks["mode"])
+    pieces = tracks["attitude"] + tracks["payload_mode"] + tracks["platform_mode"]
+    assert all(p["value"] != "unplanned" for p in pieces)
     assert max(row["count"] for row in result["rows"]) > 1
 
 

@@ -260,10 +260,10 @@ function powerComments() {
   }));
 }
 
-/** A copy of an equipment row, with an id of its own. */
-function copyEquipment(row) {
+/** A copy of an equipment row of a group's table, with an id of its own. */
+function copyEquipment(group, row) {
   let id = `${row.id}_2`;
-  for (let n = 3; project.consumption.some((r) => r.id === id); n++) id = `${row.id}_${n}`;
+  for (let n = 3; project.consumption[group].some((r) => r.id === id); n++) id = `${row.id}_${n}`;
   return { ...row, id, power: { ...row.power } };
 }
 
@@ -280,15 +280,99 @@ function addPower() {
   changed(true);
 }
 
-/** Start a consumption file, for a folder that has none. */
-function addConsumption() {
-  project.hasConsumption = true;
-  fileAdded("consumption");
+/** Start a group's consumption file, for a folder that has none. */
+function addConsumption(group) {
+  project.hasConsumption[group] = true;
+  fileAdded(consumptionKind(group));
   changed(true);
 }
 
-/** The modes a consumption row needs: each mode, and slew while the body turns. */
-const consumptionModes = () => (S.slew.enabled || project.slewColumn ? [...S.modes, SLEW] : S.modes);
+/**
+ * The modes a row of a group's consumption table needs: each of the group's
+ * modes, and for the platform slew while the body turns. A slew column that
+ * the file already has stays.
+ */
+const consumptionModes = (group) =>
+  (group === "platform" && S.slew.enabled) || project.slewColumn[group] ? [...S.modes[group], SLEW] : S.modes[group];
+
+/** The Modes step's table of one group's modes. */
+function modesTable(group) {
+  const modes = S.modes[group];
+  const kind = modeKind(group);
+  const table = el("table", { class: "items" });
+  table.append(el("tr", {}, [`${group} mode`, "used by", ""].map((h) => el("th", { text: h }))));
+  modes.forEach((name, index) => {
+    const uses = usesOf(kind, name).filter((u) => !u.startsWith("a column"));
+    const input = el("input", {
+      type: "text", class: "name", value: name,
+      onchange: (e) => {
+        const to = e.target.value.trim();
+        if (!to || to === name) { e.target.value = name; return; }
+        if (modes.includes(to)) { e.target.value = name; alert(`There is already a ${group} mode called "${to}".`); return; }
+        rename(kind, name, to);
+        modes[index] = to;
+        changed(true);
+      },
+    });
+    table.append(el("tr", {},
+      el("td", {}, input),
+      el("td", { class: "hint", text: uses.length ? uses.join(", ") : "nothing yet" }),
+      el("td", { class: "tools" }, itemTools(modes, index, { kind, name }))));
+  });
+  const add = el("div", { class: "add-row" }, el("button", {
+    class: "btn", text: `+ ${group} mode`,
+    onclick: () => {
+      let name = "new mode";
+      for (let n = 2; modes.includes(name); n++) name = `new mode ${n}`;
+      modes.push(name);
+      project.consumption[group].forEach((r) => (r.power[name] = ""));
+      changed(true);
+    },
+  }));
+  return [el("h4", { text: `${groupTitle(group)} modes` }), table, add];
+}
+
+/** A group's consumption section: its table of equipment, or a button to start one. */
+function consumptionSection(group) {
+  const kind = consumptionKind(group);
+  return {
+    title: `${groupTitle(group)} consumption`, file: kind, wide: true,
+    render(body) {
+      if (!project.hasConsumption[group]) {
+        body.append(el("p", { class: "hint", text: `This folder has no ${project.names[kind]}. Start one to give what each of the ${group}'s equipment draws in each of its modes.` }),
+          el("button", { class: "btn", text: `add ${project.names[kind]}`, onclick: () => addConsumption(group) }));
+        return;
+      }
+      const rows = project.consumption[group];
+      const modes = consumptionModes(group);
+      const table = el("table", { class: "items" });
+      table.append(el("tr", {}, ["id", "name", "subsystem", "units on", "margin %", ...modes.map((m) => `${m} W`), "comments", ""].map((h) => el("th", { text: h }))));
+      rows.forEach((item, index) => {
+        const tr = el("tr");
+        const power = (m) => (m === SLEW ? numberInput(item, "slew", { min: 0, width: 60 }) : numberInput(item.power, m, { min: 0, width: 60 }));
+        tr.append(
+          el("td", {}, textInput(item, "id", { cls: "name" })),
+          el("td", {}, textInput(item, "name")),
+          el("td", {}, textInput(item, "subsystem", { cls: "name" })),
+          el("td", {}, numberInput(item, "units", { step: 1, min: 0, width: 55 })),
+          el("td", {}, numberInput(item, "margin", { step: 1, min: 0, width: 55 })),
+          ...modes.map((m) => el("td", {}, power(m))),
+          el("td", {}, textInput(item, "comments", { cls: "wide" })),
+          el("td", { class: "tools" }, itemTools(rows, index, { copy: (row) => copyEquipment(group, row) })));
+        table.append(tr);
+      });
+      body.append(el("div", { class: "scroll-x" }, table));
+      body.append(el("div", { class: "add-row" }, el("button", {
+        class: "btn", text: "+ equipment",
+        onclick: () => { rows.push({ id: "", name: "", subsystem: "", units: 1, margin: 5, power: Object.fromEntries(S.modes[group].map((m) => [m, ""])), slew: "", comments: "" }); changed(true); },
+      })));
+      const slew = group === "platform"
+        ? ", and a slew column when the scenario has slews"
+        : ". In a slew, the payload stays in one of its own modes, so it needs no slew column";
+      body.append(el("p", { class: "hint", text: `One column per ${group} mode, from the Modes step${slew}. Every cell needs a power, 0 W included. The comments column is the CSV's own place for comments, and is kept as written.` }));
+    },
+  };
+}
 
 // ---------------------------------------------------------------- sections
 
@@ -326,7 +410,8 @@ const SECTIONS = {
     render(body) {
       body.append(openFolderButton());
       const targetRows = satTargetFiles().filter((name) => targetFiles.has(name)).map((name) => ({ kind: targetKind(name) }));
-      body.append(filesTable([{ rows: [...FILES.map(({ kind }) => ({ kind, add: { power: addPower, consumption: addConsumption }[kind] })), ...targetRows] }]));
+      const adds = { power: addPower, ...Object.fromEntries(GROUPS.map((group) => [consumptionKind(group), () => addConsumption(group)])) };
+      body.append(filesTable([{ rows: [...FILES.map(({ kind }) => ({ kind, add: adds[kind] })), ...targetRows] }]));
       body.append(commentsBox(S, "Your comments on the overall scenario", { open: true, note: `They go in the comments field at the top of ${project.names.scenario}. The comments on the overall power subsystem are in the Power steps.` }));
     },
   },
@@ -545,40 +630,10 @@ const SECTIONS = {
   },
 
   modes: {
-    title: "Modes", file: "scenario", also: "and the consumption table",
+    title: "Modes", file: "scenario", also: "and the consumption tables",
     render(body) {
-      const table = el("table", { class: "items" });
-      table.append(el("tr", {}, ["mode", "used by", ""].map((h) => el("th", { text: h }))));
-      S.modes.forEach((name, index) => {
-        const uses = usesOf("mode", name).filter((u) => !u.startsWith("a column"));
-        const input = el("input", {
-          type: "text", class: "name", value: name,
-          onchange: (e) => {
-            const to = e.target.value.trim();
-            if (!to || to === name) { e.target.value = name; return; }
-            if (S.modes.includes(to)) { e.target.value = name; alert(`There is already a mode called "${to}".`); return; }
-            rename("mode", name, to);
-            S.modes[index] = to;
-            changed(true);
-          },
-        });
-        table.append(el("tr", {},
-          el("td", {}, input),
-          el("td", { class: "hint", text: uses.length ? uses.join(", ") : "nothing yet" }),
-          el("td", { class: "tools" }, itemTools(S.modes, index, { kind: "mode", name }))));
-      });
-      body.append(table);
-      body.append(el("div", { class: "add-row" }, el("button", {
-        class: "btn", text: "+ mode",
-        onclick: () => {
-          let name = "new mode";
-          for (let n = 2; S.modes.includes(name); n++) name = `new mode ${n}`;
-          S.modes.push(name);
-          project.consumption.forEach((r) => (r.power[name] = ""));
-          changed(true);
-        },
-      })));
-      body.append(el("p", { class: "hint", text: "The modes are not a block of the scenario file: they are the names the activities use. So they take no comments here. Describe a mode in the comments of the activities that use it, or in the consumption table." }));
+      for (const group of GROUPS) body.append(...modesTable(group));
+      body.append(el("p", { class: "hint", text: "The modes are not a block of the scenario file: they are the names the activities use. So they take no comments here. Describe a mode in the comments of the activities that use it, or in its consumption table." }));
     },
   },
 
@@ -587,7 +642,10 @@ const SECTIONS = {
     render(body, { setup = false } = {}) {
       const list = S.activities;
       const table = el("table", { class: "items activities" });
-      table.append(el("tr", {}, ["#", "title", "ends at", "", "attitude", "mode", "expects", ""].map((h) => el("th", { text: h }))));
+      // with slews, the payload's mode in the turn into each activity
+      const slews = S.slew.enabled;
+      const headers = ["#", "title", "ends at", "", "attitude", "payload mode", "platform mode", ...(slews ? ["payload in slew"] : []), "expects", ""];
+      table.append(el("tr", {}, headers.map((h) => el("th", { text: h }))));
       const tbody = el("tbody");
       table.append(tbody);
       list.forEach((item, index) => {
@@ -607,22 +665,30 @@ const SECTIONS = {
         }
         detail.addEventListener("input", refresh);
         detail.addEventListener("change", refresh);
+        // the activity before, in a repeated list the last for the first: the
+        // same attitude means no turn into this one, so the choice does nothing
+        const before = list[(index + list.length - 1) % list.length];
+        const unturned = list.length > 1 && before.attitude === item.attitude;
+        const inSlew = slews ? selectInput(item.mode, "in_slew", IN_SLEW_CHOICES) : null;
+        if (inSlew && unturned) Object.assign(inSlew, { disabled: true, title: "The activity before has the same attitude, so there is no turn into this one" });
         tr.append(
           el("td", { class: "hint num", text: index + 1 }),
           // on the Activities tab, the activity's results in the designer's last run
           el("td", {}, textInput(item, "title", { cls: "name", placeholder: "what it is for" }), setup ? null : rowNote(index)),
           el("td", {}, selectInput(end, "kind", TRIGGERS, { onchange: () => {} })),
           el("td", {}, detail, text),
-          el("td", {}, selectInput(item, "attitude", attitudeNames(), { blank: "attitude" })),
-          el("td", {}, selectInput(item, "mode", S.modes, { blank: "mode" })),
+          // a new attitude can turn the next row's slew on or off, so the table is drawn again
+          el("td", {}, selectInput(item, "attitude", attitudeNames(), { blank: "attitude", onchange: () => {} })),
+          ...GROUPS.map((group) => el("td", {}, selectInput(item.mode, group, S.modes[group], { blank: group }))),
+          ...(slews ? [el("td", {}, inSlew)] : []),
           el("td", {}, selectInput(item, "constraint", CONSTRAINTS.map((c) => [c, c || "anything"]))),
-          el("td", { class: "tools" }, commentsButton(item, 8, tbody, tr), " ", itemTools(list, index, { order: true })));
+          el("td", { class: "tools" }, commentsButton(item, headers.length, tbody, tr), " ", itemTools(list, index, { order: true })));
         tbody.append(tr);
       });
       body.append(el("div", { class: "scroll-x" }, table));
       body.append(el("div", { class: "add-row" }, el("button", {
         class: "btn", text: "+ activity",
-        onclick: () => { list.push({ title: `activity ${list.length + 1}`, end: trigger("duration"), attitude: attitudeNames()[0] || "", mode: S.modes[0] || "", constraint: "", comments: "" }); changed(true); },
+        onclick: () => { list.push({ title: `activity ${list.length + 1}`, end: trigger("duration"), attitude: attitudeNames()[0] || "", mode: { payload: S.modes.payload[0] || "", platform: S.modes.platform[0] || "", in_slew: PREV_ACTIVITY }, constraint: "", comments: "" }); changed(true); },
       })));
       body.append(el("p", { class: "hint", text: "The activities are a list, which has no place for a comments field of its own. Use each activity's comments, or the comments at the top of the file." }));
     },
@@ -710,40 +776,8 @@ const SECTIONS = {
     },
   },
 
-  consumption: {
-    title: "Consumption", file: "consumption", wide: true,
-    render(body) {
-      if (!project.hasConsumption) {
-        body.append(el("p", { class: "hint", text: `This folder has no ${project.names.consumption}. Start one to give what each equipment draws in each mode.` }),
-          el("button", { class: "btn", text: `add ${project.names.consumption}`, onclick: addConsumption }));
-        return;
-      }
-      const rows = project.consumption;
-      const modes = consumptionModes();
-      const table = el("table", { class: "items" });
-      table.append(el("tr", {}, ["id", "name", "subsystem", "units on", "margin %", ...modes.map((m) => `${m} W`), "comments", ""].map((h) => el("th", { text: h }))));
-      rows.forEach((item, index) => {
-        const tr = el("tr");
-        const power = (m) => (m === SLEW ? numberInput(item, "slew", { min: 0, width: 60 }) : numberInput(item.power, m, { min: 0, width: 60 }));
-        tr.append(
-          el("td", {}, textInput(item, "id", { cls: "name" })),
-          el("td", {}, textInput(item, "name")),
-          el("td", {}, textInput(item, "subsystem", { cls: "name" })),
-          el("td", {}, numberInput(item, "units", { step: 1, min: 0, width: 55 })),
-          el("td", {}, numberInput(item, "margin", { step: 1, min: 0, width: 55 })),
-          ...modes.map((m) => el("td", {}, power(m))),
-          el("td", {}, textInput(item, "comments", { cls: "wide" })),
-          el("td", { class: "tools" }, itemTools(rows, index, { copy: copyEquipment })));
-        table.append(tr);
-      });
-      body.append(el("div", { class: "scroll-x" }, table));
-      body.append(el("div", { class: "add-row" }, el("button", {
-        class: "btn", text: "+ equipment",
-        onclick: () => { rows.push({ id: "", name: "", subsystem: "", units: 1, margin: 5, power: Object.fromEntries(S.modes.map((m) => [m, ""])), slew: "", comments: "" }); changed(true); },
-      })));
-      body.append(el("p", { class: "hint", text: "One column per mode, from the Modes section, and a slew column when the scenario has slews. Every cell needs a power, 0 W included. The comments column is the CSV's own place for comments, and is kept as written." }));
-    },
-  },
+  payload_consumption: consumptionSection("payload"),
+  platform_consumption: consumptionSection("platform"),
 
   save: {
     title: "Save and view", file: "all files",

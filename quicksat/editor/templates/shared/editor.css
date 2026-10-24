@@ -180,6 +180,7 @@ input[type=text], input[type=search], input[type=number], input[type=datetime-lo
   color: var(--text); min-width: 0;
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+select:disabled { opacity: 0.4; cursor: default; }
 input[type=number] { width: 90px; }
 input.wide, select.wide { width: 260px; max-width: 100%; }
 input.name { width: 150px; }

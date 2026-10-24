@@ -81,8 +81,8 @@ attitudes:
   nadir: {point: [+z, nadir], constrain: [-y, orbit normal]}
   relay: {point: [+z, RELAY-C], constrain: [-y, orbit normal]}
 activities:
-  - [wait, RELAY-C rise, nadir, idle]
-  - [link, RELAY-C set, relay, downlink]
+  - [wait, RELAY-C rise, nadir, {payload_mode: idle, platform_mode: idle}]
+  - [link, RELAY-C set, relay, {payload_mode: downlink, platform_mode: downlink}]
 """
 """Two orbits that wait for each RELAY-C pass, and track it."""
 
@@ -211,7 +211,7 @@ def test_a_crossing_target_rises_and_sets_to_1_ms(relay_run):
 
 def test_the_link_runs_from_the_rise_to_the_set(relay_run):
     seen = relay_run.in_view["RELAY-C"]
-    links = [o for o in relay_run.occurrences if o.activity.mode == "downlink"]
+    links = [o for o in relay_run.occurrences if o.activity.mode.payload == "downlink"]
     assert len(links) >= 2
     starts = {piece.lower for piece in seen}
     ends = {piece.upper for piece in seen}

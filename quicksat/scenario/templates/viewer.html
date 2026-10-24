@@ -536,7 +536,7 @@ body.designer.no-orbit .controls { grid-area: 3 / 1 / 4 / 3; }
         <table class="list">
           <thead><tr>
             <th class="num">Repeat</th><th class="num">#</th><th>Title</th><th>Start, UTC</th><th>End, UTC</th>
-            <th class="num">Length</th><th>Trigger</th><th>Attitude</th><th class="num">Slew</th><th>Mode</th><th>Constraint</th>
+            <th class="num">Length</th><th>Trigger</th><th>Attitude</th><th class="num">Slew</th><th>Payload mode</th><th>Platform mode</th><th>Constraint</th>
             <th class="num">Outside</th><th>Status</th>
           </tr></thead>
           <tbody id="activity-rows"></tbody>
@@ -642,7 +642,8 @@ const ECLIPSES = joinEclipses(TRACKS.illumination);
 const ROWS = [
   ["illumination", "ILLUMINATION"],
   ["attitude", "ATTITUDE"],
-  ["mode", "MODE"],
+  ["payload_mode", "PAYLOAD"],
+  ["platform_mode", "PLATFORM"],
 ];
 const OCCURRENCES = scenario.occurrences;
 // A scenario read from text, not a file, has no file name
@@ -677,7 +678,8 @@ const PASSES = TARGETS.flatMap((target) => target.passes.map((pass) => ({ target
   (a, b) => a.start_s - b.start_s,
 );
 // When the body or a part points at each target, by its name
-const POINTED = pointedSpans(POINTING, TRACKS.attitude, TRACKS.mode, ARTICULATIONS);
+// The parts park by the platform's mode
+const POINTED = pointedSpans(POINTING, TRACKS.attitude, TRACKS.platform_mode, ARTICULATIONS);
 // A ground target is pink and a satellite target lime: bright while in view,
 // and dim otherwise
 const TARGET_COLOURS = { ground: ["#f472b6", "#7a4763"], satellite: ["#a3e635", "#567b2a"] };
@@ -801,7 +803,7 @@ const state = {
   playing: false,
   speed: 300,
   page: "scenario",
-  colourBy: "mode",
+  colourBy: "payload_mode",
   // the number of the activity that the designer's list has selected, or null
   selected: null,
   r: new THREE.Vector3(),
@@ -852,7 +854,7 @@ function updateState() {
     // instant attitude changes and parking parts happen at once, not across the step
     quaternionAt(Q_BODY, i, attitudeFraction(TRACKS.attitude, T, i, f, state.t), state.qBody);
     ARTICULATIONS.forEach((joint, j) => {
-      state.joints[j] = jointAngle(joint, TRACKS.mode, T, i, f, state.t);
+      state.joints[j] = jointAngle(joint, TRACKS.platform_mode, T, i, f, state.t);
     });
   }
   state.lat = LAT[i] + (LAT[i + 1] - LAT[i]) * f;
@@ -871,7 +873,7 @@ function updateState() {
     item.inView = passAt(item.target.passes, state.t, T_END) !== null;
     item.range = item.r.distanceTo(state.r);
   }
-  state.pointed = new Set(pointedTargets(POINTING, TRACKS.attitude, TRACKS.mode, ARTICULATIONS, state.t));
+  state.pointed = new Set(pointedTargets(POINTING, TRACKS.attitude, TRACKS.platform_mode, ARTICULATIONS, state.t));
   markAll();
 }
 
@@ -1172,7 +1174,12 @@ function labelLayer(viewport) {
 /** The rows the tracks can be coloured by, and the views that redraw on a change. */
 const trackColours = (() => {
   const listeners = [];
-  const choices = [["mode", "Mode"], ["attitude", "Attitude"], ["illumination", "Illumination"]];
+  const choices = [
+    ["payload_mode", "Payload mode"],
+    ["platform_mode", "Platform mode"],
+    ["attitude", "Attitude"],
+    ["illumination", "Illumination"],
+  ];
   const box = $("#orbit-legend");
   const buttons = choices.map(([key, label]) =>
     element("button", { class: "toggle", text: label, "data-help": "colourBy", onclick: () => choose(key) }),
@@ -2668,7 +2675,8 @@ const readouts = (() => {
   // The current data: the value of each timeline row at the time cursor, with
   // its colour from the timeline
   const now = [
-    ["mode", "Mode"],
+    ["payload_mode", "Payload"],
+    ["platform_mode", "Platform"],
     ["attitude", "Attitude"],
     ["illumination", "Illumination"],
   ].map(([key, label]) => {
@@ -2777,7 +2785,7 @@ const readouts = (() => {
     const light = state.light;
     setText(sunValue, light >= 1 ? "100 %" : light <= 0 ? "0 %" : `${(100 * light).toFixed(1)} %`);
     sunFill.style.opacity = String(0.15 + 0.85 * light);
-    const mode = pieceAt(TRACKS.mode, state.t).value;
+    const mode = pieceAt(TRACKS.platform_mode, state.t).value;
     jointValues.forEach((_, j) => {
       const joint = ARTICULATIONS[j];
       const angle = ((state.joints[j] + 540) % 360) - 180;
@@ -2860,7 +2868,8 @@ function showActivities() {
           element("td", {}, swatch(o.attitude)),
           // slew_s is null where the activity has no slew
           element("td", { class: "num", text: o.slew_s == null ? "" : `${numberText(o.slew_s, 1)} s` }),
-          element("td", {}, swatch(o.mode)),
+          element("td", {}, swatch(o.mode.payload)),
+          element("td", {}, swatch(o.mode.platform)),
           element("td", { text: o.constraint || "" }),
           element("td", { class: "num", text: o.outside_s === null ? "" : `${numberText(o.outside_s)} s` }),
           element(
@@ -3031,14 +3040,19 @@ function showInputs() {
   // right, the orbit, the target files, the conventions, and the power and
   // consumption files
   const column = (blocks) => element("div", { class: "stack" }, blocks);
-  // The orbit's file and the consumption file. Neither is YAML, so no line is
+  // The orbit's file and the consumption files. None is YAML, so no line is
   // dimmed, and a long file scrolls in its box.
   const plainText = (text) => element("pre", { class: "file tall", text });
   const orbitFile = scenario.orbit_text != null ? [block(name("Orbit file", scenario.orbit_file), [plainText(scenario.orbit_text)])] : [];
   // The satellite targets' files, each once
   const targetFiles = scenario.target_files.map((file) => block(name("Target file", file.name), [plainText(file.text)]));
-  const consumptionFile = power && power.consumption_text != null
-    ? [block(name("Consumption file", power.consumption_file), [plainText(power.consumption_text)])]
+  const consumptionFiles = power
+    ? ["payload", "platform"]
+        .map((group) => [group, power.consumption_files[group]])
+        .filter(([, file]) => file.text != null)
+        .map(([group, file]) =>
+          block(name(`${group[0].toUpperCase()}${group.slice(1)} consumption file`, file.file || `the ${group}'s file`), [plainText(file.text)]),
+        )
     : [];
   const orbitBlock = block(
     ["Orbit"],
@@ -3086,7 +3100,7 @@ function showInputs() {
   const powerFile = power ? [block(name("Power file", power.power_file), [fileText(power.power_text)])] : [];
   $("#inputs").append(
     column([block(name("Scenario file", SCENARIO_FILE), [fileText(scenario.scenario_text || "")]), ...orbitFile]),
-    column([orbitBlock, ...targetFiles, conventions, ...powerFile, ...consumptionFile]),
+    column([orbitBlock, ...targetFiles, conventions, ...powerFile, ...consumptionFiles]),
   );
 }
 
@@ -3249,7 +3263,8 @@ const HELP = {
   timeline: {
     title: "Timeline",
     text:
-      "The illumination, the attitude and the mode against time, as the scenario run gives them. A red box " +
+      "The illumination, the attitude, and the payload's and the platform's modes against time, as the " +
+      "scenario run gives them. The platform's mode reads slew while the body turns. A red box " +
       "marks an activity outside its constraint. A dashed red line marks an activity with a negative " +
       "duration. A dashed amber box marks an event that never came. A dashed line marks each whole orbit " +
       "from the start. In the Activity Designer, an amber band marks a turn faster than the slew block " +
@@ -3260,7 +3275,8 @@ const HELP = {
   power: {
     title: "Power",
     text:
-      "The power that the panels generate, and the power that the modes consume, in watts. The buttons show " +
+      "The power that the panels generate, and the power that the payload's and the platform's modes consume, " +
+      "in watts. The buttons show " +
       "or hide each line. The shaded bands are eclipses. All of it comes from power.js.",
   },
   powerNow: {
@@ -3272,7 +3288,8 @@ const HELP = {
   powerSetup: {
     title: "Power setup",
     text:
-      "The power setup as power.js gives it, such as the panels, the battery and what each mode consumes. It " +
+      "The power setup as power.js gives it, such as the panels, the battery and what each payload and " +
+      "platform mode consumes. It " +
       "does not change with time. The power file itself is on the Inputs tab.",
   },
   net: {
@@ -3283,7 +3300,10 @@ const HELP = {
       "shaded bands are eclipses.",
   },
   generated: { title: "Generated", text: "Show or hide the power that all the panels generate together." },
-  consumed: { title: "Consumed", text: "Show or hide the power that the spacecraft consumes, set by the mode." },
+  consumed: {
+    title: "Consumed",
+    text: "Show or hide the power that the spacecraft consumes, set by the payload's and the platform's modes.",
+  },
   panelPower: { title: "Panel", text: "Show or hide the power that this panel generates." },
   wide: {
     title: "Wide",
@@ -3308,11 +3328,19 @@ const HELP = {
       "The orbits from the start of the run to the time cursor. One orbit is the period that a duration in " +
       "orbits counts: the nodal period for an element set. The timeline marks each whole orbit.",
   },
-  mode: {
-    title: "Mode",
+  payload_mode: {
+    title: "Payload mode",
     text:
-      "What the spacecraft is doing, as the activity under way names it. Any name works. Power gives " +
-      "each mode its consumption.",
+      "What the payload is doing, as the activity under way names it. Any name works. In a slew, it is " +
+      "the mode of the activity before, or of the activity after where that activity asks for it. Power " +
+      "gives each payload mode its consumption, from the payload's consumption file.",
+  },
+  platform_mode: {
+    title: "Platform mode",
+    text:
+      "What the platform that carries the payload is doing, as the activity under way names it, or slew " +
+      "while the body turns. Any name works. The parts of the 3D model park by it. Power gives each " +
+      "platform mode its consumption, from the platform's consumption file.",
   },
   attitude: {
     title: "Attitude",
@@ -3381,7 +3409,7 @@ const HELP = {
     title: "Articulation",
     text:
       "A part of the 3D model that turns about one body axis toward a direction, such as a solar wing toward the sun. Its " +
-      "angle is zero where the model draws it. In a mode that parks it, it holds a fixed angle instead. " +
+      "angle is zero where the model draws it. In a platform mode that parks it, it holds a fixed angle instead. " +
       "The scenario file sets them under 3d_model.",
   },
   light: {

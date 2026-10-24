@@ -8,9 +8,9 @@ Run the power budget in a folder and write its viewer, from the command line:
 
     python -m quicksat.power sample/power/data sample/power/output
 
-The folder holds `scenario.yaml`, `power_system.yaml` and
-`power_consumption.csv`, with the 3D model and any orbit file they name, as for
-the editor. The command prints the scenario's results, the notes on the
+The folder holds `scenario.yaml`, `power_system.yaml`, and the two consumption
+files `payload_consumption.csv` and `platform_consumption.csv`, with the 3D
+model and any orbit file they name, as for the editor. The command prints the scenario's results, the notes on the
 generation and the loads, and the budget's three checks. Then it writes the
 viewer and prints where the page went. A file that quicksat cannot read stops it
 with the error, and nothing is written.
@@ -23,7 +23,7 @@ too.
 import argparse
 from pathlib import Path
 
-from quicksat.power import CONSUMPTION_FILE, POWER_FILE
+from quicksat.power import CONSUMPTION_FILES, POWER_FILE
 from quicksat.power.budget import BudgetRun, run_budget
 from quicksat.power.config import PowerSystem
 from quicksat.power.consumption import PowerConsumption, run_consumption
@@ -38,20 +38,23 @@ def run_folder(
     folder: Path,
     scenario_file: str = SCENARIO_FILE,
     power_file: str = POWER_FILE,
-    consumption_file: str = CONSUMPTION_FILE,
+    consumption_files: dict[str, str] = CONSUMPTION_FILES,
 ) -> BudgetRun:
     """
-    The power budget of a folder's three files.
+    The power budget of a folder's four files.
 
-    All three are read before the run, so that a mistake in any of them stops it
+    All four are read before the run, so that a mistake in any of them stops it
     at once.
 
     Parameters
     ----------
     folder : Path
         The folder
-    scenario_file, power_file, consumption_file : str, optional
+    scenario_file, power_file : str, optional
         The files' names, if not the usual ones
+    consumption_files : dict of str to str, optional
+        The consumption files' names by the group's name, `payload` and
+        `platform`, if not the usual ones
 
     Returns
     -------
@@ -60,7 +63,10 @@ def run_folder(
     """
     scenario = Scenario.from_yaml_file(folder / scenario_file)
     power_system = PowerSystem.from_yaml_file(folder / power_file)
-    consumption = PowerConsumption.from_csv(folder / consumption_file)
+    consumption = {
+        group: PowerConsumption.from_csv(folder / name)
+        for group, name in consumption_files.items()
+    }
     run = run_scenario(scenario)
     generation = run_generation(power_system, run)
     return run_budget(power_system, generation, run_consumption(consumption, run))
@@ -104,8 +110,8 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "folder",
-        help=f"the folder that holds {SCENARIO_FILE}, {POWER_FILE} and "
-        f"{CONSUMPTION_FILE}",
+        help=f"the folder that holds {SCENARIO_FILE}, {POWER_FILE}, "
+        f"{CONSUMPTION_FILES['payload']} and {CONSUMPTION_FILES['platform']}",
     )
     parser.add_argument("output", help="the folder to write the viewer in")
     args = parser.parse_args(argv)

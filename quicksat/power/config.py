@@ -31,7 +31,7 @@ The losses sit in three places, so that none is counted twice. `loss_factor`
 takes every loss up to the array's output. The conditioning's efficiencies take
 the energy from there to the loads and through the battery, each on its own path.
 The fixed overheads, such as the power unit's own electronics, are loads in the
-consumption file.
+consumption files.
 
 This module reads and checks the file on its own. The parts are checked against
 the scenario's model when the generation is worked out, in

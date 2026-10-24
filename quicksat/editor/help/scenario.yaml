@@ -20,7 +20,7 @@
 project:
   title: The folder
   info: |-
-    <p>The editor works on one folder of input files. A scenario folder holds the scenario file, with the 3D model and any orbit file it names. A power folder also holds the power system file and the consumption file, with its own copy of the scenario, as quicksat's domains keep their own files.</p>
+    <p>The editor works on one folder of input files. A scenario folder holds the scenario file, with the 3D model and any orbit file it names. A power folder also holds the power system file and the payload's and the platform's consumption files, with its own copy of the scenario, as quicksat's domains keep their own files.</p>
     {{files}}
     <span class="k">Comments</span>
     <p>Every block of a file has a <code>comments</code> field for your own comments. The editor keeps them through every edit and save. The lines that start with <code>#</code> are help that the editor writes. It rewrites them on each save, so do not keep your own comments there.</p>
@@ -86,11 +86,11 @@ articulations:
     <span class="k">What it can point at</span>
     <p>The same directions as the attitudes: the sun, nadir, the orbit normal, the velocity, the ground velocity, and the ground targets. So an antenna on a one-axis drive can follow a ground station. A second spacecraft would need an orbit of its own, which quicksat does not have.</p>
     <span class="k">Options</span>
-    <p><b>Park angles</b> hold it still in a mode, such as during imaging, or while the body slews. A <b>range</b> limits the turn.</p>
+    <p><b>Park angles</b> hold it still in a platform mode, such as the one that supports imaging, or while the body slews. The payload's mode does not park it. A <b>range</b> limits the turn.</p>
     <span class="k">Consequences</span>
     <p>No drive is simulated: the angle is set from the geometry at each step. When the direction lies along the axis, the part keeps its last angle.</p>
   file: >-
-    Parts of the model that turn about one axis until the axis in point is as close to its direction as the turn allows. park holds the part still in a mode.
+    Parts of the model that turn about one axis until the axis in point is as close to its direction as the turn allows. park holds the part still in a platform mode.
 
 gnd_targets:
   title: Ground targets
@@ -131,16 +131,17 @@ slew:
     <span class="k">Options</span>
     <p>Give the fastest rate, the acceleration, or both. With the rate alone, the turn starts and stops at full rate at once. With the acceleration alone, the turn speeds up until the midpoint.</p>
     <span class="k">Consequences</span>
-    <p>The turn takes time from the end of the activity before, so each activity starts in its own attitude. Bigger turns take longer. With slews off, attitude changes are instant. With slews on, the mode reads <code>slew</code> while the body turns, so the consumption table needs a slew column.</p>
+    <p>The turn takes time from the end of the activity before, so each activity starts in its own attitude. Bigger turns take longer. With slews off, attitude changes are instant. With slews on, the platform's mode reads <code>slew</code> while the body turns, so the platform's consumption table needs a slew column. In the turn, the payload stays in the mode of the activity before, unless the activity after asks for its own mode: see Activities.</p>
   file: >-
     How the body turns between attitudes: rest to rest about one axis, then it settles. Leave the block out for instant changes.
 
 modes:
   title: Modes
   info: |-
-    <p>What the spacecraft is doing, such as idle, imaging or downlink. Each activity names one. Any name will do, except <code>slew</code>, which the run gives the time spent turning.</p>
+    <p>What the spacecraft is doing, in two parts: the payload's mode, such as idle, imaging or downlink, and the mode of the platform that carries it, such as idle, imaging or a TT&amp;C pass. Each activity names one of each. Any name will do, except <code>slew</code>, which the run gives the platform while the body turns, and <code>unplanned</code>.</p>
+    <p>Platform equipment that changes with the payload's work takes a platform mode of its own. For example, an imaging activity sets the payload to its imaging mode, and the platform to one that parks the solar wings.</p>
     <span class="k">Consequences</span>
-    <p>The consumption table has one column per mode. Renaming a mode here renames it in the activities, the park angles and that table.</p>
+    <p>Each consumption table has one column per mode of its group. Renaming a mode here renames it in the activities, that table, and for a platform mode the park angles.</p>
 
 activities:
   title: Activities
@@ -150,13 +151,15 @@ activities:
     <span class="k">Triggers</span>
     <p>A duration, or the next event after the activity starts: a shadow edge, a node, a latitude crossing, or a target's rise or set. An event can take an offset, such as <code>eclipse entry + 2 min</code>.</p>
     <span class="k">Consequences</span>
+    <span class="k">The payload in a slew</span>
+    <p>With slews on, <b>payload in slew</b> says which mode the payload is in during the turn into the activity. <b>prev activity</b>, the default, keeps the mode of the activity before, so that a data transfer after imaging can carry on through the turn. <b>this activity</b> gives the payload this activity's mode for the whole turn, so that the imager can prepare. An activity in the same attitude as the one before has no turn into it, so the choice has no effect there.</p>
     <p>The <b>expects</b> column is the illumination the activity needs. The run reports any time spent outside it. Only the run can tell whether a trigger ever comes, so this page cannot check that.</p>
     <span class="k">The Activity Designer</span>
-    <p>With the editor's server, the Activities tab shows the run above the list: the orbit in 3D, the ground track, and the timeline with the eclipses, the attitudes, the modes and each target's passes. <b>Generate scenario</b> runs the scenario as it is on the page, and writes nothing. At first the list runs once, so the time after its last activity is unplanned, in grey. <b>Repeat the list</b> repeats it until the run ends, as the scenario file does. An amber band marks a turn faster than the slew block allows. The list may be empty here, to see the orbit and the passes first, but a saved file needs at least one activity.</p>
+    <p>With the editor's server, the Activities tab shows the run above the list: the orbit in 3D, the ground track, and the timeline with the eclipses, the attitudes, the payload's and the platform's modes and each target's passes. <b>Generate scenario</b> runs the scenario as it is on the page, and writes nothing. At first the list runs once, so the time after its last activity is unplanned, in grey. <b>Repeat the list</b> repeats it until the run ends, as the scenario file does. An amber band marks a turn faster than the slew block allows. The list may be empty here, to see the orbit and the passes first, but a saved file needs at least one activity.</p>
     <p>Select a row to see its occurrences in the run. A click on the timeline or on the track selects the activity under way there. Under each title is what the last run made of it: how many times it came, and any problem. Drag the bar between the run and the list to share the height.</p>
     <p><b>Save into the folder</b> writes the scenario file into the folder that the server reads, after a confirm. It refuses a file that changed on disk since the page was written: reload the page to see it as it is now.</p>
   file: >-
-    One repeat of the list. Each activity starts where the one before ends, and ends at its trigger: [title, trigger, attitude, mode, expected illumination]. An activity with comments is written as a map, with the same fields named.
+    One repeat of the list. Each activity starts where the one before ends, and ends at its trigger: [title, trigger, attitude, {payload_mode: mode, platform_mode: mode}, expected illumination]. In the turn into an activity, the payload stays in the mode of the activity before; add payload_mode_in_slew: this_activity to the modes to give it this activity's mode instead. An activity with comments is written as a map, with the same fields named.
 
 save:
   title: Saving

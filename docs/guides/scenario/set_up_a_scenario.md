@@ -131,7 +131,7 @@ Parts of the model can turn about one axis, such as solar wings that follow the 
 - **`axis`** is the body axis it turns about.
 - **`point`** is the part's axis, as the model draws it, and the direction to turn it toward. The direction is one an attitude can use: the sun, nadir, the orbit normal, the velocity, the ground velocity, or a target. The axis must use a different body axis from `axis`.
 - **`range`**, optional, limits the turn, as in `range: [-90 deg, 90 deg]`.
-- **`park`**, optional, holds a fixed angle in the modes it names. Each mode must be one that an activity has, or `slew` when the scenario has slews.
+- **`park`**, optional, holds a fixed angle in the platform modes it names. Each mode must be one that an activity gives the platform, or `slew` when the scenario has slews. The payload's mode does not park a part.
 
 The part follows its direction at each step, and the viewer turns it.
 
@@ -139,19 +139,19 @@ Details: [`scenario_ref.ipynb`](../../scenario/scenario_ref.ipynb), sections "Th
 
 ## 7. Write the activities
 
-Each activity is a list: its title, the trigger that ends it, the attitude, the mode, and an optional constraint.
+Each activity is a list: its title, the trigger that ends it, the attitude, the modes, and an optional constraint.
 
 ```yaml
 activities:
-  - [power generation, eclipse entry, sun pointing, idle, sunlit]
-  - [eclipse in nadir, eclipse exit, nadir, idle, eclipse]
-  - [downlink, 10 min, nadir, downlink]
+  - [power generation, eclipse entry, sun pointing, {payload_mode: idle, platform_mode: idle}, sunlit]
+  - [eclipse in nadir, eclipse exit, nadir, {payload_mode: idle, platform_mode: idle}, eclipse]
+  - [downlink, 10 min, nadir, {payload_mode: downlink, platform_mode: ttc}]
 ```
 
 - **The list is one repeat.** The first activity starts at the start of the run. Each later one starts where the one before it ends. The run repeats the list until the duration ends.
 - **The title** is any text that names what the activity is for, such as `imaging 45 deg lat`. The activity table, the Gantt chart, the warnings and the viewer name the activity by it.
 - **The trigger** is a time, such as `20 min`, or the next event after the activity starts. The events are the shadow edges, the nodes, latitude crossings, and a target's rise and set, such as `Svalbard rise` or `RELAY-01 set`. An event can take an offset, such as `eclipse entry - 1 min`.
-- **The mode** is any name except `slew` and `unplanned`. During each slew, the run sets the mode to `slew`, because the payload is not at its task while the body turns. Power's consumption gives each mode its power, `slew` included.
+- **The modes** are two: the payload's, and the mode of the platform that carries it, written `{payload_mode: imaging, platform_mode: imaging}`. Each is any name except `slew` and `unplanned`. During each slew, the run sets the platform's mode to `slew`. The payload keeps the mode of the activity before, so that work such as a file transfer carries on through the turn. Add `payload_mode_in_slew: this_activity` to an activity's modes to give the payload that activity's mode in the slew into it instead, so that an imager can prepare. Power's two consumption files give each mode its power, the platform's `slew` included. Platform equipment that changes with the payload's work takes a platform mode of its own, such as an `imaging` mode that parks the solar wings.
 - **The constraint** is the illumination the activity expects: `sunlit`, `penumbra`, `umbra`, or `eclipse` for either of the last two.
 
 Use event triggers where you can. Events keep the list in step with the orbit, while fixed times drift against it. A rise or a set ends a downlink at the pass itself, with no trial and error over latitudes. But where an orbit has no pass, a list that waits for one runs on to the next.
@@ -189,8 +189,8 @@ run = run_scenario(scenario)
 print(run.activity_summary)
 run.activity_table  # one row for each occurrence of an activity
 run.passes  # each target's passes: when it is in view
-gantt_chart(run)  # the illumination, the attitude and the mode against time
-ground_track_map(run, run.mode, "Ground track by mode")
+gantt_chart(run)  # the illumination, the attitude, the activity and both modes
+ground_track_map(run, run.mode["payload"], "Ground track by the payload's mode")
 write_scenario_viewer(run, "my_scenario/output")
 ```
 

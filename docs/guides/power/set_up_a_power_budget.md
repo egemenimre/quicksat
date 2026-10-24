@@ -21,7 +21,7 @@ Each folder holds the whole set of power inputs:
 
 - `scenario.yaml`, the case's own copy of the scenario, and the 3D model it names;
 - `power_system.yaml`, the panels, the battery and the power conditioning;
-- `power_consumption.csv`, what each piece of equipment draws in each mode.
+- `payload_consumption.csv` and `platform_consumption.csv`, what each piece of equipment draws in each of its group's modes.
 
 The cases may differ in any of them. Winter and summer differ in the scenario's start date, which sets the sun's angle to the orbit and the length of the eclipses. They may differ in the consumption too, such as more power for the heaters in a cold season. A case at the end of life has a lower `loss_factor` and `capacity_factor`.
 
@@ -31,7 +31,7 @@ Do not edit `sample/power/data/` itself. The sample notebooks read it, and the f
 
 Replace `scenario.yaml` with your own scenario, and copy the GLB file it names into the folder too. Power takes the panels from the model's parts, so the model should hold the faces of cells as parts of their own. A model is optional: without one, you type the panels in (see the next step).
 
-If the scenario has slews, the run gives the mode `slew` while the body turns. The consumption file then needs a `slew` column (see step 4).
+Each activity gives two modes: the payload's and the platform's. If the scenario has slews, the run gives the platform the mode `slew` while the body turns. The platform's consumption file then needs a `slew` column (see step 4). The payload stays in one of its own modes: the mode of the activity before, or of the activity after, as the activity after chooses.
 
 ## 3. Describe the panels
 
@@ -62,23 +62,33 @@ Use this for a scenario with no model, or to try a panel without editing the mod
 
 Details: [`power_generation_ref.ipynb`](../../power/power_generation_ref.ipynb).
 
-## 4. Write the consumption file
+## 4. Write the consumption files
 
-`power_consumption.csv` has one row for each piece of equipment that draws power. Leave out the structure, the insulation and anything else that draws none.
+There are two consumption files, one for each part of the spacecraft that has a mode: `payload_consumption.csv` and `platform_consumption.csv`. Each has one row for each piece of equipment of its group that draws power. Leave out the structure, the insulation and anything else that draws none.
+
+Which equipment goes in which file is your choice. The sample puts the mass memory and the X-band transmitter with the payload, as ESA's payload data handling and transmission does. So the payload's `downlink` mode is the data dump, and the platform's `ttc` mode is the TT&C pass.
 
 ```csv
-equipment_id,equipment_name,subsystem,units_on,eqpt_margin,idle,imaging,downlink,slew,comments
+equipment_id,equipment_name,subsystem,units_on,eqpt_margin,idle,imaging,downlink,comments
+mass_memory,SSDR 2 TB,OBDH,1,10,10 W,30 W,25 W,"Standby, recording, playback"
+focal_plane,Focal plane assembly,Payload,1,20,0 W,45 W,0 W,
+```
+
+```csv
+equipment_id,equipment_name,subsystem,units_on,eqpt_margin,idle,imaging,ttc,slew,comments
 obc,SSTL OBC750,OBDH,1,5,10 W,10 W,10 W,10 W,Cold redundant: one of two on
 reaction_wheel,Rockwell RSI 45,ADCS,4,5,10 W,12 W,15 W,10 W,
 ```
 
-- **`equipment_id`** is a short name with no spaces, which no other row has.
-- **`subsystem`** groups the rows in the plots.
+Platform equipment that changes with the payload's work takes a platform mode of its own. In the sample, the platform's `imaging` mode holds the solar wings parked and the wheels steadier while the payload images. The scenario's imaging activity sets both: `{payload_mode: imaging, platform_mode: imaging}`.
+
+- **`equipment_id`** is a short name with no spaces, which no other row of the file has.
+- **`subsystem`** groups the rows in the plots. A subsystem may appear in both files, such as `Thermal`, and the plots add the two.
 - **`units_on`** is how many units draw power, such as one of a cold-redundant pair.
 - **`eqpt_margin`** is the equipment's margin in percent: 5 for equipment that has flown, 10 for equipment that needs changes, 20 for new designs.
-- **One column for each mode** gives the power of one unit, averaged over the mode. Every mode the scenario has needs its column, `slew` included. Every cell needs a power, `0 W` included: no mode is assumed to draw what another does.
+- **One column for each of the group's modes** gives the power of one unit, averaged over the mode. Every mode the scenario gives a group needs its column in that group's file, the platform's `slew` included. Every cell needs a power, `0 W` included: no mode is assumed to draw what another does.
 
-A column for a mode the scenario does not have, such as `safe`, is allowed. The run notes it as unused.
+A column for a mode the scenario does not have, such as `safe`, is allowed. The run notes it as unused. The payload's file needs no `slew` column.
 
 Details: [`power_consumption_ref.ipynb`](../../power/power_consumption_ref.ipynb).
 
@@ -116,7 +126,7 @@ The quickest way is the command line:
 python -m quicksat.power winter winter/output
 ```
 
-It reads the folder's three files and runs the budget. It prints the scenario's summary, any occurrence with a problem, the warnings, the notes on the panels and the loads, and the three checks. Then it writes the viewer into `winter/output/`, and prints the page's path. A check that fails does not stop it, so you can see the failing run in the viewer.
+It reads the folder's four files and runs the budget. It prints the scenario's summary, any occurrence with a problem, the warnings, the notes on the panels and the loads, and the three checks. Then it writes the viewer into `winter/output/`, and prints the page's path. A check that fails does not stop it, so you can see the failing run in the viewer.
 
 For the tables and the plots, run it in Python or in a notebook instead:
 
@@ -138,7 +148,11 @@ plt.style.use(STYLE)
 run = run_scenario(Scenario.from_yaml_file("winter/scenario.yaml"))
 power_system = PowerSystem.from_yaml_file("winter/power_system.yaml")
 generation = run_generation(power_system, run)
-loads = run_consumption(PowerConsumption.from_csv("winter/power_consumption.csv"), run)
+consumption = {
+    group: PowerConsumption.from_csv(f"winter/{group}_consumption.csv")
+    for group in ("payload", "platform")
+}
+loads = run_consumption(consumption, run)
 budget = run_budget(power_system, generation, loads)
 
 print(generation.notes + loads.notes)

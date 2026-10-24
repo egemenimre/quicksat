@@ -113,9 +113,9 @@ attitudes:
   track Toulouse: {point: [+z, Toulouse], constrain: [-y, orbit normal]}
   yaw steering: {point: [+z, nadir], constrain: [+x, ground velocity]}
 activities:
-  - [roll, 30 min, roll 30, idle]
-  - [track, 30 min, track Toulouse, imaging]
-  - [yaw steering, 30 min, yaw steering, imaging]
+  - [roll, 30 min, roll 30, {payload_mode: idle, platform_mode: idle}]
+  - [track, 30 min, track Toulouse, {payload_mode: imaging, platform_mode: imaging}]
+  - [yaw steering, 30 min, yaw steering, {payload_mode: imaging, platform_mode: imaging}]
 """
 """Three attitudes beyond the fixture's two, each flown for 30 min."""
 

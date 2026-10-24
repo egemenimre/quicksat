@@ -1,0 +1,6 @@
+equipment_id,equipment_name,subsystem,units_on,eqpt_margin,idle,imaging,downlink,comments
+x_band_tx,X-band transmitter,COMM,1,10,0 W,0 W,55 W,About 5-10 W of radio output
+mass_memory,SSDR 2 TB,OBDH,1,10,10 W,30 W,25 W,"Standby, recording, playback"
+payload_electronics,Video processing unit,Payload,1,10,5 W,40 W,5 W,Compresses the images
+focal_plane,Focal plane assembly,Payload,1,20,0 W,45 W,0 W,"Detectors, their electronics and coolers; new design"
+payload_heaters,Payload heater lines,Thermal,1,20,35 W,35 W,35 W,Hold the telescope near its focus temperature

@@ -22,8 +22,8 @@ The Scenario Editor opens in your browser. Keep the terminal open while you work
 Click the **Activities** tab. The run sits above the list of activities:
 
 - the **orbit** in 3D, coloured as the ground track is. Drag to turn it, scroll to zoom, and click **Reset view** to go back. The spacecraft is its red marker. On a narrow screen, the map's **3D Orbit View** button hides it, to give the map its width;
-- the **ground track**, with the current data beside it: the time, the orbits since the start, the activity under way, its mode and attitude, the light and the targets in view;
-- the **timeline**, with the illumination, the attitude and the mode, and a dashed line at each whole orbit;
+- the **ground track**, with the current data beside it: the time, the orbits since the start, the activity under way, its payload and platform modes and its attitude, the light and the targets in view;
+- the **timeline**, with the illumination, the attitude, and the payload's and the platform's modes, and a dashed line at each whole orbit;
 - **IN VIEW**, under it: a row for each target, with a bar for each pass, and a thin bar for the time the spacecraft points at it.
 
 The tab runs the list once by itself. The first run after the server starts takes about 20 s, while astropy loads its tables. Later runs take a second or two.
@@ -44,7 +44,8 @@ Click **+ activity**, then set its fields:
 
 - **title:** what it is for, such as `idle until eclipse exit`;
 - **ends at:** the trigger that ends it;
-- **attitude** and **mode:** chosen from the names that the Operations tab defines;
+- **attitude**, **payload mode** and **platform mode:** chosen from the names that the Operations tab defines;
+- **payload in slew,** with slews only: the payload's mode in the turn into this activity. `prev activity`, the default, keeps the mode of the activity before, so that a data transfer carries on. `this activity` gives the payload this activity's mode for the whole turn, so that an imager can prepare. The list is greyed out where the activity before has the same attitude, since there is no turn;
 - **expects:** the light it needs, or `anything`.
 
 Each activity starts where the one before ends. So the trigger decides when the next one starts. The triggers:
@@ -64,13 +65,13 @@ Click **Generate scenario** after each activity. The list runs once, so the grey
 
 For the power sample, build this list one row at a time:
 
-| # | Title | Ends at | Attitude | Mode | Expects |
-|---|---|---|---|---|---|
-| 1 | idle until eclipse exit | eclipse exit | sun pointing | idle | anything |
-| 2 | idle until Svalbard rise | Svalbard rise | sun pointing | idle | anything |
-| 3 | downlink until Svalbard set | Svalbard set | track Svalbard | downlink | anything |
-| 4 | idle until latitude 45 deg | latitude 45 deg ascending | sun pointing | idle | anything |
-| 5 | image from latitude 45 deg | 8 min | yaw steering | imaging | sunlit |
+| # | Title | Ends at | Attitude | Payload mode | Platform mode | Expects |
+|---|---|---|---|---|---|---|
+| 1 | idle until eclipse exit | eclipse exit | sun pointing | idle | idle | anything |
+| 2 | idle until Svalbard rise | Svalbard rise | sun pointing | idle | idle | anything |
+| 3 | downlink until Svalbard set | Svalbard set | track Svalbard | downlink | ttc | anything |
+| 4 | idle until latitude 45 deg | latitude 45 deg ascending | sun pointing | idle | idle | anything |
+| 5 | image from latitude 45 deg | 8 min | yaw steering | imaging | imaging | sunlit |
 
 After row 3, the IN VIEW row shows the thin bar under the Svalbard pass: the spacecraft tracks the station through it.
 

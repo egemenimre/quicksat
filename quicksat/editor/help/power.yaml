@@ -4,7 +4,7 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 #
-# The help for the power files: the power system and the consumption.
+# The help for the power files: the power system and the two consumption files.
 #
 # Each key is a step of the editor, a key of the file, or both:
 #
@@ -70,9 +70,16 @@ system_margin:
   file: >-
     The margin on all the loads together, on top of each equipment's margin.
 
-consumption:
-  title: Consumption
+payload_consumption:
+  title: Payload consumption
   info: |-
-    <p>One row for each powered equipment: the power of one unit in each mode, how many units are on, and its margin in percent.</p>
+    <p>One row for each powered equipment of the payload: the power of one unit in each of the payload's modes, how many units are on, and its margin in percent. Which equipment goes with the payload is your choice. The mass memory and the payload data transmitter can go here, as ESA's payload data handling and transmission does.</p>
     <span class="k">Slews</span>
-    <p>With slews on, the mode reads <code>slew</code> while the body turns, so each row needs its power in a slew column too.</p>
+    <p>While the body turns, the payload stays in one of its own modes: the mode of the activity before, or of the activity after, as each activity chooses. So this table needs no slew column.</p>
+
+platform_consumption:
+  title: Platform consumption
+  info: |-
+    <p>One row for each powered equipment of the platform that carries the payload: the power of one unit in each of the platform's modes, how many units are on, and its margin in percent.</p>
+    <span class="k">Slews</span>
+    <p>With slews on, the platform's mode reads <code>slew</code> while the body turns, so each row needs its power in a slew column too.</p>

@@ -7,20 +7,23 @@ const PAGE_TITLE = "quicksat Scenario Editor";
 const YAML_KINDS = ["scenario", "power"];
 
 /** The folder's files, by kind, in the order the Start step lists them. */
-const FILES = ["scenario", "model", "orbit", "power", "consumption"].map((kind) => ({ kind }));
+const FILES = ["scenario", "model", "orbit", "power", "payload_consumption", "platform_consumption"].map((kind) => ({ kind }));
 
 const TABS = [
   { id: "setup", title: "Setup" },
   { id: "orbit", title: "Orbit and time", sections: ["orbit", "time"], intro: "Trajectory definition and the scenario duration." },
   { id: "spacecraft", title: "Spacecraft", sections: ["model", "articulations", "panels"], intro: "The 3D model, the parts that turn, and the solar panels on it. Select an item to see it in the 3D panel." },
   { id: "targets", title: "Targets", sections: ["gnd_targets", "sat_targets"], intro: "The places on the ground and the other satellites that the attitudes, the articulations and the triggers can name." },
-  { id: "operations", title: "Operations", sections: ["attitudes", "slew", "modes"], intro: "How the spacecraft points, how fast it turns, and the modes it works in." },
+  { id: "operations", title: "Operations", sections: ["attitudes", "slew", "modes"], intro: "How the spacecraft points, how fast it turns, and the modes that the payload and the platform work in." },
   {
     id: "activities", title: "Activities", sections: ["activities"], top: designerBar,
     intro: "The Activity Designer. What the spacecraft does, in order: one repeat of the list, which the run repeats until the duration ends. Generate scenario runs the list, and shows the result above it.",
   },
   { id: "power", title: "Power", sections: ["cells", "battery", "conditioning"], intro: "The power system: the cells and their losses, the battery and the power conditioning.", top: powerComments },
-  { id: "consumption", title: "Consumption", sections: ["consumption"], intro: "What each equipment draws in each mode, from the consumption file." },
+  {
+    id: "consumption", title: "Consumption", sections: ["payload_consumption", "platform_consumption"],
+    intro: "What each equipment draws in each mode: the payload's in the payload's modes, and the platform's in the platform's, from the two consumption files.",
+  },
   { id: "files", title: "Files", sections: ["project"] },
 ];
 
@@ -40,7 +43,8 @@ const STEPS = [
   { title: "Cells, losses and shading", sections: ["cells"] },
   { title: "Battery", sections: ["battery"] },
   { title: "Power conditioning", sections: ["conditioning"] },
-  { title: "Consumption", sections: ["consumption"] },
+  { title: "Payload consumption", sections: ["payload_consumption"] },
+  { title: "Platform consumption", sections: ["platform_consumption"] },
   { group: "Finish", title: "Save and view", sections: ["save"] },
 ];
 
@@ -82,7 +86,7 @@ function commentTarget(kind, path) {
 
 // ---------------------------------------------------------------- opening a folder or a file
 
-/** Whether a YAML file's data reads like one of a kind: a scenario, or a power system. */
+/** Whether a file reads like one of a kind: a scenario or a power system from their data, or a consumption file. */
 const looksLike = {
   scenario: (data) => Boolean(data && typeof data === "object" && "orbit" in data && "activities" in data),
   power: (data) => Boolean(data && typeof data === "object" && "panels" in data),
@@ -129,8 +133,9 @@ async function findPicked(picked, name, test) {
   return null;
 }
 
-/** The modes in the consumption table's columns, as they are now. */
-const consumptionColumns = () => [...new Set(project.consumption.flatMap((row) => Object.keys(row.power)))];
+/** The modes in each group's consumption table's columns, as they are now, by the group. */
+const consumptionColumns = () =>
+  Object.fromEntries(GROUPS.map((group) => [group, [...new Set(project.consumption[group].flatMap((row) => Object.keys(row.power)))]]));
 
 const OPENERS = {
   folder: {
@@ -140,16 +145,21 @@ const OPENERS = {
       const scenario = await findPicked(picked, "scenario.yaml", (file) => file.data !== undefined && looksLike.scenario(file.data));
       if (!scenario) throw new Error(`${picked.folder || "The folder"} holds no scenario file: a YAML file with an orbit and activities, such as scenario.yaml.`);
       const power = await findPicked(picked, "power_system.yaml", (file) => file.data !== undefined && looksLike.power(file.data));
-      const consumption = await findPicked(picked, "power_consumption.csv", (file) => Boolean(file.header) && looksLike.consumption(file));
+      // a consumption file by its usual name, or else one whose name names its group
+      const consumption = {};
+      for (const group of GROUPS) {
+        consumption[consumptionKind(group)] = await findPicked(picked, `${group}_consumption.csv`,
+          (file) => Boolean(file.header) && looksLike.consumption(file) && file.name.toLowerCase().includes(group));
+      }
       notices.files = {};
-      DATA = { ...DATA, folder: picked.folder, label: picked.folder, files: { scenario, power, consumption }, model: null, orbit_file: null, target_files: [], checks: [] };
+      DATA = { ...DATA, folder: picked.folder, label: picked.folder, files: { scenario, power, ...consumption }, model: null, orbit_file: null, target_files: [], checks: [] };
       project = readProject(DATA);
       S = project.scenario;
       P = project.power;
       targetFiles.clear();
       await takeNamedFiles(picked);
       state.file = project.names.scenario;
-      return ["scenario", "power", "consumption"];
+      return ["scenario", "power", ...GROUPS.map(consumptionKind)];
     },
   },
   scenario: {
@@ -193,22 +203,23 @@ const OPENERS = {
       return entries.map((entry) => targetKind(entry.path.split("/").pop()));
     },
   },
-  consumption: {
-    label: "a consumption file",
+  ...Object.fromEntries(GROUPS.map((group) => [consumptionKind(group), {
+    label: `the ${group}'s consumption file`,
     pick: { accept: ".csv" },
     async open(picked) {
+      const kind = consumptionKind(group);
       const file = await readPicked(picked.files[0]);
       if (!file.header) throw new Error(`${file.name} is not a CSV file.`);
-      DATA.files.consumption = file;
-      const consumption = readingFile("consumption", () => readConsumption(file));
-      project.consumption = consumption.rows;
-      project.slewColumn = consumption.slewColumn;
-      project.hasConsumption = true;
-      project.names.consumption = file.name;
-      for (const mode of consumption.modes) if (!S.modes.includes(mode)) S.modes.push(mode);
-      return ["consumption"];
+      DATA.files[kind] = file;
+      const consumption = readingFile(kind, () => readConsumption(file));
+      project.consumption[group] = consumption.rows;
+      project.slewColumn[group] = consumption.slewColumn;
+      project.hasConsumption[group] = true;
+      project.names[kind] = file.name;
+      for (const mode of consumption.modes) if (!S.modes[group].includes(mode)) S.modes[group].push(mode);
+      return [kind];
     },
-  },
+  }])),
 };
 
 // ---------------------------------------------------------------- start

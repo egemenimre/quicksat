@@ -16,7 +16,7 @@ const viewer = {
 };
 
 /** The viewer page that a run of these files writes. */
-const viewerPage = () => (project.hasPower && project.hasConsumption ? "power_viewer.html" : "scenario_viewer.html");
+const viewerPage = () => (project.hasPower && GROUPS.every((group) => project.hasConsumption[group]) ? "power_viewer.html" : "scenario_viewer.html");
 
 /**
  * The files to run, as the server takes them. A model, an orbit file or a

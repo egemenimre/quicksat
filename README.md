@@ -88,7 +88,7 @@ The sample works one satellite through each budget. The reference explains each 
 
 ## Scenario and power, with the viewer
 
-The power sample flies a 510 km sun-synchronous orbit for three orbits, with imaging, a downlink to Svalbard, and wings that turn to the sun. Its files are in `sample/power/data/`: the scenario, the 3D model, the power system and the consumption table.
+The power sample flies a 510 km sun-synchronous orbit for three orbits, with imaging, a downlink to Svalbard, and wings that turn to the sun. Its files are in `sample/power/data/`: the scenario, the 3D model, the power system, and the consumption tables of the payload and of the platform.
 
 ### With the editor's server
 
@@ -137,7 +137,7 @@ The scenario sample works the same way, for the timeline alone: [`sample/scenari
 |---|---|---|---|
 | Scenario | The timeline on a real orbit: eclipses, attitudes, slews, and passes over ground stations and relay satellites, checked against each activity's needs | [scenario](https://github.com/egemenimre/quicksat/blob/master/sample/scenario/scenario.ipynb) | [scenario](https://github.com/egemenimre/quicksat/blob/master/docs/scenario/scenario_ref.ipynb) |
 | Power generation | Each solar panel's power, with the wings that turn and the model's own shadows | [generation](https://github.com/egemenimre/quicksat/blob/master/sample/power/power_generation.ipynb) | [generation](https://github.com/egemenimre/quicksat/blob/master/docs/power/power_generation_ref.ipynb) |
-| Power consumption | What the equipment draws in each mode | [consumption](https://github.com/egemenimre/quicksat/blob/master/sample/power/power_consumption.ipynb) | [consumption](https://github.com/egemenimre/quicksat/blob/master/docs/power/power_consumption_ref.ipynb) |
+| Power consumption | What the equipment draws in each of the payload's and the platform's modes | [consumption](https://github.com/egemenimre/quicksat/blob/master/sample/power/power_consumption.ipynb) | [consumption](https://github.com/egemenimre/quicksat/blob/master/docs/power/power_consumption_ref.ipynb) |
 | Power budget | The battery's charge through the run, and whether each orbit has energy to spare | [budget](https://github.com/egemenimre/quicksat/blob/master/sample/power/power_budget.ipynb) | [budget](https://github.com/egemenimre/quicksat/blob/master/docs/power/power_budget_ref.ipynb) |
 
 [How to edit, run and view a scenario](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/edit_and_view_a_scenario.md) goes round this loop in full, for the samples or a folder of your own. For what each field means, see [how to set up and run a scenario](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/set_up_a_scenario.md) and [how to set up and run a power budget](https://github.com/egemenimre/quicksat/blob/master/docs/guides/power/set_up_a_power_budget.md). [How to prepare a 3D model](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/prepare_a_3d_model.md) takes your spacecraft's model from CAD or Blender to the viewer and the power budget. [How to use a relay satellite](https://github.com/egemenimre/quicksat/blob/master/docs/guides/scenario/use_a_relay_satellite.md) plans a link to a data relay, from its element sets to the time the antenna tracks it.

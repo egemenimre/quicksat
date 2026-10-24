@@ -4,11 +4,17 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The power consumption file, and the loads it gives over a scenario run.
+The power consumption files, and the loads they give over a scenario run.
 
-The file is a CSV, usually `power_consumption.csv`, with one row for each piece
-of equipment that draws power. Equipment that draws none, such as the structure,
-is left out. The columns are
+There are two files, one for the payload and one for the platform that carries
+it: `payload_consumption.csv` and `platform_consumption.csv`. The spacecraft has
+a mode for each at any time, and each file's mode columns are its group's modes.
+Which equipment goes in which file is the user's choice. For example, the mass
+memory and the payload data transmitter can go with the payload, as ESA's
+payload data handling and transmission does.
+
+Each file is a CSV with one row for each piece of equipment that draws power.
+Equipment that draws none, such as the structure, is left out. The columns are
 
 - `equipment_id`, a short name with no spaces, which no other row has;
 - `equipment_name`, free text;
@@ -19,15 +25,20 @@ is left out. The columns are
   `10 W`, averaged over the mode;
 - `comments`, optional free text.
 
-The scenario names the modes, and this file says what each draws. Every mode
-the run has needs its column, `slew` included when the scenario has slews: the
-run gives the mode row that name while the body turns. Every cell of a mode
-column needs a power, `0 W` included, so that no mode is assumed to equal
-another. Columns for modes the run does not have are allowed, and noted.
+The scenario names the modes, and each file says what its group's modes draw.
+Every mode the run gives a group needs its column in the group's file. The
+platform's file needs `slew` too when the scenario has slews: the run gives the
+platform that mode while the body turns. The payload stays in one of its own
+modes, the activity before's or the activity after's, as the activity after
+chooses.
+Every cell of a mode column needs a power, `0 W` included, so that no mode is
+assumed to equal another. Columns for modes the run does not have are allowed,
+and noted.
 
-At each time of the run, each row draws its units' power in the mode of that
-time, with its margin. The modes change at exact times between the steps of the
-grid, so the energy is worked out from the mode intervals, not from the grid.
+At each time of the run, each row draws its units' power in its group's mode of
+that time, with its margin. The modes change at exact times between the steps of
+the grid, so the energy is worked out from the mode intervals, not from the
+grid.
 
 """
 
@@ -44,6 +55,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from quicksat import Q_, u
 from quicksat.power.orbits import interval_pieces, whole_orbits
+from quicksat.scenario.config import GROUPS
 from quicksat.scenario.run import ScenarioRun
 from quicksat.utils.intervals import labels_at
 from quicksat.utils.parser_helpers import NoSpaceStr, PowerQty
@@ -63,7 +75,7 @@ OPTIONAL_COLUMNS = ("comments",)
 
 class Load(BaseModel):
     """
-    One row of the consumption file: a piece of equipment and its power by mode.
+    One row of a consumption file: a piece of equipment and its power by mode.
 
     Each row is checked on load, so a bad cell gives an error that names its row
     and column, rather than failing later in the arithmetic.
@@ -118,7 +130,7 @@ class Load(BaseModel):
 
 class PowerConsumption:
     """
-    The power consumption file: each piece of equipment and its power by mode.
+    One power consumption file: each piece of equipment and its power by mode.
 
     Parameters
     ----------
@@ -264,57 +276,82 @@ class PowerConsumption:
 @dataclass(frozen=True)
 class ConsumptionRun:
     """
-    The loads of a consumption file over a scenario run.
+    The loads of the payload's and the platform's consumption files over a
+    scenario run.
 
-    The power is the equipment's, with each row's equipment margin. The power
-    budget adds the system margin.
+    Each file's rows draw the power of their group's mode at each time. The
+    power is the equipment's, with each row's equipment margin. The power budget
+    adds the system margin.
 
     Parameters
     ----------
-    consumption : PowerConsumption
-        The consumption file
+    consumption : dict of str to PowerConsumption
+        The consumption files, by the group's name, `payload` or `platform`
     run : ScenarioRun
         The scenario run
     pieces : list of tuple
-        The run's mode intervals, as the start and the end in seconds from the
-        run's start, and the mode, in time order
+        The run cut where either group's mode changes, as the start and the end
+        in seconds from the run's start, and the mode of each group by the
+        group's name, in time order
     notes : list of str
         Notes for the reader, such as columns for modes the run does not have
     """
 
-    consumption: PowerConsumption
+    consumption: dict[str, PowerConsumption]
     run: ScenarioRun
-    pieces: list[tuple[float, float, str]]
+    pieces: list[tuple[float, float, dict[str, str]]]
     notes: list[str]
 
     @cached_property
-    def mode_watts(self) -> dict[str, float]:
+    def mode_watts(self) -> dict[str, dict[str, float]]:
         """
-        The power of all the equipment in each mode, with the equipment margins.
+        The power of all of a group's equipment in each of its modes, with the
+        equipment margins.
 
         Returns
         -------
-        watts : dict of str to float
-            In W, by the mode's name
+        watts : dict of str to dict of str to float
+            In W, by the group's name, then by the mode's name
         """
         return {
-            mode: sum(load.watts(mode) for load in self.consumption.loads)
-            for mode in self.consumption.modes
+            group: {
+                mode: sum(load.watts(mode) for load in consumption.loads)
+                for mode in consumption.modes
+            }
+            for group, consumption in self.consumption.items()
         }
 
-    @cached_property
-    def modes(self) -> np.ndarray:
+    def watts(self, modes: dict[str, str]) -> float:
         """
-        The mode at each time of the run's grid.
+        The power of all the equipment, with each group in the mode given.
+
+        Parameters
+        ----------
+        modes : dict of str to str
+            The mode of each group, by the group's name
 
         Returns
         -------
-        modes : ndarray
-            The mode names. The run is open at its end, so its last time takes
-            the mode of its last piece.
+        watts : float
+            In W, with the equipment margins
         """
-        modes = labels_at(self.run.mode, self.run.times)
-        modes[-1] = self.pieces[-1][2]
+        return sum(self.mode_watts[group][mode] for group, mode in modes.items())
+
+    @cached_property
+    def modes(self) -> dict[str, np.ndarray]:
+        """
+        Each group's mode at each time of the run's grid.
+
+        Returns
+        -------
+        modes : dict of str to ndarray
+            The mode names, by the group's name. The run is open at its end, so
+            its last time takes the modes of its last piece.
+        """
+        modes = {}
+        for group in GROUPS:
+            modes[group] = labels_at(self.run.mode[group], self.run.times)
+            modes[group][-1] = self.pieces[-1][2][group]
         return modes
 
     @property
@@ -327,40 +364,50 @@ class ConsumptionRun:
         total : Quantity
             In W, with the equipment margins
         """
-        return Q_([self.mode_watts[mode] for mode in self.modes], "W")
+        watts = sum(
+            np.array([self.mode_watts[group][mode] for mode in modes])
+            for group, modes in self.modes.items()
+        )
+        return Q_(watts, "W")
 
     def subsystem_power(self) -> dict[str, Quantity]:
         """
         The power of each subsystem at each time of the grid.
 
+        A subsystem named in both files, such as `Thermal`, adds the two.
+
         Returns
         -------
         power : dict of str to Quantity
             In W, with the equipment margins, by subsystem, in the order the
-            file first names them
+            files first name them, the payload's first
         """
-        subsystems = dict.fromkeys(load.subsystem for load in self.consumption.loads)
-        watts = {
-            subsystem: {
-                mode: sum(
-                    load.watts(mode)
-                    for load in self.consumption.loads
-                    if load.subsystem == subsystem
-                )
-                for mode in self.consumption.modes
-            }
-            for subsystem in subsystems
-        }
-        return {
-            subsystem: Q_([by_mode[mode] for mode in self.modes], "W")
-            for subsystem, by_mode in watts.items()
-        }
+        loads = [
+            (group, load)
+            for group, consumption in self.consumption.items()
+            for load in consumption.loads
+        ]
+        power = {}
+        for subsystem in dict.fromkeys(load.subsystem for _, load in loads):
+            watts = 0.0
+            for group, modes in self.modes.items():
+                by_mode = {
+                    mode: sum(
+                        load.watts(mode)
+                        for owner, load in loads
+                        if owner == group and load.subsystem == subsystem
+                    )
+                    for mode in self.consumption[group].modes
+                }
+                watts = watts + np.array([by_mode[mode] for mode in modes])
+            power[subsystem] = Q_(watts, "W")
+        return power
 
     def energy_until(self, at: np.ndarray) -> np.ndarray:
         """
         The energy drawn from the start of the run up to each given time.
 
-        The power holds steady through each mode interval, so the energy is exact.
+        The power holds steady through each piece, so the energy is exact.
 
         Parameters
         ----------
@@ -374,7 +421,7 @@ class ConsumptionRun:
         """
         starts = np.array([start for start, _, _ in self.pieces])
         ends = np.array([end for _, end, _ in self.pieces])
-        watts = np.array([self.mode_watts[mode] for _, _, mode in self.pieces])
+        watts = np.array([self.watts(modes) for _, _, modes in self.pieces])
         drawn = np.concatenate([[0.0], np.cumsum(watts * (ends - starts))])
         index = np.clip(
             np.searchsorted(starts, at, side="right") - 1, 0, len(starts) - 1
@@ -405,8 +452,8 @@ class ConsumptionRun:
                     pair = self.energy_until(np.array([low, high]))
                     in_eclipse += float(pair[1] - pair[0])
             peak = max(
-                self.mode_watts[mode]
-                for lower, upper, mode in self.pieces
+                self.watts(modes)
+                for lower, upper, modes in self.pieces
                 if upper > start and lower < end
             )
             rows.append(
@@ -422,14 +469,49 @@ class ConsumptionRun:
         return pd.DataFrame(rows)
 
 
-def run_consumption(consumption: PowerConsumption, run: ScenarioRun) -> ConsumptionRun:
+def _merged_pieces(
+    pieces: dict[str, list[tuple[float, float, str]]],
+) -> list[tuple[float, float, dict[str, str]]]:
     """
-    Work out the loads of a consumption file over a scenario run.
+    Cut the run where either group's mode changes.
 
     Parameters
     ----------
-    consumption : PowerConsumption
-        The consumption file
+    pieces : dict of str to list of tuple
+        Each group's mode intervals, as the start, the end and the mode, in time
+        order, by the group's name. Each group's pieces fill the run.
+
+    Returns
+    -------
+    merged : list of tuple
+        The start, the end and each group's mode, in time order
+    """
+    bounds = sorted(
+        {bound for row in pieces.values() for piece in row for bound in piece[:2]}
+    )
+    starts = {
+        group: np.array([start for start, _, _ in row]) for group, row in pieces.items()
+    }
+    merged = []
+    for lower, upper in zip(bounds[:-1], bounds[1:], strict=True):
+        modes = {
+            group: row[int(np.searchsorted(starts[group], lower, side="right")) - 1][2]
+            for group, row in pieces.items()
+        }
+        merged.append((lower, upper, modes))
+    return merged
+
+
+def run_consumption(
+    consumption: dict[str, PowerConsumption], run: ScenarioRun
+) -> ConsumptionRun:
+    """
+    Work out the loads of the consumption files over a scenario run.
+
+    Parameters
+    ----------
+    consumption : dict of str to PowerConsumption
+        The payload's and the platform's consumption files, by the group's name
     run : ScenarioRun
         The scenario run
 
@@ -441,27 +523,35 @@ def run_consumption(consumption: PowerConsumption, run: ScenarioRun) -> Consumpt
     Raises
     ------
     ValueError
-        If the run has a mode that the file has no column for
+        If a group is missing, or the run has a mode that its group's file has no
+        column for
     """
-    pieces = sorted(
-        (start, end, mode)
-        for interval, mode in run.mode.items()
-        for start, end in interval_pieces(run, interval)
-    )
-    needed = list(dict.fromkeys(mode for _, _, mode in pieces))
-    missing = [mode for mode in needed if mode not in consumption.modes]
-    if missing:
+    missing_groups = [group for group in GROUPS if group not in consumption]
+    if missing_groups:
         raise ValueError(
-            f"the consumption file has no column for the modes {missing}, which the "
-            f"run has. It has columns for {consumption.modes}."
+            f"no consumption file for the {' and the '.join(missing_groups)}"
         )
-    unused = [mode for mode in consumption.modes if mode not in needed]
-    notes = (
-        [
-            f"The consumption file has columns for modes this run does not have: "
-            f"{', '.join(unused)}. They are not used."
-        ]
-        if unused
-        else []
-    )
-    return ConsumptionRun(consumption, run, pieces, notes)
+    pieces, notes = {}, []
+    for group in GROUPS:
+        loads = consumption[group]
+        name = loads.source_file.name if loads.source_file else f"the {group}'s file"
+        pieces[group] = sorted(
+            (start, end, mode)
+            for interval, mode in run.mode[group].items()
+            for start, end in interval_pieces(run, interval)
+        )
+        needed = list(dict.fromkeys(mode for _, _, mode in pieces[group]))
+        missing = [mode for mode in needed if mode not in loads.modes]
+        if missing:
+            raise ValueError(
+                f"{name} has no column for the {group}'s modes {missing}, which the "
+                f"run has. It has columns for {loads.modes}."
+            )
+        unused = [mode for mode in loads.modes if mode not in needed]
+        if unused:
+            notes.append(
+                f"{name} has columns for modes that the run does not give the "
+                f"{group}: {', '.join(unused)}. They are not used."
+            )
+    consumption = {group: consumption[group] for group in GROUPS}
+    return ConsumptionRun(consumption, run, _merged_pieces(pieces), notes)

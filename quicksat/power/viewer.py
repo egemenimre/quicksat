@@ -14,8 +14,9 @@ two match. So power writes both files, from one run.
 What `power.js` holds, as the page reads it:
 
 - `format`, `version` and `scenario_id`; `power_file` and `power_text`, the power
-  system file's name and text; `consumption_file` and `consumption_text`, the
-  consumption file's name and text, or null for one not read from a file;
+  system file's name and text; `consumption_files`, with the `payload`'s and the
+  `platform`'s consumption file, each as its `file` name, or null for one not
+  read from a file, and its `text`;
 - `spacecraft`: the body box `body_m`, and each panel's `name`, `normal`, `axis`
   (the index of the body axis nearest the normal), `centre_m` and `size_m`,
   in body axes and metres, as the model draws it. Without a 3D model, the page
@@ -174,14 +175,17 @@ def _setup(budget: BudgetRun) -> list[dict]:
                 item("Distribution", percent(conditioning.distribution), "%"),
             ],
         },
-        {
-            "title": "Consumption by mode",
-            "columns": ["Mode", "Power"],
-            "rows": [
-                [mode, f"{watts[mode] * margin:.0f} W"]
-                for mode in budget.consumption.consumption.modes
-            ],
-        },
+        *(
+            {
+                "title": f"{group.capitalize()} consumption by mode",
+                "columns": ["Mode", "Power"],
+                "rows": [
+                    [mode, f"{watts[group][mode] * margin:.0f} W"]
+                    for mode in consumption.modes
+                ],
+            }
+            for group, consumption in budget.consumption.consumption.items()
+        ),
     ]
 
 
@@ -217,17 +221,19 @@ def power_data(budget: BudgetRun, scenario_id: str) -> dict:
         }
     body = _body_box(model, turning)
     system = budget.power_system
-    loads = budget.consumption.consumption
     return {
         "format": FORMAT,
         "version": VERSION,
         "scenario_id": scenario_id,
         "power_file": system.source_file.name if system.source_file else "power system",
         "power_text": system.source_text or "",
-        "consumption_file": None
-        if loads.source_file is None
-        else loads.source_file.name,
-        "consumption_text": loads.source_text,
+        "consumption_files": {
+            group: {
+                "file": None if loads.source_file is None else loads.source_file.name,
+                "text": loads.source_text,
+            }
+            for group, loads in budget.consumption.consumption.items()
+        },
         "spacecraft": {
             "body_m": body,
             "panels": [

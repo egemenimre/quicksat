@@ -122,7 +122,7 @@ When the design has closed:
 The scenario and the power budget take some sizing results by hand too. After a change that closes the sizing budgets, check these:
 
 - **The slew limits.** The scenario's `slew` block takes the maximum rate and acceleration from the agility budget. New wheels change both. Copy the slower axis's figures across, as step 5 of [how to set up and run a scenario](../scenario/set_up_a_scenario.md) explains.
-- **The power drawn.** New equipment, such as larger wheels, may draw more power. Update the consumption file, and run the power budget again.
+- **The power drawn.** New equipment, such as larger wheels, may draw more power. Update the consumption files, and run the power budget again.
 - **The battery and the panels.** A larger battery or more panels add mass. Put them in `equipment.csv`, and run the sizing budgets again.
 
 ## A change of orbit
