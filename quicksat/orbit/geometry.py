@@ -358,7 +358,9 @@ def shadow_intervals(
     )
 
 
-def geodetic(state: SkyCoord):
+def geodetic(
+    state: SkyCoord, earth_at: Callable[[TimeArray], np.ndarray] | None = None
+):
     """
     Geodetic latitude and longitude of the point below the satellite.
 
@@ -372,6 +374,10 @@ def geodetic(state: SkyCoord):
     ----------
     state : SkyCoord
         The satellite's state in GCRS
+    earth_at : callable, optional
+        Gives the Earth's orientation for a `Time` array, as `earth_rotations`
+        does, to turn the positions into ITRS with. By default, astropy turns
+        them itself, which is faster than `earth_rotations` for one call.
 
     Returns
     -------
@@ -380,10 +386,16 @@ def geodetic(state: SkyCoord):
     longitude : Quantity
         East longitude, in degrees from -180 to 180
     """
-    positions = state.frame.realize_frame(_positions(state))
-    itrs = positions.transform_to(ITRS(obstime=state.obstime))
-    geocentric = cast(CartesianRepresentation, itrs.cartesian)
-    location = EarthLocation.from_geocentric(*geocentric.xyz)
+    if earth_at is None:
+        positions = state.frame.realize_frame(_positions(state))
+        itrs = positions.transform_to(ITRS(obstime=state.obstime))
+        geocentric = cast(CartesianRepresentation, itrs.cartesian).xyz
+    else:
+        earth = earth_at(cast(TimeArray, state.obstime))
+        # the rotations turn ITRS vectors into GCRS, so their transposes turn back
+        fixed = np.einsum("nji,nj->ni", earth, _km(_positions(state)))
+        geocentric = Q_(fixed.T, "km")
+    location = EarthLocation.from_geocentric(*geocentric)
     return (
         Q_(np.asarray(location.lat.to_value(u.deg), dtype=float), "deg"),
         Q_(np.asarray(location.lon.to_value(u.deg), dtype=float), "deg"),
@@ -474,7 +486,11 @@ def ground_point(
 
 
 def elevations(
-    state: SkyCoord, latitude: Quantity, longitude: Quantity, altitude: Quantity
+    state: SkyCoord,
+    latitude: Quantity,
+    longitude: Quantity,
+    altitude: Quantity,
+    earth_at: Callable[[TimeArray], np.ndarray] = earth_rotations,
 ) -> np.ndarray:
     """
     The satellite's elevation above a ground point's horizon, at each time of a
@@ -490,13 +506,16 @@ def elevations(
         The point's geodetic latitude, and longitude east
     altitude : Quantity
         The point's height above the ellipsoid
+    earth_at : callable, optional
+        Gives the Earth's orientation for a `Time` array, as `earth_rotations`
+        does, which is the default
 
     Returns
     -------
     elevations : ndarray
         In degrees, from -90 to 90
     """
-    earth = earth_rotations(cast(TimeArray, state.obstime))
+    earth = earth_at(cast(TimeArray, state.obstime))
     point = earth @ ground_point(latitude, longitude, altitude)
     lat, lon = latitude.to_value(u.rad), longitude.to_value(u.rad)
     normal = np.array(
@@ -509,7 +528,10 @@ def elevations(
 
 
 def line_of_sight_clear(
-    first: SkyCoord, second: SkyCoord, clearance: Quantity
+    first: SkyCoord,
+    second: SkyCoord,
+    clearance: Quantity,
+    earth_at: Callable[[TimeArray], np.ndarray] = earth_rotations,
 ) -> np.ndarray:
     """
     Whether the line between two satellites passes a height above the Earth, at
@@ -522,6 +544,9 @@ def line_of_sight_clear(
         from `first`.
     clearance : Quantity
         The least height of the line above the WGS84 ellipsoid, 0 or more
+    earth_at : callable, optional
+        Gives the Earth's orientation for a `Time` array, as `earth_rotations`
+        does, which is the default
 
     Returns
     -------
@@ -530,7 +555,7 @@ def line_of_sight_clear(
         sees the other
     """
     times = cast(TimeArray, first.obstime)
-    pole = earth_rotations(times.ravel()[:1])[0, :, 2]
+    pole = earth_at(times.ravel()[:1])[0, :, 2]
     height = clearance.to_value(u.km)
     radius = EARTH_EQUATORIAL_RADIUS.to_value(u.km) + height
     polar = EARTH_EQUATORIAL_RADIUS.to_value(u.km) * (1 - EARTH_FLATTENING) + height

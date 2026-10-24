@@ -81,6 +81,7 @@ from quicksat.scenario.config import (
     Scenario,
     Trigger,
 )
+from quicksat.scenario.grid import RunGrid
 from quicksat.scenario.rates import RateExcess, rate_excesses
 from quicksat.utils.intervals import (
     TimeArray,
@@ -913,6 +914,9 @@ class ScenarioRun:
     slews : list of SlewWindow
         Every slew between attitudes, in time order. Empty when the scenario has
         no slews.
+    grid : RunGrid
+        The orbits, the sun and the Earth's orientation between the grid's
+        steps, and the Earth's orientation on the grid
     activity_table : pd.DataFrame
         The occurrences as a table, from `activity_table`
     sat_orbits : dict of str to Tle or Trajectory
@@ -948,6 +952,7 @@ class ScenarioRun:
     mode: dict[str, P.IntervalDict]
     occurrences: list[Occurrence]
     slews: list[SlewWindow]
+    grid: RunGrid
     activity_table: pd.DataFrame
     sat_orbits: dict[str, OrbitSource] = field(default_factory=dict)
     sat_states: dict[str, SkyCoord] = field(default_factory=dict)
@@ -1149,6 +1154,7 @@ def _time_above(
     times: TimeArray,
     latitude: Quantity,
     positions_at: Callable[[TimeArray], SkyCoord],
+    earth_at: Callable[[TimeArray], np.ndarray],
 ) -> Callable[[Quantity], P.Interval]:
     """
     The latitude finder that `find_events` takes, over a run's grid.
@@ -1161,6 +1167,9 @@ def _time_above(
         The geodetic latitude on the grid
     positions_at : callable
         Gives the satellite's positions for any `Time` array
+    earth_at : callable
+        Gives the Earth's orientation for any `Time` array, as `earth_rotations`
+        does
 
     Returns
     -------
@@ -1170,7 +1179,7 @@ def _time_above(
 
     def time_above(limit: Quantity) -> P.Interval:
         def above_at(at: TimeArray) -> np.ndarray:
-            return np.asarray(geodetic(positions_at(at))[0] >= limit)
+            return np.asarray(geodetic(positions_at(at), earth_at)[0] >= limit)
 
         return intervals_where(times, np.asarray(latitude >= limit), above_at)
 
@@ -1181,9 +1190,8 @@ def target_visibility(
     scenario: Scenario,
     times: TimeArray,
     state: SkyCoord,
-    positions_at: Callable[[TimeArray], SkyCoord],
-    sat_orbits: dict[str, OrbitSource],
     sat_states: dict[str, SkyCoord],
+    grid: RunGrid,
 ) -> dict[str, P.Interval]:
     """
     When each target is in view, ground and satellite, over a run's grid.
@@ -1201,12 +1209,10 @@ def target_visibility(
         The run's grid
     state : SkyCoord
         The satellite's state on the grid
-    positions_at : callable
-        Gives the satellite's positions for any `Time` array
-    sat_orbits : dict of str to Tle or Trajectory
-        The satellite targets' orbits, by name
     sat_states : dict of str to SkyCoord
         The satellite targets' positions on the grid, by name
+    grid : RunGrid
+        The orbits and the Earth's orientation between the grid's steps
 
     Returns
     -------
@@ -1214,23 +1220,28 @@ def target_visibility(
         For each target, by its name, the time it is in view
     """
     found = {}
+
+    def positions_at(at: TimeArray) -> SkyCoord:
+        return grid.satellite.states(at, with_velocity=False)
+
     for name, ground in scenario.gnd_targets.items():
         place = (ground.latitude, ground.longitude, ground.altitude)
         lowest = ground.min_elevation.to_value(u.deg)
 
         def visible_at(at: TimeArray, place=place, lowest=lowest) -> np.ndarray:
-            return elevations(positions_at(at), *place) >= lowest
+            seen = elevations(positions_at(at), *place, earth_at=grid.earth)
+            return seen >= lowest
 
-        flags = elevations(state, *place) >= lowest
+        flags = elevations(state, *place, earth_at=grid.earth) >= lowest
         found[name] = intervals_where(times, flags, visible_at)
     for name, target in scenario.sat_targets.items():
-        orbit, clearance = sat_orbits[name], target.min_clearance
+        orbit, clearance = grid.targets[name], target.min_clearance
 
         def clear_at(at: TimeArray, orbit=orbit, clearance=clearance) -> np.ndarray:
             other = orbit.states(at, with_velocity=False)
-            return line_of_sight_clear(positions_at(at), other, clearance)
+            return line_of_sight_clear(positions_at(at), other, clearance, grid.earth)
 
-        flags = line_of_sight_clear(state, sat_states[name], clearance)
+        flags = line_of_sight_clear(state, sat_states[name], clearance, grid.earth)
         found[name] = intervals_where(times, flags, clear_at)
     return found
 
@@ -1244,9 +1255,10 @@ def run_scenario(scenario: Scenario, repeat: bool = True) -> ScenarioRun:  # noq
     SGP4 or by interpolation, and so is each satellite target's orbit. The edges
     of the umbra and the penumbra are then located between the grid steps, and
     so are the latitude crossings that the triggers name, and the edges of each
-    target's time in view. The activities are then repeated over the run and
-    checked against the eclipses. Each orbit is checked against the run first:
-    see `orbit_warnings`.
+    target's time in view. Between the steps, the orbits, the sun and the
+    Earth's orientation come from splines through the grid: see `RunGrid`. The
+    activities are then repeated over the run and checked against the eclipses.
+    Each orbit is checked against the run first: see `orbit_warnings`.
 
     Parameters
     ----------
@@ -1282,34 +1294,35 @@ def run_scenario(scenario: Scenario, repeat: bool = True) -> ScenarioRun:  # noq
     interval = P.closedopen(times[0], times[-1])
     warnings = orbit_warnings(scenario, orbit, sat_orbits, times[0], times[-1])
 
-    def positions_at(at: TimeArray) -> SkyCoord:
-        return orbit.states(at, with_velocity=False)
-
     state = orbit.states(times)
     sun = sun_positions(times)
-    umbra, eclipses = shadow_intervals(times, shadow_cones(state, sun), positions_at)
-    illumination = {
-        "sunlit": interval - eclipses,
-        "penumbra": eclipses - umbra,
-        "umbra": umbra,
-        "eclipse": eclipses,
-    }
-    latitude, longitude = geodetic(state)
-
     sat_states = {}
     for name, source in sat_orbits.items():
         try:
             sat_states[name] = source.states(times, with_velocity=False)
         except ValueError as error:
             raise ValueError(f"satellite target '{name}': {error}") from error
-    in_view = target_visibility(
-        scenario, times, state, positions_at, sat_orbits, sat_states
+    grid = RunGrid(times, orbit, state, sun, sat_orbits, sat_states)
+
+    def positions_at(at: TimeArray) -> SkyCoord:
+        return grid.satellite.states(at, with_velocity=False)
+
+    umbra, eclipses = shadow_intervals(
+        times, shadow_cones(state, sun), positions_at, grid.sun
     )
+    illumination = {
+        "sunlit": interval - eclipses,
+        "penumbra": eclipses - umbra,
+        "umbra": umbra,
+        "eclipse": eclipses,
+    }
+    latitude, longitude = geodetic(state, grid.earth)
+    in_view = target_visibility(scenario, times, state, sat_states, grid)
     events = find_events(
         scenario.activities,
         interval,
         illumination,
-        _time_above(times, latitude, positions_at),
+        _time_above(times, latitude, positions_at, grid.earth),
         in_view.__getitem__,
     )
     occurrences = resolve_activities(
@@ -1317,18 +1330,15 @@ def run_scenario(scenario: Scenario, repeat: bool = True) -> ScenarioRun:  # noq
     )
     slews = []
     if scenario.slew is not None:
-
-        def states_at(at: TimeArray) -> SkyCoord:
-            return orbit.states(at)
-
         slews = plan_slews(
             occurrences,
             scenario.slew,
             scenario,
             interval,
-            states_at,
-            sun_positions,
-            sat_orbits,
+            grid.satellite.states,
+            grid.sun,
+            grid.targets,
+            grid.earth,
         )
         for window in slews:
             occurrences[window.into] = replace(
@@ -1358,6 +1368,7 @@ def run_scenario(scenario: Scenario, repeat: bool = True) -> ScenarioRun:  # noq
         mode=mode,
         occurrences=occurrences,
         slews=slews,
+        grid=grid,
         activity_table=activity_table(occurrences),
         sat_orbits=sat_orbits,
         sat_states=sat_states,

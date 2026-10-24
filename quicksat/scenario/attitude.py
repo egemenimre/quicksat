@@ -74,6 +74,7 @@ from quicksat.scenario.config import (
     Scenario,
     Slew,
 )
+from quicksat.scenario.grid import GridOrbit
 from quicksat.utils.intervals import TimeArray, labels_at, round_time
 
 if TYPE_CHECKING:
@@ -89,7 +90,7 @@ _PATH_STEP = Q_(10, "s")
 """The longest time between the samples of a slew's target, which fix which way it
 turns. The way stays right while the target turns less than 18 deg/s."""
 
-TargetOrbits = Mapping[str, Tle | Trajectory]
+TargetOrbits = Mapping[str, Tle | Trajectory | GridOrbit]
 """The orbits of the satellite targets, by name, as the run reads them."""
 
 
@@ -99,6 +100,7 @@ def directions(
     state: SkyCoord,
     sun: CartesianRepresentation,
     sat_orbits: TargetOrbits | None = None,
+    earth_at: Callable[[TimeArray], np.ndarray] = earth_rotations,
 ) -> dict[str, np.ndarray]:
     """
     The directions an attitude can use, in GCRS, at each time of a state.
@@ -113,9 +115,13 @@ def directions(
         The satellite's state in GCRS, with its velocities
     sun : CartesianRepresentation
         Positions of the sun relative to the centre of the Earth, in GCRS
-    sat_orbits : mapping of str to Tle or Trajectory, optional
+    sat_orbits : mapping of str to Tle, Trajectory or GridOrbit, optional
         The satellite targets' orbits, by name. Needed only for a satellite
         target.
+    earth_at : callable, optional
+        Gives the Earth's orientation for a `Time` array, as `earth_rotations`
+        does, which is the default. Needed only for a direction that turns with
+        the Earth.
 
     Returns
     -------
@@ -147,7 +153,7 @@ def directions(
     earthly = [name for name in names if name not in out]
     if earthly:
         # the Earth's orientation, only where a direction turns with the Earth
-        earth = earth_rotations(state.obstime)
+        earth = earth_at(state.obstime)
         for name in earthly:
             if name == GROUND_VELOCITY:
                 spin = EARTH_ROTATION_RATE.to_value(u.rad / u.s) * earth[:, :, 2]
@@ -165,6 +171,7 @@ def attitude_rotations(
     state: SkyCoord,
     sun: CartesianRepresentation,
     sat_orbits: TargetOrbits | None = None,
+    earth_at: Callable[[TimeArray], np.ndarray] = earth_rotations,
 ) -> np.ndarray:
     """
     The orientation one attitude gives, at each time of a state.
@@ -179,9 +186,12 @@ def attitude_rotations(
         The satellite's state in GCRS, with its velocities
     sun : CartesianRepresentation
         Positions of the sun relative to the centre of the Earth, in GCRS
-    sat_orbits : mapping of str to Tle or Trajectory, optional
+    sat_orbits : mapping of str to Tle, Trajectory or GridOrbit, optional
         The satellite targets' orbits, by name. Needed only if the attitude
         uses a satellite target.
+    earth_at : callable, optional
+        Gives the Earth's orientation for a `Time` array, as `earth_rotations`
+        does, which is the default
 
     Returns
     -------
@@ -204,7 +214,7 @@ def attitude_rotations(
     )
     fallback = attitude.fallback_direction
     vectors = directions(
-        scenario, {pointed, constrained, fallback}, state, sun, sat_orbits
+        scenario, {pointed, constrained, fallback}, state, sun, sat_orbits, earth_at
     )
     try:
         rotations = align(
@@ -322,6 +332,7 @@ def plan_slews(
     state_at: Callable[[TimeArray], SkyCoord],
     sun_at: Callable[[TimeArray], CartesianRepresentation],
     sat_orbits: TargetOrbits | None = None,
+    earth_at: Callable[[TimeArray], np.ndarray] = earth_rotations,
 ) -> list[SlewWindow]:
     """
     Plan the slew into each activity whose attitude differs from the one before.
@@ -353,8 +364,11 @@ def plan_slews(
         Gives the satellite's state in GCRS, with velocities, for a `Time` array
     sun_at : callable
         Gives the position of the sun in GCRS for a `Time` array
-    sat_orbits : mapping of str to Tle or Trajectory, optional
+    sat_orbits : mapping of str to Tle, Trajectory or GridOrbit, optional
         The satellite targets' orbits, by name, for an attitude that uses one
+    earth_at : callable, optional
+        Gives the Earth's orientation for a `Time` array, as `earth_rotations`
+        does, which is the default
 
     Returns
     -------
@@ -367,7 +381,7 @@ def plan_slews(
 
     def rotations_of(name: str, times: TimeArray) -> np.ndarray:
         return attitude_rotations(
-            scenario, name, state_at(times), sun_at(times), sat_orbits
+            scenario, name, state_at(times), sun_at(times), sat_orbits, earth_at
         )
 
     def rotation_of(name: str, time: TimeArray) -> np.ndarray:
@@ -638,7 +652,7 @@ def body_rotations(run: "ScenarioRun") -> np.ndarray:
     for name in set(attitude) - {UNPLANNED}:
         rows = attitude == name
         rotations[rows] = attitude_rotations(
-            run.scenario, name, *state_at(rows), run.sat_orbits
+            run.scenario, name, *state_at(rows), run.grid.targets, run.grid.earth
         )
     slew = run.scenario.slew
     if slew is not None:
@@ -647,7 +661,11 @@ def body_rotations(run: "ScenarioRun") -> np.ndarray:
             rows = (run.times >= window.start) & (run.times < window.end)
             if rows.any():
                 targets = attitude_rotations(
-                    run.scenario, window.target, *state_at(rows), run.sat_orbits
+                    run.scenario,
+                    window.target,
+                    *state_at(rows),
+                    run.grid.targets,
+                    run.grid.earth,
                 )
                 rotations[rows] = _slew_rotations(
                     window, slew, run.times[rows], targets
