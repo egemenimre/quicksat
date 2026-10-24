@@ -127,18 +127,19 @@ slew:
 #
 # Each orbit: idle in sun pointing, imaging around the 45 deg crossing going north,
 # the Svalbard pass near the northern turn, then nadir through the eclipse. The
-# imaging ends 5 min after the crossing, because the turn to Svalbard takes about
-# 1.6 min of it: the imaging holds about 5 min, above the 4% of the orbit it needs.
-# Svalbard rises within a minute or so of that. The downlink ends 2 min after
-# Svalbard sets, because the turn to nadir takes about 2 min of it, so the antenna
-# stays on the station until it sets. The pass ends a few minutes before the
-# eclipse. Neither gap leaves time to turn to sun pointing and back. After the
-# eclipse, the body waits in nadir for RELAY-01 to rise, and tracks it until it
-# sets. Its pass comes before the next 45 deg crossing, so each orbit keeps its
-# imaging.
+# payload is in imaging from the start of the turn into yaw steering, so that the
+# imager is ready when the turn ends. The imaging ends 5 min after the crossing,
+# because the turn to Svalbard takes about 1.6 min of it: the imaging holds about
+# 5 min, above the 4% of the orbit it needs. Svalbard rises within a minute or so of
+# that. The downlink ends 2 min after Svalbard sets, because the turn to nadir takes
+# about 2 min of it, so the antenna stays on the station until it sets. The pass
+# ends a few minutes before the eclipse. Neither gap leaves time to turn to sun
+# pointing and back. After the eclipse, the body waits in nadir for RELAY-01 to
+# rise, and tracks it until it sets. Its pass comes before the next 45 deg crossing,
+# so each orbit keeps its imaging.
 activities:
   - [power generation, latitude 45 deg -2 min, sun pointing, {payload_mode: idle, platform_mode: idle}, sunlit]
-  - [imaging 45 deg lat, latitude 45 deg +5 min, yaw steering, {payload_mode: imaging, platform_mode: imaging}, sunlit]
+  - [imaging 45 deg lat, latitude 45 deg +5 min, yaw steering, {payload_mode: imaging, platform_mode: imaging, payload_mode_in_slew: this_activity}, sunlit]
   - [downlink Svalbard, Svalbard set + 2 min, track Svalbard, {payload_mode: downlink, platform_mode: ttc}]
   - [nadir before eclipse, eclipse entry, nadir, {payload_mode: idle, platform_mode: idle}, sunlit]
   - [eclipse in nadir, eclipse exit, nadir, {payload_mode: idle, platform_mode: idle}, eclipse]

@@ -80,7 +80,7 @@ obc,SSTL OBC750,OBDH,1,5,10 W,10 W,10 W,10 W,Cold redundant: one of two on
 reaction_wheel,Rockwell RSI 45,ADCS,4,5,10 W,12 W,15 W,10 W,
 ```
 
-Platform equipment that changes with the payload's work takes a platform mode of its own. In the sample, the platform's `imaging` mode holds the solar wings parked and the wheels steadier while the payload images. The scenario's imaging activity sets both: `{payload_mode: imaging, platform_mode: imaging}`.
+Platform equipment that changes with the payload's work takes a platform mode of its own. In the sample, the platform's `imaging` mode holds the solar wings parked and the wheels steadier while the payload images. The scenario's imaging activity sets both. It also puts the payload in its imaging mode for the turn into the activity, so that the payload draws its imaging power there: `{payload_mode: imaging, platform_mode: imaging, payload_mode_in_slew: this_activity}`.
 
 - **`equipment_id`** is a short name with no spaces, which no other row of the file has.
 - **`subsystem`** groups the rows in the plots. A subsystem may appear in both files, such as `Thermal`, and the plots add the two.

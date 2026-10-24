@@ -1,9 +1,9 @@
 # The reference scenario of docs/power/power_generation_ref.ipynb: three orbits
 # of a 510 km sun-synchronous orbit.
 #
-# A copy of the power sample's scenario. The reference notebook quotes figures
-# from it, so it changes only together with that notebook. The notebook never
-# writes it.
+# Copied from the power sample's scenario, and not kept in step with it. The
+# reference notebook quotes figures from this file, so it changes only together
+# with that notebook. The notebook never writes it.
 
 orbit:
   # The orbit is given one of four ways. Here, a sun-synchronous orbit, for which

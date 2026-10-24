@@ -4,6 +4,10 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+
+- In the power and scenario samples, the imaging activity puts the payload in its imaging mode for the turn into it, with `payload_mode_in_slew: this_activity`. In the power sample, each orbit now has at least 7.0 W h of energy to spare, down from 10.0 W h. The battery's lowest charge stays at 83.6%.
+
 ## [0.5.0] - 2026-10-24
 
 ### Added
