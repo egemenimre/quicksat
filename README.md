@@ -82,7 +82,7 @@ The sizing sample is a small Earth observation satellite on a 500 km sun-synchro
 | Data | Data made against data sent down each day, and the memory needed between passes against the memory flown | [data](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/data_budget.ipynb) | [data](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/data_budget_ref.ipynb) |
 | Delta-V | Delta-V by phase and type, and the propellant it needs | [delta-V](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/delta_v_budget.ipynb) | [delta-V](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/delta_v_ref.ipynb) |
 | Agility | Slew times about roll and pitch, from the wheels and the inertia, with a wheel failed or not, and the slews the mission needs | [roll](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/agility_roll.ipynb), [pitch](https://github.com/egemenimre/quicksat/blob/master/sample/sizing/agility_pitch.ipynb) | [agility](https://github.com/egemenimre/quicksat/blob/master/docs/sizing/agility_ref.ipynb) |
-| Radiator | Not yet specified | | |
+| Radiator | Not yet built: the payload’s heat account over a scenario run, which sizes its radiators and heaters | | [explanation](https://github.com/egemenimre/quicksat/blob/master/docs/explanations/payload_thermal_model.md) |
 
 The sample works one satellite through each budget. The reference explains each input field, how each figure is worked out, and where the budget stops. For your own satellite, see [how to initialise a satellite](https://github.com/egemenimre/quicksat/blob/master/docs/guides/sizing/initialise_a_satellite.md). [How to edit and run the sizing files](https://github.com/egemenimre/quicksat/blob/master/docs/guides/sizing/edit_the_sizing_files.md) goes round the loop in the Sizing Editor. [How to close the sizing budgets](https://github.com/egemenimre/quicksat/blob/master/docs/guides/sizing/close_the_sizing_budgets.md) runs every budget in rounds, until a round passes them all and changes nothing. [How to add a manoeuvre](https://github.com/egemenimre/quicksat/blob/master/docs/guides/sizing/add_a_manoeuvre.md) adds a row to the delta-V budget, and shows its cost.
 
@@ -153,6 +153,8 @@ python -m quicksat.editor sample/power/data sample/power/editor
 ## Documentation
 
 The documentation follows the [Diátaxis](https://diataxis.fr/) split. The samples are tutorials, the guides show how to do one task, and the references explain how each part works. The notebooks, their data and the tests are grouped in three domains: `sizing`, `scenario` and `power`. Each set of notebooks reads its own copy of the inputs, so a change to a sample cannot change a figure in a reference.
+
+Two explanations describe a model as a whole, with no code to run: [the power model](https://github.com/egemenimre/quicksat/blob/master/docs/explanations/power_model.md), and [the payload thermal model](https://github.com/egemenimre/quicksat/blob/master/docs/explanations/payload_thermal_model.md), which is agreed but not yet built.
 
 Two documents cover the project as a whole:
 
