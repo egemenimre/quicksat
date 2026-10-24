@@ -14,8 +14,8 @@ list of activities until the duration ends and checks each constraint. All the
 results come back in one `ScenarioRun`.
 
 The Activity Designer can run the list once, with no repeats, or run an empty
-list. The time after the last activity is then unplanned. The attitude and mode
-rows give it as `unplanned`, and the body has no orientation then. Whatever
+list. The time after the last activity is then unplanned. The attitude and both
+mode rows give it as `unplanned`, and the body has no orientation then. Whatever
 needs the whole run planned refuses such a run.
 
 Each orbit is checked against the run before it is used. An element set more
@@ -67,10 +67,14 @@ from quicksat.orbit.trajectory_files import read_trajectory_file
 from quicksat.scenario.articulation import articulation_angles
 from quicksat.scenario.attitude import SlewWindow, body_rotations, plan_slews
 from quicksat.scenario.config import (
+    GROUPS,
     LATITUDE_CROSSING,
+    PAYLOAD,
+    PLATFORM,
     RISE,
     SET,
     SLEW,
+    THIS_ACTIVITY,
     UNPLANNED,
     Activity,
     OrbitCount,
@@ -674,7 +678,8 @@ def activity_table(occurrences: list[Occurrence]) -> pd.DataFrame:
     table : pd.DataFrame
         The columns are the repeat and activity numbers, the title, the start and
         end as UTC text, the duration in minutes, the trigger as written, the attitude, the
-        time of the slew into it in seconds, the mode, the constraint, the time
+        time of the slew into it in seconds, the payload's mode and the
+        platform's, the constraint, the time
         outside the constraint in seconds, and the status. The duration is
         negative for an activity that ends before it starts. The status is `ok`,
         or any of `negative duration`, `outside constraint`, `event never came`,
@@ -701,7 +706,8 @@ def activity_table(occurrences: list[Occurrence]) -> pd.DataFrame:
                 "slew [s]": (
                     np.nan if occurrence.slew is None else occurrence.slew.to_value(u.s)
                 ),
-                "mode": activity.mode,
+                "payload mode": activity.mode.payload,
+                "platform mode": activity.mode.platform,
                 "constraint": activity.constraint or "",
                 "outside [s]": (
                     np.nan
@@ -750,9 +756,10 @@ def gantt_rows(
     illumination: Illumination,
     occurrences: list[Occurrence],
     slews: list[SlewWindow],
-) -> tuple[P.IntervalDict, P.IntervalDict, P.IntervalDict]:
+) -> tuple[P.IntervalDict, P.IntervalDict, dict[str, P.IntervalDict]]:
     """
-    Build the three rows of the Gantt chart.
+    Build the rows of the Gantt chart: the illumination, the attitude, and the
+    payload's and the platform's modes.
 
     Each row has exactly one value at any time of the run. Touching pieces with
     the same value merge into one. The attitude and mode rows give the time after
@@ -765,8 +772,10 @@ def gantt_rows(
     occurrences : list of Occurrence
         The occurrences from `resolve_activities`
     slews : list of SlewWindow
-        The slews, from `plan_slews`. They take the attitude row's and the mode
-        row's time over from the activities.
+        The slews, from `plan_slews`. They take the attitude row's and the
+        platform's mode row's time over from the activities. They take the
+        payload's too, where the activity after the slew asks for its own mode
+        through `payload_mode_in_slew`.
 
     Returns
     -------
@@ -775,27 +784,35 @@ def gantt_rows(
     attitude : portion.IntervalDict
         The attitude names, `slew` while the body turns or settles, and
         `unplanned` after the last occurrence
-    mode : portion.IntervalDict
-        The mode names, `slew` while the body turns or settles, and `unplanned`
-        after the last occurrence. A slew takes the end of the activity before
-        it, so the payload is not at its task then.
+    mode : dict of str to portion.IntervalDict
+        The mode names of the payload and of the platform, by the group's name,
+        and `unplanned` after the last occurrence. The platform's mode is `slew`
+        while the body turns or settles. By default, the payload's carries on
+        through the turn, which takes the end of the activity before it. With
+        `payload_mode_in_slew: this_activity`, the payload takes the mode of the
+        activity after the slew for the whole turn.
     """
     row = P.IntervalDict()
     for state in ("sunlit", "penumbra", "umbra"):
         row[illumination[state]] = state
     attitude = P.IntervalDict()
-    mode = P.IntervalDict()
+    mode = {group: P.IntervalDict() for group in GROUPS}
     for occurrence in occurrences:
         attitude[occurrence.interval] = occurrence.activity.attitude
-        mode[occurrence.interval] = occurrence.activity.mode
+        for group in GROUPS:
+            mode[group][occurrence.interval] = occurrence.activity.mode[group]
     # the illumination covers the whole run, so what is left of it is unplanned
     unplanned = row.domain() - attitude.domain()
     if not unplanned.empty:
         attitude[unplanned] = UNPLANNED
-        mode[unplanned] = UNPLANNED
+        for group in GROUPS:
+            mode[group][unplanned] = UNPLANNED
     for window in slews:
         attitude[window.interval] = SLEW
-        mode[window.interval] = SLEW
+        mode[PLATFORM][window.interval] = SLEW
+        modes = occurrences[window.into].activity.mode
+        if modes.payload_mode_in_slew == THIS_ACTIVITY:
+            mode[PAYLOAD][window.interval] = modes.payload
     return row, attitude, mode
 
 
@@ -885,8 +902,11 @@ class ScenarioRun:
         where it hides part of it
     light : ndarray
         The fraction of the sun's disk seen at each time of the grid, from 0 to 1
-    illumination, attitude, mode : portion.IntervalDict
-        The three rows of the Gantt chart
+    illumination, attitude : portion.IntervalDict
+        Two rows of the Gantt chart
+    mode : dict of str to portion.IntervalDict
+        The other two: the payload's and the platform's modes, by the group's
+        name, `payload` or `platform`
     occurrences : list of Occurrence
         Every activity as it happens in the run. In a run of the list once, or
         of an empty list, they stop before the end: see `unplanned`.
@@ -925,7 +945,7 @@ class ScenarioRun:
     light: np.ndarray
     illumination: P.IntervalDict
     attitude: P.IntervalDict
-    mode: P.IntervalDict
+    mode: dict[str, P.IntervalDict]
     occurrences: list[Occurrence]
     slews: list[SlewWindow]
     activity_table: pd.DataFrame

@@ -80,14 +80,14 @@ from quicksat.editor.budgets import budget_results
 from quicksat.editor.editor import _check, editor_data, editor_page
 from quicksat.editor.sizing import NAMES as SIZING_NAMES
 from quicksat.editor.sizing import sizing_data, sizing_page
-from quicksat.power import CONSUMPTION_FILE, POWER_FILE
+from quicksat.power import CONSUMPTION_FILES, POWER_FILE
 from quicksat.power.__main__ import run_folder, summary
 from quicksat.power.config import PowerSystem
 from quicksat.power.consumption import PowerConsumption
 from quicksat.power.viewer import PAGE_FILE as POWER_PAGE
 from quicksat.power.viewer import write_power_viewer
 from quicksat.scenario import SCENARIO_FILE
-from quicksat.scenario.config import Scenario
+from quicksat.scenario.config import GROUPS, Scenario
 from quicksat.scenario.run import run_scenario
 from quicksat.scenario.viewer import PAGE_FILE as SCENARIO_PAGE
 from quicksat.scenario.viewer import (
@@ -130,7 +130,8 @@ VIEWER_TYPES = {
 _ROLES = {
     "scenario": Scenario.from_yaml_file,
     "power": PowerSystem.from_yaml_file,
-    "consumption": PowerConsumption.from_csv,
+    "payload_consumption": PowerConsumption.from_csv,
+    "platform_consumption": PowerConsumption.from_csv,
 }
 """The files that quicksat reads, by their kind, with their loaders."""
 
@@ -307,8 +308,9 @@ def run_files(files: list[dict], output: str | Path) -> dict:
 
     The files go in a temporary folder, which is deleted after the run. quicksat's
     loaders read the scenario and, if there are any, the power system and the
-    consumption. If they all read, the run goes ahead: the power budget when
-    both power files are there, and the scenario alone otherwise. The viewer
+    two consumption files. If they all read, the run goes ahead: the power
+    budget when the power system and both consumption files are there, and the
+    scenario alone otherwise. The viewer
     goes in `output`, as `python -m quicksat.scenario` or `python -m quicksat.power`
     would write it.
 
@@ -316,7 +318,8 @@ def run_files(files: list[dict], output: str | Path) -> dict:
     ----------
     files : list of dict
         The page's files, each with `kind`: `scenario`, `model`, `orbit`,
-        `power`, `consumption`, or `target:` and the file's name for a
+        `power`, `payload_consumption`, `platform_consumption`, or `target:`
+        and the file's name for a
         satellite target's file. `name`: the name the scenario gives it, or the
         file's own name. `text`, or `base64` for the 3D model.
     output : str | Path
@@ -333,10 +336,9 @@ def run_files(files: list[dict], output: str | Path) -> dict:
     """
 
     def work(base: Path, names: dict) -> dict:
-        if "power" in names and "consumption" in names:
-            budget = run_folder(
-                base, names["scenario"], names["power"], names["consumption"]
-            )
+        consumption = {group: names.get(f"{group}_consumption") for group in GROUPS}
+        if "power" in names and all(consumption.values()):
+            budget = run_folder(base, names["scenario"], names["power"], consumption)
             return {
                 "page": write_power_viewer(budget, output).name,
                 "report": summary(budget),
@@ -374,7 +376,11 @@ def design_files(files: list[dict], repeat: bool) -> dict:
         of one pass of the list, or None. `max_rate_deg_s` and
         `max_acceleration_deg_s2`, the slew block's limits, or None.
     """
-    files = [file for file in files if file.get("kind") not in ("power", "consumption")]
+    files = [
+        file
+        for file in files
+        if file.get("kind") not in _ROLES or file.get("kind") == "scenario"
+    ]
 
     def work(base: Path, names: dict) -> dict:
         path = base / names["scenario"]
@@ -543,7 +549,7 @@ class EditorServer(ThreadingHTTPServer):
     port : int, optional
         The port to listen on, and 0 for any free one. By default, `PORT` or the
         next free one after it.
-    scenario_file, power_file, consumption_file : str, optional
+    scenario_file, power_file, consumption_files : optional
         The files' names, if not the usual ones. See `editor_data`.
     idle_s : float, optional
         The time with no request from a page after which the server stops by
@@ -561,11 +567,11 @@ class EditorServer(ThreadingHTTPServer):
         port: int | None = None,
         scenario_file: str = SCENARIO_FILE,
         power_file: str = POWER_FILE,
-        consumption_file: str = CONSUMPTION_FILE,
+        consumption_files: dict[str, str] = CONSUMPTION_FILES,
         idle_s: float = IDLE_S,
     ):
         self.folder = Path(folder)
-        self.names = (scenario_file, power_file, consumption_file)
+        self.names = (scenario_file, power_file, consumption_files)
         # the Sizing Editor, for a folder of sizing files with no scenario file
         self.sizing = not (self.folder / scenario_file).is_file()
         if self.sizing and not any(
@@ -662,9 +668,10 @@ class EditorServer(ThreadingHTTPServer):
             return sizing_page(data)
         assert self.output is not None
         data = editor_data(self.folder, *self.names)
+        scenario_file, power_file, consumption_files = self.names
         hashes = {
             name: file_hash(self.folder / name)
-            for name in self.names
+            for name in (scenario_file, power_file, *consumption_files.values())
             if (self.folder / name).is_file()
         }
         data["server"] = {

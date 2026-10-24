@@ -40,7 +40,7 @@ PACKAGE = files("quicksat")
 
 @pytest.fixture(scope="module")
 def power_dir() -> Path:
-    """A power folder: a scenario, a power system, a consumption file and a model."""
+    """A power folder: a scenario, a power system, two consumption files and a model."""
     return TESTS / "power" / "data"
 
 
@@ -65,9 +65,9 @@ attitudes:
 slew:
   max_rate: 0.7 deg/s   # the drive's "#1" limit
 activities:
-  - [a, 10 min, nadir, idle]
+  - [a, 10 min, nadir, {payload_mode: idle, platform_mode: idle}]
   # the last one
-  - [b, 10 min, nadir, idle]
+  - [b, 10 min, nadir, {payload_mode: idle, platform_mode: idle}]
 # the end
 """
 
@@ -118,8 +118,9 @@ def test_a_power_folder_gives_every_file(power_dir):
     assert files["scenario"]["name"] == "scenario.yaml"
     assert files["scenario"]["data"]["duration"] == "1 orbit"
     assert files["power"]["data"]["panels"]
-    assert files["consumption"]["header"][0] == "equipment_id"
-    assert len(files["consumption"]["rows"]) > 0
+    for kind in ("payload_consumption", "platform_consumption"):
+        assert files[kind]["header"][0] == "equipment_id"
+        assert len(files[kind]["rows"]) > 0
     assert (
         base64.b64decode(data["model"]["glb_base64"])
         == (power_dir / "spacecraft.glb").read_bytes()
@@ -129,7 +130,8 @@ def test_a_power_folder_gives_every_file(power_dir):
     assert [(check["file"], check["ok"]) for check in data["checks"]] == [
         ("scenario.yaml", True),
         ("power_system.yaml", True),
-        ("power_consumption.csv", True),
+        ("payload_consumption.csv", True),
+        ("platform_consumption.csv", True),
     ]
 
 
@@ -152,7 +154,8 @@ def test_the_satellite_targets_files_come_once_each(scenario_dir, tmp_path):
 def test_a_scenario_folder_has_no_power_files(scenario_dir):
     data = editor_data(scenario_dir)
     assert data["files"]["power"] is None
-    assert data["files"]["consumption"] is None
+    assert data["files"]["payload_consumption"] is None
+    assert data["files"]["platform_consumption"] is None
     assert data["model"] is None  # its scenario names no model
     assert [check["file"] for check in data["checks"]] == ["scenario.yaml"]
 

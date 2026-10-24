@@ -6,7 +6,8 @@ passes wherever pytest is invoked from.
 
 - `scenario.yaml` and `power_system.yaml` use the power sample's model, with
   turning wings, fixed deck cells and one typed-in panel, over one orbit.
-- `power_consumption.csv` is a copy of the power sample's consumption file.
+- `payload_consumption.csv` and `platform_consumption.csv` are copies of the
+  power sample's consumption files.
 - `short_run` is `scenario.yaml` cut to 30 min, shorter than one orbit.
 - `six_faces_scenario.yaml` and `six_faces_power_system.yaml` are the Orekit case:
   six typed-in 1 m2 faces in nadir pointing, for one day.
@@ -137,20 +138,23 @@ def reference(data_dir) -> dict[str, np.ndarray]:
 
 
 @pytest.fixture(scope="session")
-def consumption(data_dir) -> PowerConsumption:
-    """The loads of `power_consumption.csv`.
+def consumption(data_dir) -> dict[str, PowerConsumption]:
+    """The loads of `payload_consumption.csv` and `platform_consumption.csv`.
 
     Returns
     -------
-    PowerConsumption
-        The consumption file
+    dict of str to PowerConsumption
+        The consumption files, by the group's name
     """
-    return PowerConsumption.from_csv(data_dir / "power_consumption.csv")
+    return {
+        group: PowerConsumption.from_csv(data_dir / f"{group}_consumption.csv")
+        for group in ("payload", "platform")
+    }
 
 
 @pytest.fixture(scope="session")
 def consumption_run(consumption, model_run) -> ConsumptionRun:
-    """The loads of `power_consumption.csv` over `model_run`.
+    """The loads of the two consumption files over `model_run`.
 
     Returns
     -------

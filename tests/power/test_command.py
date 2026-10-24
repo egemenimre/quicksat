@@ -16,7 +16,8 @@ from quicksat.scenario.viewer import DATA_FILE as SCENARIO_DATA_FILE
 INPUTS = (
     "scenario.yaml",
     "power_system.yaml",
-    "power_consumption.csv",
+    "payload_consumption.csv",
+    "platform_consumption.csv",
     "spacecraft.glb",
     "sso_510km.tle",
 )

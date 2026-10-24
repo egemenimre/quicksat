@@ -24,7 +24,9 @@ const vm = require("node:vm");
 const DESIGNER = path.resolve(__dirname, "..", "..", "..", "quicksat", "editor", "templates", "scenario", "designer.js");
 globalThis.window = { addEventListener() {} };
 vm.runInThisContext(fs.readFileSync(DESIGNER, "utf8"), { filename: DESIGNER });
-const { activityKey, lengthText, periodText, rowParts } = vm.runInThisContext("({ activityKey, lengthText, periodText, rowParts })");
+const { activityKey, designer, designerChanged, generate, lengthText, periodText, rowParts } = vm.runInThisContext(
+  "({ activityKey, designer, designerChanged, generate, lengthText, periodText, rowParts })",
+);
 
 /** A row of the server's answer, with nothing to report but its count. */
 const row = (fields) => ({
@@ -83,4 +85,40 @@ test("a row changes for the run only through the fields the run reads", () => {
   assert.notEqual(activityKey({ ...item, end: { kind: "set", target: "Kiruna" } }), activityKey(item));
   assert.notEqual(activityKey({ ...item, mode: "idle" }), activityKey(item));
   assert.equal(activityKey(undefined), "");
+});
+
+test("a change made while a run is under way leaves the run out of date", async () => {
+  // stand-ins for the page and the server that a run reaches; the server
+  // answers when the test says
+  let answer;
+  Object.assign(globalThis, {
+    server: { state: "up" },
+    S: { activities: [] },
+    document: { querySelectorAll: () => [] },
+    serverUrl: (path) => `/quicksat/${path}?key=k`,
+    runFiles: () => [],
+    checkServer: () => {},
+    fetch: () => new Promise((resolve) => { answer = resolve; }),
+  });
+  designer.frame = {};
+  const reply = (run) => {
+    answer({ text: async () => JSON.stringify({ ok: true, rows: [] }) });
+    return run;
+  };
+
+  // the first run has no result before it, and the change still counts
+  let run = generate();
+  designerChanged();
+  await reply(run);
+  assert.equal(designer.stale, true);
+
+  // a run with no change during it is current
+  await reply(generate());
+  assert.equal(designer.stale, false);
+
+  // a change during a later run
+  run = generate();
+  designerChanged();
+  await reply(run);
+  assert.equal(designer.stale, true);
 });

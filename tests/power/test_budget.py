@@ -237,8 +237,11 @@ def test_the_viewer_folder_holds_both_data_files(budget, tmp_path):
         "Panels",
         "Generation",
         "Battery",
-        "Consumption by mode",
+        "Payload consumption by mode",
+        "Platform consumption by mode",
     ]
+    payload = power["setup"][3]["rows"]
+    assert [mode for mode, _ in payload] == ["idle", "imaging", "downlink"]
 
 
 def test_the_panels_are_placed_as_the_model_draws_them(budget):
@@ -257,6 +260,8 @@ def test_the_panels_are_placed_as_the_model_draws_them(budget):
     # the body box leaves the wings out
     assert data["spacecraft"]["body_m"][1] < 1
     assert data["power_text"].startswith("# Fixture for the power tests")
-    csv = budget.consumption.consumption.source_file
-    assert data["consumption_file"] == "power_consumption.csv"
-    assert data["consumption_text"] == csv.read_text(encoding="utf-8")
+    files = data["consumption_files"]
+    assert list(files) == ["payload", "platform"]
+    for group, loads in budget.consumption.consumption.items():
+        assert files[group]["file"] == f"{group}_consumption.csv"
+        assert files[group]["text"] == loads.source_file.read_text(encoding="utf-8")

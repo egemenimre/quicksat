@@ -12,7 +12,7 @@ duration: 3 orbits
 step: 10 s
 
 # The spacecraft's 3D model, which the viewer draws, in body axes and metres, and
-# the wings that turn to face the sun, parked in imaging
+# the wings that turn to face the sun, parked while the platform is in imaging
 3d_model:
   file: spacecraft.glb
   articulations:
@@ -24,8 +24,8 @@ attitudes:
   sun pointing: {point: [-z, sun], constrain: [-y, orbit normal]}
 
 activities:
-  - [power generation, eclipse entry, sun pointing, idle, sunlit]
-  - [eclipse in nadir, eclipse exit, nadir, idle, eclipse]
-  - [power generation, latitude 45 deg - 2 min, sun pointing, idle, sunlit]
-  - [imaging 45 deg lat, latitude 45 deg + 4 min, nadir, imaging, sunlit]
-  - [downlink, 10 min, nadir, downlink]
+  - [power generation, eclipse entry, sun pointing, {payload_mode: idle, platform_mode: idle}, sunlit]
+  - [eclipse in nadir, eclipse exit, nadir, {payload_mode: idle, platform_mode: idle}, eclipse]
+  - [power generation, latitude 45 deg - 2 min, sun pointing, {payload_mode: idle, platform_mode: idle}, sunlit]
+  - [imaging 45 deg lat, latitude 45 deg + 4 min, nadir, {payload_mode: imaging, platform_mode: imaging}, sunlit]
+  - [downlink, 10 min, nadir, {payload_mode: downlink, platform_mode: ttc}]

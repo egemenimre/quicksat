@@ -38,7 +38,8 @@ step: 10 s
   # The parts of the model that turn to face the sun. Each wing is one node of the
   # model, with its origin on the wing's drive axis. The wing turns about y until
   # its cells, which face -z as the model draws them, point as close to the sun as
-  # they can. In imaging, the wings park at 0 deg instead, as the model draws them.
+  # they can. With the platform in imaging, the wings park at 0 deg instead, as the
+  # model draws them.
   # An optional range, such as range: [-90 deg, 90 deg], limits the turn.
   # point gives that axis and its direction: the sun here, or any direction an
   # attitude can use, such as a ground target for an antenna.
@@ -105,8 +106,11 @@ slew:
 #     and set, such as Svalbard rise. An event can take an offset, such as
 #     eclipse entry + 2 min
 #   the attitude: one of the names under attitudes
-#   the mode: any name but slew, which the run gives the mode while the body
-#     turns
+#   the modes: the payload's and the platform's, written {payload_mode: imaging,
+#     platform_mode: imaging}. Any names but slew, which the run gives the
+#     platform while the body turns, and unplanned. In the turn into an
+#     activity, the payload stays in the mode of the activity before. Add
+#     payload_mode_in_slew: this_activity to give it this activity's mode instead
 #   the constraint, optional: the illumination it expects. sunlit, penumbra,
 #     umbra, or eclipse for either of the last two
 #
@@ -119,9 +123,9 @@ slew:
 # stays on the station until it sets. The pass ends a few minutes before the
 # eclipse. Neither gap leaves time to turn to sun pointing and back.
 activities:
-  - [power generation, latitude 45 deg -2 min, sun pointing, idle, sunlit]
-  - [imaging 45 deg lat, latitude 45 deg +5 min, yaw steering, imaging, sunlit]
-  - [downlink Svalbard, Svalbard set + 2 min, track Svalbard, downlink]
-  - [nadir before eclipse, eclipse entry, nadir, idle, sunlit]
-  - [eclipse in nadir, eclipse exit, nadir, idle, eclipse]
+  - [power generation, latitude 45 deg -2 min, sun pointing, {payload_mode: idle, platform_mode: idle}, sunlit]
+  - [imaging 45 deg lat, latitude 45 deg +5 min, yaw steering, {payload_mode: imaging, platform_mode: imaging}, sunlit]
+  - [downlink Svalbard, Svalbard set + 2 min, track Svalbard, {payload_mode: downlink, platform_mode: ttc}]
+  - [nadir before eclipse, eclipse entry, nadir, {payload_mode: idle, platform_mode: idle}, sunlit]
+  - [eclipse in nadir, eclipse exit, nadir, {payload_mode: idle, platform_mode: idle}, eclipse]
 

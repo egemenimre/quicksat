@@ -71,14 +71,49 @@ def test_the_attitude_row_shows_the_slews(slew_run):
     assert table["slew [s]"].dropna().tolist() == pytest.approx(durations)
 
 
-def test_the_mode_row_shows_the_slews(slew_run):
-    # a slew takes the end of the activity before it, and the payload is not at
-    # its task then, so the mode row names the slew as the attitude row does
-    assert slew_run.mode.find(SLEW) == slew_run.attitude.find(SLEW)
-    modes = {activity.mode for activity in slew_run.scenario.activities}
-    assert set(slew_run.mode.values()) == modes | {SLEW}
-    # the occurrences keep their activity's mode
-    assert {occurrence.activity.mode for occurrence in slew_run.occurrences} == modes
+def test_the_platform_mode_row_shows_the_slews(slew_run):
+    # a slew takes the end of the activity before it: the platform's mode row
+    # names the slew as the attitude row does
+    platform = slew_run.mode["platform"]
+    assert platform.find(SLEW) == slew_run.attitude.find(SLEW)
+    activities = slew_run.scenario.activities
+    modes = {activity.mode.platform for activity in activities}
+    assert set(platform.values()) == modes | {SLEW}
+    # the occurrences keep their activity's modes
+    assert {o.activity.mode for o in slew_run.occurrences} == {
+        a.mode for a in activities
+    }
+
+
+def test_the_payload_mode_carries_on_through_the_slews(slew_run):
+    payload = slew_run.mode["payload"]
+    assert SLEW not in payload.values()
+    # through each turn, the payload stays in the mode of the activity it ends
+    for window in slew_run.slews:
+        before = slew_run.occurrences[window.into - 1].activity.mode.payload
+        assert set(payload[window.interval].values()) == {before}
+
+
+def test_an_activity_can_give_the_payload_its_own_mode_in_the_slew_into_it(data_dir):
+    # the imaging activity asks for its mode in the turn into it: the payload
+    # prepares there, and the other turns keep the mode of the activity before
+    text = (data_dir / "scenario.yaml").read_text()
+    text = text.replace(
+        "{payload_mode: imaging, platform_mode: imaging}",
+        "{payload_mode: imaging, platform_mode: imaging, "
+        "payload_mode_in_slew: this_activity}",
+    )
+    run = run_scenario(Scenario.from_yaml_text(text + SLEW_BLOCK, base_dir=data_dir))
+    payload, platform = run.mode["payload"], run.mode["platform"]
+    into_imaging = 0
+    for window in run.slews:
+        after = run.occurrences[window.into].activity
+        before = run.occurrences[window.into - 1].activity
+        expected = after if after.title == "imaging" else before
+        into_imaging += after.title == "imaging"
+        assert set(payload[window.interval].values()) == {expected.mode.payload}
+        assert set(platform[window.interval].values()) == {SLEW}
+    assert into_imaging
 
 
 def test_the_body_turns_no_faster_than_the_limit(slew_run):
@@ -88,7 +123,7 @@ def test_the_body_turns_no_faster_than_the_limit(slew_run):
 def test_without_slews_the_body_jumps(run):
     # the same scenario with instant changes: the body turns tens of degrees in a step
     assert run.slews == []
-    assert SLEW not in run.mode.values()
+    assert SLEW not in run.mode["platform"].values()
     assert run.activity_table["slew [s]"].isna().all()
     assert peak_rate(run) > Q_(5, "deg / s")
 
@@ -98,9 +133,9 @@ def test_a_slew_longer_than_the_activity_before_starts_early(data_dir):
     text = (data_dir / "scenario.yaml").read_text().split("activities:")[0]
     text += (
         "activities:\n"
-        "  - [sun before the eclipse, eclipse entry - 1 min, sun pointing, idle]\n"
-        "  - [last minute, eclipse entry, nadir, idle]\n"
-        "  - [eclipse, eclipse exit, sun pointing, idle]\n"
+        "  - [sun before the eclipse, eclipse entry - 1 min, sun pointing, {payload_mode: idle, platform_mode: idle}]\n"
+        "  - [last minute, eclipse entry, nadir, {payload_mode: idle, platform_mode: idle}]\n"
+        "  - [eclipse, eclipse exit, sun pointing, {payload_mode: idle, platform_mode: idle}]\n"
     ) + SLEW_BLOCK
     run = run_scenario(Scenario.from_yaml_text(text, base_dir=data_dir))
     flagged = [o for o in run.occurrences if SLEW_STARTS_EARLY in o.statuses]

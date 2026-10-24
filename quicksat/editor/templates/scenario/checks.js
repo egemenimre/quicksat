@@ -64,7 +64,7 @@ function runChecks() {
     checkPart("articulations", `articulation ${a.name}`, a.part);
     if (a.axis.slice(1) === a.point[0].slice(1)) add("articulations", `articulation ${a.name} turns about the axis it points, so the turn cannot move it`);
     if (!dirs.has(a.point[1])) add("articulations", `articulation ${a.name}: "${a.point[1]}" is not a direction or a target`);
-    for (const p of a.park) if (!parkModes().includes(p.mode)) add("articulations", `articulation ${a.name} parks in a mode the run never has: "${p.mode || "none"}"`);
+    for (const p of a.park) if (!parkModes().includes(p.mode)) add("articulations", `articulation ${a.name} parks in a mode the platform never has: "${p.mode || "none"}"`);
     if (a.range && !(a.range.min.v >= -180 && a.range.min.v < a.range.max.v && a.range.max.v <= 180)) add("articulations", `articulation ${a.name}: the range must rise within -180 to 180 deg`);
   }
 
@@ -114,8 +114,12 @@ function runChecks() {
     if (blank(s.max_rate) && blank(s.max_acceleration)) add("slew", "a slew needs the fastest rate, the acceleration, or both");
     for (const [key, label] of [["max_rate", "the fastest rate"], ["max_acceleration", "the acceleration"]]) if (!blank(s[key]) && !(s[key].v > 0)) add("slew", `${label} must be above zero`);
   }
-  if (S.modes.includes(SLEW)) add("modes", 'no mode can be called "slew": the run uses it while the body turns');
-  if (new Set(S.modes).size !== S.modes.length) add("modes", "two modes have the same name");
+  for (const group of GROUPS) {
+    const modes = S.modes[group];
+    if (modes.includes(SLEW)) add("modes", `no ${group} mode can be called "slew": the run gives the platform that mode while the body turns`);
+    if (modes.includes(UNPLANNED)) add("modes", `no ${group} mode can be called "unplanned"`);
+    if (new Set(modes).size !== modes.length) add("modes", `two ${group} modes have the same name`);
+  }
 
   // Activities
   if (!S.activities.length) add("activities", "there must be at least one activity");
@@ -123,9 +127,12 @@ function runChecks() {
     const n = i + 1;
     if (!a.title.trim()) add("activities", `activity ${n} has no title`);
     if (!attitudeNames().includes(a.attitude)) add("activities", `activity ${n}: no attitude "${a.attitude || "none"}"`);
-    if (!a.mode.trim()) add("activities", `activity ${n} has no mode`);
-    else if (a.mode === SLEW) add("activities", `activity ${n}: no mode can be called "slew"`);
-    else if (a.mode === UNPLANNED) add("activities", `activity ${n}: no mode can be called "unplanned"`);
+    for (const group of GROUPS) {
+      const mode = a.mode[group];
+      if (!mode.trim()) add("activities", `activity ${n} has no ${group} mode`);
+      else if (mode === SLEW) add("activities", `activity ${n}: no mode can be called "slew"`);
+      else if (mode === UNPLANNED) add("activities", `activity ${n}: no mode can be called "unplanned"`);
+    }
     if (a.end.kind === "duration" && !(a.end.value.v > 0)) add("activities", `activity ${n}: the duration must be above zero`);
     if (a.end.kind === "text") add("activities", `activity ${n}: the editor cannot read the trigger "${a.end.text}"; quicksat may`, "note");
     if (["rise", "set"].includes(a.end.kind) && !targetNames().includes(a.end.target)) add("activities", `activity ${n}: no target "${a.end.target || "none"}"`);
@@ -166,20 +173,29 @@ function runChecks() {
     }
     if (!blank(P.system_margin)) pct("conditioning", "the system margin", P.system_margin);
   }
-  if (project.hasConsumption) {
-    if (!project.consumption.length) add("consumption", "the table needs at least one equipment");
-    const ids = project.consumption.map((r) => r.id);
-    for (const id of new Set(ids.filter((id, i) => id && ids.indexOf(id) !== i))) add("consumption", `two rows have the id "${id}"`);
-    project.consumption.forEach((r, i) => {
+  // the power budget needs both consumption files, so one alone is flagged
+  if (project.hasPower && GROUPS.some((group) => project.hasConsumption[group])) {
+    for (const group of GROUPS) {
+      const kind = consumptionKind(group);
+      if (!project.hasConsumption[group]) add(kind, `the power budget needs ${project.names[kind]} too`);
+    }
+  }
+  for (const group of GROUPS.filter((g) => project.hasConsumption[g])) {
+    const section = consumptionKind(group);
+    const rows = project.consumption[group];
+    if (!rows.length) add(section, "the table needs at least one equipment");
+    const ids = rows.map((r) => r.id);
+    for (const id of new Set(ids.filter((id, i) => id && ids.indexOf(id) !== i))) add(section, `two rows have the id "${id}"`);
+    rows.forEach((r, i) => {
       const what = r.id || `row ${i + 1}`;
-      if (!r.id) add("consumption", `row ${i + 1} has no id`);
-      else if (/\s/.test(r.id)) add("consumption", `${what}: an id has no spaces`);
-      if (/\s/.test(r.subsystem)) add("consumption", `${what}: a subsystem has no spaces`);
-      const missing = consumptionModes().filter((m) => {
+      if (!r.id) add(section, `row ${i + 1} has no id`);
+      else if (/\s/.test(r.id)) add(section, `${what}: an id has no spaces`);
+      if (/\s/.test(r.subsystem)) add(section, `${what}: a subsystem has no spaces`);
+      const missing = consumptionModes(group).filter((m) => {
         const value = m === SLEW ? r.slew : r.power[m];
         return value === "" || value == null;
       });
-      if (missing.length) add("consumption", `${what}: no power for ${missing.join(", ")}`);
+      if (missing.length) add(section, `${what}: no power for ${missing.join(", ")}`);
     });
   }
 

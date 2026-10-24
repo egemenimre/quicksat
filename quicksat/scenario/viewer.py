@@ -37,7 +37,7 @@ same bytes, and the `id` stays the same.
 The Activity Designer shows the same page, with no 3D views, and the editor's
 server sends it with the data inside: see `designer_page`. Its data leaves out
 what only the 3D views and the Attitude page show, and the run may stop before
-its end. The attitude and mode tracks then give the rest as `unplanned`.
+its end. The attitude and both mode tracks then give the rest as `unplanned`.
 
 """
 
@@ -64,7 +64,7 @@ from quicksat.orbit.geometry import earth_rotations
 from quicksat.orbit.tle import Tle
 from quicksat.scenario.attitude import SlewWindow, attitude_names, body_rotations
 from quicksat.scenario.attitude_files import attitude_file_texts
-from quicksat.scenario.config import SLEW, UNPLANNED
+from quicksat.scenario.config import GROUPS, PAYLOAD, PLATFORM, SLEW, UNPLANNED
 from quicksat.scenario.plots import scenario_colours
 from quicksat.scenario.run import STATUS_OK, ScenarioRun
 from quicksat.scenario.spacecraft import node_index, read_glb_json
@@ -507,8 +507,10 @@ def scenario_data(run: ScenarioRun, designer: bool = False) -> dict:
     -------
     data : dict
         The fields of `scenario.js`. `grid` holds the values at each time step.
-        `tracks` holds the three rows of the Gantt chart, and `occurrences` the
-        activity table. `model` holds the spacecraft's 3D model and the angles
+        `tracks` holds the rows of the Gantt chart: the illumination, the
+        attitude, and the payload's and the platform's modes as `payload_mode`
+        and `platform_mode`. `occurrences` holds the activity table, with each
+        activity's `mode` as its `payload` and `platform`. `model` holds the spacecraft's 3D model and the angles
         of its articulations, or None. `targets`, `target_files` and `pointing`
         come from `_targets_data`. `warnings` holds every warning of the run,
         and `orbit_warnings` those on the orbits alone. `id` is the first 16 hex
@@ -543,7 +545,8 @@ def scenario_data(run: ScenarioRun, designer: bool = False) -> dict:
     for name, row in (
         ("illumination", run.illumination),
         ("attitude", _attitudes_between_slews(run)),
-        ("mode", run.mode),
+        ("payload_mode", run.mode[PAYLOAD]),
+        ("platform_mode", run.mode[PLATFORM]),
     ):
         pieces = [
             {
@@ -581,7 +584,7 @@ def scenario_data(run: ScenarioRun, designer: bool = False) -> dict:
                 "end_s": seconds(occurrence.end),
                 "trigger": activity.trigger.text,
                 "attitude": activity.attitude,
-                "mode": activity.mode,
+                "mode": {group: activity.mode[group] for group in GROUPS},
                 "constraint": activity.constraint,
                 "outside_s": (
                     None if outside is None else round(float(outside.to(u.s).value), 3)

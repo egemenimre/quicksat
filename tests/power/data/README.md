@@ -8,9 +8,9 @@ The folder also holds the inputs that the tests read:
 |---|---|
 | `six_faces_scenario.yaml`, `six_faces_power_system.yaml`, `sso_510km.tle` | The Orekit case as quicksat files: the orbit, nadir pointing for one day, and the six faces typed in, with no losses |
 | `scenario.yaml`, `power_system.yaml`, `spacecraft.glb` | One orbit with the power sample's model: turning wings, fixed deck cells, one typed-in panel, and the power sample's battery and conditioning |
-| `power_consumption.csv` | The power sample's loads, by mode |
+| `payload_consumption.csv`, `platform_consumption.csv` | The power sample's loads, by the payload's and the platform's modes |
 
-`spacecraft.glb` and `power_consumption.csv` are copies of the power sample's files in `sample/power/data/`.
+`spacecraft.glb` and the two consumption files are copies of the power sample's files in `sample/power/data/`.
 
 ## The Orekit case
 

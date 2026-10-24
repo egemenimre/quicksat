@@ -18,6 +18,7 @@ from astropy.units import Quantity
 from quicksat import Q_, u
 from quicksat.scenario.config import (
     Activity,
+    Modes,
     OrbitCount,
     Scenario,
     Slew,
@@ -25,6 +26,8 @@ from quicksat.scenario.config import (
     parse_trigger,
 )
 from quicksat.utils.intervals import TimeArray
+
+from .conftest import both
 
 BASE = {
     "orbit": {"tle_file": "sso_510km.tle"},
@@ -35,7 +38,7 @@ BASE = {
         "sun pointing": {"point": ["-z", "sun"], "constrain": ["-y", "orbit normal"]},
     },
     "activities": [
-        ["power generation", "eclipse entry", "sun pointing", "idle", "sunlit"]
+        ["power generation", "eclipse entry", "sun pointing", both("idle"), "sunlit"]
     ],
 }
 """A valid scenario, for each test to change one part of."""
@@ -161,19 +164,57 @@ def test_a_constraint_that_is_not_understood(text, message):
 
 
 def test_an_activity_has_a_title_and_four_or_five_fields():
-    four = Activity.from_fields([" downlink pass ", "10 min", "nadir", "downlink"])
-    five = Activity.from_fields(
-        ["downlink pass", "10 min", "nadir", "downlink", "sunlit"]
-    )
+    modes = {"payload_mode": " downlink ", "platform_mode": "ttc"}
+    four = Activity.from_fields([" downlink pass ", "10 min", "nadir", modes])
+    five = Activity.from_fields(["downlink pass", "10 min", "nadir", modes, "sunlit"])
     assert four.title == "downlink pass"
+    assert four.mode == Modes(payload="downlink", platform="ttc")
+    assert four.mode["platform"] == "ttc"
+    assert four.mode.payload_mode_in_slew == "prev_activity"
     assert four.constraint is None
     assert five.constraint == "sunlit"
     with pytest.raises(ValueError, match="four or five"):
         Activity.from_fields(["downlink pass", "10 min", "nadir"])
-    with pytest.raises(ValueError, match="mode must be text"):
-        Activity.from_fields(["downlink pass", "10 min", "nadir", " "])
     with pytest.raises(ValueError, match="title must be text"):
-        Activity.from_fields(["", "10 min", "nadir", "downlink"])
+        Activity.from_fields(["", "10 min", "nadir", modes])
+
+
+@pytest.mark.parametrize(
+    ("mode", "message"),
+    [
+        ("downlink", "must give the payload's and the platform's"),
+        (
+            {"payload_mode": "downlink"},
+            r"takes the keys \['payload_mode', 'platform_mode'\]",
+        ),
+        ({"payload": "a", "platform": "b"}, "takes the keys"),
+        ({**both("a"), "thermal_mode": "c"}, "takes the keys"),
+        ({"payload_mode_in_slew": "this_activity"}, "takes the keys"),
+        ({"payload_mode": "a", "platform_mode": " "}, "platform's mode must be text"),
+        ({"payload_mode": 3, "platform_mode": "b"}, "payload's mode must be text"),
+        ({"payload_mode": "slew", "platform_mode": "b"}, "no mode may be named 'slew'"),
+        (
+            {"payload_mode": "a", "platform_mode": "unplanned"},
+            "no mode may be named 'unplanned'",
+        ),
+        (
+            {**both("a"), "payload_mode_in_slew": "next_activity"},
+            "payload_mode_in_slew must be prev_activity or this_activity",
+        ),
+    ],
+)
+def test_an_activity_needs_both_modes(mode, message):
+    with pytest.raises(ValueError, match=message):
+        Activity.from_fields(["downlink pass", "10 min", "nadir", mode])
+
+
+@pytest.mark.parametrize("value", ["prev_activity", "this_activity"])
+def test_an_activity_says_which_mode_the_payload_is_in_during_the_slew_into_it(
+    value,
+):
+    modes = {**both("imaging"), "payload_mode_in_slew": value}
+    activity = Activity.from_fields(["imaging", "10 min", "nadir", modes])
+    assert activity.mode.payload_mode_in_slew == value
 
 
 # ---------------------------------------------------------------- The whole file
@@ -367,7 +408,7 @@ def test_a_target_rise_or_set_trigger(text, event, target, offset):
 
 
 def test_a_rise_or_set_must_name_a_defined_target():
-    activities = [["wait", "Svalbard rise", "nadir", "idle"]]
+    activities = [["wait", "Svalbard rise", "nadir", both("idle")]]
     with pytest.raises(
         ValueError, match="names the target 'Svalbard', which neither gnd_targets nor"
     ):
@@ -408,7 +449,7 @@ def test_a_satellite_target_reads_and_an_attitude_and_a_trigger_can_name_it():
         "inspector": {"trajectory_file": "inspector.oem"},
     }
     track = {"point": ["+z", "relay"], "constrain": ["-y", "orbit normal"]}
-    activities = [["link", "relay set", "track", "idle"]]
+    activities = [["link", "relay set", "track", both("idle")]]
     read = Scenario.from_yaml_text(
         yaml.safe_dump(
             BASE
@@ -513,7 +554,7 @@ def test_a_bad_attitude_stops_the_load(changes, message):
             "no attitude may be named 'slew'",
         ),
         (
-            {"activities": [["turn", "10 min", "nadir", "slew"]]},
+            {"activities": [["turn", "10 min", "nadir", both("slew")]]},
             "no mode may be named 'slew'",
         ),
         (
@@ -524,7 +565,7 @@ def test_a_bad_attitude_stops_the_load(changes, message):
             "no attitude may be named 'unplanned'",
         ),
         (
-            {"activities": [["wait", "10 min", "nadir", "unplanned"]]},
+            {"activities": [["wait", "10 min", "nadir", both("unplanned")]]},
             "no mode may be named 'unplanned'",
         ),
         (
@@ -556,7 +597,9 @@ def test_only_the_designer_reads_an_empty_list_of_activities(empty):
 
 
 def test_the_designer_keeps_the_other_checks_on_the_activities():
-    text = yaml.safe_dump(BASE | {"activities": [["a", "10 min", "nowhere", "idle"]]})
+    text = yaml.safe_dump(
+        BASE | {"activities": [["a", "10 min", "nowhere", both("idle")]]}
+    )
     with pytest.raises(ValueError, match="attitude 'nowhere' is not defined"):
         Scenario.from_yaml_text(text, designer=True)
     with pytest.raises(ValueError, match="a list of at least one activity"):
@@ -567,8 +610,8 @@ def test_the_designer_keeps_the_other_checks_on_the_activities():
 
 def test_a_wrong_activity_is_named_by_its_number():
     activities = [
-        ["a", "10 min", "nadir", "idle"],
-        ["b", "latitude 30", "nadir", "idle"],
+        ["a", "10 min", "nadir", both("idle")],
+        ["b", "latitude 30", "nadir", both("idle")],
     ]
     with pytest.raises(ValueError, match="activity 2: trigger 'latitude 30'"):
         scenario(activities=activities)
@@ -627,11 +670,11 @@ attitudes:
   nadir: {point: [+z, nadir], constrain: [-y, orbit normal], comments: Nadir.}
 slew: {max_rate: 0.7 deg/s, comments: The slews.}
 activities:
-  - [idle, 20 min, nadir, idle]
+  - [idle, 20 min, nadir, {payload_mode: idle, platform_mode: idle}]
   - title: downlink
     end: Svalbard set
     attitude: nadir
-    mode: downlink
+    mode: {payload_mode: downlink, platform_mode: ttc}
     comments: |-
       Two lines
       of comments.
@@ -657,14 +700,16 @@ def test_every_block_and_the_file_may_hold_comments():
 
 
 def test_an_activity_in_the_map_form_reads_as_in_the_list_form():
-    listed = scenario(activities=[["pass", "10 min", "nadir", "downlink", "sunlit"]])
+    listed = scenario(
+        activities=[["pass", "10 min", "nadir", both("downlink"), "sunlit"]]
+    )
     mapped = scenario(
         activities=[
             {
                 "title": "pass",
                 "end": "10 min",
                 "attitude": "nadir",
-                "mode": "downlink",
+                "mode": both("downlink"),
                 "constraint": "sunlit",
                 "comments": "On the station.",
             }
@@ -690,7 +735,7 @@ def test_an_activity_in_the_map_form_reads_as_in_the_list_form():
                 "title": "x",
                 "end": "10 min",
                 "attitude": "nadir",
-                "mode": "a",
+                "mode": both("a"),
                 "comments": [1],
             },
             "comments must be text",

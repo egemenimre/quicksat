@@ -23,7 +23,14 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 from quicksat import u
-from quicksat.scenario.config import SLEW, UNPLANNED, Scenario
+from quicksat.scenario.config import (
+    GROUPS,
+    PAYLOAD,
+    PLATFORM,
+    SLEW,
+    UNPLANNED,
+    Scenario,
+)
 from quicksat.scenario.run import NEGATIVE_DURATION, OUTSIDE_CONSTRAINT, ScenarioRun
 from quicksat.utils.intervals import TimeArray, labels_at
 from quicksat.utils.plot_helpers import (
@@ -59,8 +66,9 @@ def scenario_colours(scenario: Scenario) -> dict[str, str]:
 
     The illumination, `sunlit`, `penumbra` and `umbra`, has its own colours, one
     hue from light to dark, from `ILLUMINATION_COLOURS`. The attitudes, then the
-    modes in the order the activities name them, take the palette's colours in a
-    fixed order. A `slew` between attitudes is always grey, so it takes no colour
+    modes in the order the activities name them, the payload's before the
+    platform's, take the palette's colours in a fixed order. A name that both
+    groups use takes one colour. A `slew` between attitudes is always grey, so it takes no colour
     from the palette either. So is the `unplanned` time after the last activity,
     in a darker grey.
 
@@ -75,7 +83,9 @@ def scenario_colours(scenario: Scenario) -> dict[str, str]:
         The colour of each value, as a hex string
     """
     attitudes = list(scenario.attitudes)
-    modes = [activity.mode for activity in scenario.activities]
+    modes = [
+        activity.mode[group] for group in GROUPS for activity in scenario.activities
+    ]
     colours = value_colours([*attitudes, *modes])
     # the slew and the unplanned time sit after the attitudes, in the order the
     # legends show the values
@@ -156,8 +166,8 @@ def gantt_chart(  # noqa: V103
     run: ScenarioRun, colours: dict[str, str] | None = None, ax: Axes | None = None
 ) -> Axes:
     """
-    The illumination, the attitude, the activity and the mode against time, as a
-    Gantt chart.
+    The illumination, the attitude, the activity, and the payload's and the
+    platform's modes against time, as a Gantt chart.
 
     Each row is drawn in one call to `broken_barh`. A bar carries its value as a
     label when it is wide enough. The activity row names each occurrence by its
@@ -182,7 +192,7 @@ def gantt_chart(  # noqa: V103
     """
     colours = colours or scenario_colours(run.scenario)
     if ax is None:
-        _, ax = plt.subplots(figsize=(10, 4.2))
+        _, ax = plt.subplots(figsize=(10, 5))
     start: TimeArray = run.times[0]
 
     def minutes(time: TimeArray) -> float:
@@ -205,7 +215,8 @@ def gantt_chart(  # noqa: V103
     ]
     # from the bottom up, so that the illumination is the top row
     rows = {
-        "mode": pieces_of(run.mode),
+        "platform mode": pieces_of(run.mode[PLATFORM]),
+        "payload mode": pieces_of(run.mode[PAYLOAD]),
         "activity": titles,
         "attitude": pieces_of(run.attitude),
         "illumination": pieces_of(run.illumination),
@@ -261,7 +272,7 @@ def gantt_chart(  # noqa: V103
         xlim=(0, span),
         ylim=(-0.6, len(rows) - 0.4),
         xlabel="Minutes from the start of the run",
-        title="Illumination, attitude, activity and mode",
+        title="Illumination, attitude, activity and modes",
     )
     shown = {
         value
@@ -314,7 +325,7 @@ def ground_track_map(  # noqa: V103
     run : ScenarioRun
         The run to draw
     row : portion.IntervalDict
-        The Gantt row that colours the track, such as `run.mode`
+        The Gantt row that colours the track, such as `run.mode["payload"]`
     title : str
         Title of the map
     colours : dict, optional

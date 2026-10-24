@@ -11,7 +11,8 @@ its own axes toward a direction: the sun for a wing, or a ground station for an
 antenna. The direction is one an attitude can use. At each time of the run's
 grid, its angle is one of two:
 
-- In a mode that its `park` names, the park angle.
+- In a platform mode that its `park` names, the park angle. The drives are
+  platform equipment, so the payload's mode does not park them.
 - Otherwise the tracking angle. The direction, in body axes, loses its part
   along the drive axis, and the part's pointing axis turns onto what is left.
   The angle is then clamped to the range.
@@ -37,7 +38,7 @@ from astropy.units import Quantity
 from quicksat import Q_, u
 from quicksat.orbit.attitude import axis_vector
 from quicksat.scenario.attitude import body_rotations, directions
-from quicksat.scenario.config import SUN
+from quicksat.scenario.config import PLATFORM, SUN
 from quicksat.utils.intervals import labels_at
 
 if TYPE_CHECKING:  # a type annotation only, as run.py imports this module
@@ -126,14 +127,17 @@ def clamp_to_range(angles: np.ndarray, low: float, high: float) -> np.ndarray:
     return np.where(outside, nearer, angles)
 
 
-def grid_modes(run: "ScenarioRun") -> np.ndarray:
+def grid_modes(run: "ScenarioRun", group: str) -> np.ndarray:
     """
-    The mode at each time of the run's grid, `slew` included.
+    The payload's or the platform's mode at each time of the run's grid, the
+    platform's `slew` included.
 
     Parameters
     ----------
     run : ScenarioRun
         The run
+    group : str
+        `payload` or `platform`
 
     Returns
     -------
@@ -146,9 +150,9 @@ def grid_modes(run: "ScenarioRun") -> np.ndarray:
         If part of the run is unplanned: see `ScenarioRun.unplanned`
     """
     run.check_planned("the modes on the grid")
-    modes = labels_at(run.mode, run.times)
+    modes = labels_at(run.mode[group], run.times)
     # the run is open at its end, so the last time takes the last activity's mode
-    modes[-1] = run.occurrences[-1].activity.mode
+    modes[-1] = run.occurrences[-1].activity.mode[group]
     return modes
 
 
@@ -179,7 +183,7 @@ def articulation_angles(run: "ScenarioRun") -> dict[str, Quantity]:
         return {}
     run.check_planned("the articulations' angles")
     targets = _body_directions(run, {a.point[1] for a in model.articulations.values()})
-    modes = grid_modes(run)
+    modes = grid_modes(run, PLATFORM)
 
     angles = {}
     for name, articulation in model.articulations.items():

@@ -62,10 +62,11 @@ def test_the_illumination_runs_from_light_to_dark_and_leaves_the_palette(run):
     assert colours["nadir"] == PALETTE[0]
 
 
-def test_the_gantt_chart_has_four_rows_and_no_problem_marks(run):
+def test_the_gantt_chart_has_five_rows_and_no_problem_marks(run):
     ax = gantt_chart(run)
     assert [label.get_text() for label in ax.get_yticklabels()] == [
-        "mode",
+        "platform mode",
+        "payload mode",
         "activity",
         "attitude",
         "illumination",
@@ -77,8 +78,8 @@ def test_the_gantt_chart_has_four_rows_and_no_problem_marks(run):
 
 def test_the_activity_row_names_each_occurrence_by_its_title(run):
     ax = gantt_chart(run)
-    # the activity row is the second from the bottom, at y = 1
-    labels = {text.get_text() for text in ax.texts if text.get_position()[1] == 1}
+    # the activity row is the third from the bottom, at y = 2
+    labels = {text.get_text() for text in ax.texts if text.get_position()[1] == 2}
     titles = {occurrence.activity.title for occurrence in run.occurrences}
     assert labels
     # each label is a title, or one shortened with an ellipsis
@@ -99,7 +100,7 @@ def test_the_gantt_chart_marks_each_kind_of_problem(problem_run):
 
 
 def test_the_ground_track_map_spans_the_earth(run):
-    ax = ground_track_map(run, run.mode, "By mode")
+    ax = ground_track_map(run, run.mode["payload"], "By the payload's mode")
     assert ax.get_xlim() == (-180, 180)
     assert ax.get_ylim() == (-90, 90)
     labels = legend_labels(ax)

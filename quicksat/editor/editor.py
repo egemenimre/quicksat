@@ -7,15 +7,16 @@
 The editor: a web page that fills in and edits a folder of input files.
 
 The folder holds a scenario file and, if it is a power folder, a power system
-file and a consumption file, with the 3D model and any orbit file they name.
+file and the payload's and the platform's consumption files, with the 3D model
+and any orbit file they name.
 `write_editor` writes one page for it. The page opens from disk with a
 double-click, and needs no Python and no server. `quicksat.editor.server` can
 also serve the page from this computer. Its page then has a button that runs the
 files and writes the viewer.
 
 The page holds the folder's files inside itself. Python reads them here and
-passes them to the page as JSON: each YAML file as YAML reads it, the CSV as rows
-of text, the 3D model in base64, and an orbit file as text. The page turns them
+passes them to the page as JSON: each YAML file as YAML reads it, each CSV as
+rows of text, the 3D model in base64, and an orbit file as text. The page turns them
 into its own fields. The user can also open another folder, or one file, in the
 page, which reads them in the same form. When the user saves, the page writes
 the files again, as downloads: one by one, or as a zip.
@@ -42,7 +43,7 @@ from pathlib import Path
 
 import yaml
 
-from quicksat.power import CONSUMPTION_FILE, POWER_FILE
+from quicksat.power import CONSUMPTION_FILES, POWER_FILE
 from quicksat.scenario import SCENARIO_FILE
 
 FORMAT = "quicksat-editor"
@@ -369,11 +370,55 @@ def _referenced(folder: Path, name) -> Path | None:
     return path if path.is_file() else None
 
 
+def _power_files(
+    folder: Path, power_file: str, consumption_files: dict[str, str]
+) -> tuple[dict, list[dict]]:
+    """
+    The power system file and the consumption files, as the page takes them.
+
+    Parameters
+    ----------
+    folder : Path
+        The folder that holds the files
+    power_file : str
+        The power system file's name
+    consumption_files : dict of str to str
+        The consumption files' names, by the group's name
+
+    Returns
+    -------
+    files : dict
+        `power`, and `payload_consumption` and `platform_consumption`, each None
+        when missing
+    checks : list of dict
+        What quicksat's loaders said of each file there
+    """
+    from quicksat.power.config import PowerSystem
+    from quicksat.power.consumption import PowerConsumption
+
+    files, checks = {"power": None}, []
+    power_path = folder / power_file
+    if power_path.is_file():
+        files["power"] = _yaml_file(power_path)
+        checks.append(
+            _check(power_path.name, lambda: PowerSystem.from_yaml_file(power_path))
+        )
+    for group, name in consumption_files.items():
+        path = folder / name
+        files[f"{group}_consumption"] = None
+        if path.is_file():
+            files[f"{group}_consumption"] = _csv_file(path)
+            checks.append(
+                _check(path.name, lambda path=path: PowerConsumption.from_csv(path))
+            )
+    return files, checks
+
+
 def editor_data(
     folder: str | Path,
     scenario_file: str = SCENARIO_FILE,
     power_file: str = POWER_FILE,
-    consumption_file: str = CONSUMPTION_FILE,
+    consumption_files: dict[str, str] = CONSUMPTION_FILES,
 ) -> dict:
     """
     Everything the page needs from a folder of input files.
@@ -384,9 +429,11 @@ def editor_data(
         The folder that holds the files
     scenario_file : str, optional
         The scenario file's name. It must exist.
-    power_file, consumption_file : str, optional
-        The power system file's and the consumption file's names. Either may be
-        missing, as in a scenario folder.
+    power_file : str, optional
+        The power system file's name. It may be missing, as in a scenario folder.
+    consumption_files : dict of str to str, optional
+        The consumption files' names, by the group's name, `payload` and
+        `platform`. Either may be missing, as in a scenario folder.
 
     Returns
     -------
@@ -394,7 +441,8 @@ def editor_data(
         `format`, `version` and `folder`, the folder's name. `label`, the
         folder as given when relative, such as `sample/power/data`, and its name
         otherwise, so that no local path goes into the page. `files`, with
-        `scenario`, `power` and `consumption`, each None when missing. `model`,
+        `scenario`, `power`, `payload_consumption` and `platform_consumption`,
+        each None when missing. `model`,
         the 3D model in base64, and `orbit_file`, an orbit file as text, each
         None without one. `target_files`, the files that the satellite targets
         name, as text, once each, each with its `name` as the scenario gives it.
@@ -406,8 +454,6 @@ def editor_data(
         If there is no scenario file
     """
     # here, so that the editor's imports stay light for the page alone
-    from quicksat.power.config import PowerSystem
-    from quicksat.power.consumption import PowerConsumption
     from quicksat.scenario.config import Scenario
 
     folder = Path(folder)
@@ -420,24 +466,8 @@ def editor_data(
     ]
     raw = scenario["data"] if isinstance(scenario["data"], dict) else {}
 
-    power = None
-    power_path = folder / power_file
-    if power_path.is_file():
-        power = _yaml_file(power_path)
-        checks.append(
-            _check(power_path.name, lambda: PowerSystem.from_yaml_file(power_path))
-        )
-
-    consumption = None
-    consumption_path = folder / consumption_file
-    if consumption_path.is_file():
-        consumption = _csv_file(consumption_path)
-        checks.append(
-            _check(
-                consumption_path.name,
-                lambda: PowerConsumption.from_csv(consumption_path),
-            )
-        )
+    power_files, power_checks = _power_files(folder, power_file, consumption_files)
+    checks += power_checks
 
     spacecraft = raw.get("3d_model")
     spacecraft = spacecraft.get("file") if isinstance(spacecraft, dict) else spacecraft
@@ -471,7 +501,7 @@ def editor_data(
         "version": VERSION,
         "folder": folder.resolve().name,
         "label": folder.as_posix() if not folder.is_absolute() else folder.name,
-        "files": {"scenario": scenario, "power": power, "consumption": consumption},
+        "files": {"scenario": scenario, **power_files},
         "model": model,
         "orbit_file": orbit_file,
         "target_files": [
@@ -643,7 +673,7 @@ def write_editor(
     output: str | Path,
     scenario_file: str = SCENARIO_FILE,
     power_file: str = POWER_FILE,
-    consumption_file: str = CONSUMPTION_FILE,
+    consumption_files: dict[str, str] = CONSUMPTION_FILES,
 ) -> Path:
     """
     Write the editor page for a folder of input files.
@@ -657,7 +687,7 @@ def write_editor(
         The folder that holds the input files
     output : str | Path
         The folder to write the page in. It is made if it does not exist.
-    scenario_file, power_file, consumption_file : str, optional
+    scenario_file, power_file, consumption_files : optional
         The files' names, if not the usual ones. See `editor_data`.
 
     Returns
@@ -665,7 +695,7 @@ def write_editor(
     page : Path
         The page written. Double-click it to open the editor.
     """
-    data = editor_data(folder, scenario_file, power_file, consumption_file)
+    data = editor_data(folder, scenario_file, power_file, consumption_files)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     page = output / PAGE_FILE

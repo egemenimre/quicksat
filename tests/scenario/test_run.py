@@ -45,7 +45,7 @@ from quicksat.scenario.run import (
 from quicksat.scenario.viewer import scenario_data
 from quicksat.utils.intervals import labels_at, round_time
 
-from .conftest import SLOW
+from .conftest import SLOW, both
 
 T0 = round_time(Time("2026-10-01T00:00:00", scale="utc"))
 RUN = P.closedopen(T0, round_time(T0 + Q_(100, "min")))
@@ -77,11 +77,13 @@ and going south at 40 min. No other latitude is ever reached."""
 def resolve(*fields, repeat=True):
     """
     Resolve a list of activities on the made-up run, each given as its fields
-    after the title. Each takes its number as its title. Without `repeat`, the
-    list runs once.
+    after the title, with one mode for both the payload and the platform. Each
+    takes its number as its title. Without `repeat`, the list runs once.
     """
     activities = [
-        Activity.from_fields([f"activity {number}", *activity])
+        Activity.from_fields(
+            [f"activity {number}", *activity[:2], both(activity[2]), *activity[3:]]
+        )
         for number, activity in enumerate(fields, start=1)
     ]
 
@@ -275,7 +277,7 @@ def test_the_time_above_a_latitude_is_found_once_for_all_directions():
         return ABOVE[30.0]
 
     activities = [
-        Activity.from_fields(["a", trigger, "nadir", "a"])
+        Activity.from_fields(["a", trigger, "nadir", both("a")])
         for trigger in (
             "latitude 30 deg ascending",
             "latitude 30 deg",
@@ -311,8 +313,9 @@ def test_the_grid_ends_exactly_at_the_end_of_the_run(run):
 
 
 def test_the_gantt_rows_cover_the_run(run):
-    for row in (run.illumination, run.attitude, run.mode):
+    for row in (run.illumination, run.attitude, *run.mode.values()):
         assert row.domain() == run.interval
+    assert list(run.mode) == ["payload", "platform"]
     assert run.eclipses | run.sunlit == run.interval
     assert (run.eclipses & run.sunlit).empty
 
@@ -339,8 +342,8 @@ def test_the_light_follows_the_illumination(run):
 def test_the_umbra_triggers_on_the_orbit(data_dir):
     text = (data_dir / "scenario.yaml").read_text().split("activities:")[0]
     text += (
-        "activities:\n  - [to the umbra, umbra entry, nadir, idle]\n"
-        "  - [umbra, umbra exit, nadir, idle]\n"
+        "activities:\n  - [to the umbra, umbra entry, nadir, {payload_mode: idle, platform_mode: idle}]\n"
+        "  - [umbra, umbra exit, nadir, {payload_mode: idle, platform_mode: idle}]\n"
     )
     run = run_scenario(Scenario.from_yaml_text(text, base_dir=data_dir))
     edges = [o.end for o in run.occurrences if not o.cut_at_end]
@@ -437,7 +440,8 @@ def test_the_activity_table_has_a_row_per_occurrence(run):
         "trigger",
         "attitude",
         "slew [s]",
-        "mode",
+        "payload mode",
+        "platform mode",
         "constraint",
         "outside [s]",
         "status",
@@ -499,8 +503,8 @@ attitudes:
   nadir: {point: [+z, nadir], constrain: [-y, orbit normal]}
   track Svalbard: {point: [+z, Svalbard], constrain: [-y, orbit normal]}
 activities:
-  - [wait for Svalbard, Svalbard rise, nadir, idle]
-  - [downlink Svalbard, Svalbard set, track Svalbard, downlink]
+  - [wait for Svalbard, Svalbard rise, nadir, {payload_mode: idle, platform_mode: idle}]
+  - [downlink Svalbard, Svalbard set, track Svalbard, {payload_mode: downlink, platform_mode: downlink}]
 """
 """Three orbits that wait for each Svalbard pass, and track it."""
 
@@ -517,7 +521,7 @@ def test_a_pass_runs_from_the_rise_to_the_set_at_the_minimum_elevation(pass_run)
     passes = [
         o
         for o in pass_run.occurrences
-        if o.activity.mode == "downlink" and not o.cut_at_end
+        if o.activity.mode.payload == "downlink" and not o.cut_at_end
     ]
     assert len(passes) >= 2
     for occurrence in passes:
@@ -531,7 +535,7 @@ def test_a_pass_runs_from_the_rise_to_the_set_at_the_minimum_elevation(pass_run)
 
 
 def test_a_target_that_never_rises_never_ends_the_activity(data_dir):
-    text = PASSES.replace("Svalbard rise, nadir, idle]", "Overhead rise, nadir, idle]")
+    text = PASSES.replace("Svalbard rise, nadir,", "Overhead rise, nadir,")
     run = run_scenario(Scenario.from_yaml_text(text, data_dir))
     assert len(run.occurrences) == 1
     assert run.occurrences[0].statuses == [EVENT_NEVER_CAME]
@@ -568,9 +572,10 @@ def test_one_pass_leaves_the_rest_of_the_run_unplanned(once_run):
     assert end < once_run.interval.upper
     assert once_run.unplanned == P.closedopen(end, once_run.interval.upper)
     # the rows still cover the run, the unplanned time included
-    for row in (once_run.illumination, once_run.attitude, once_run.mode):
+    for row in (once_run.illumination, once_run.attitude, *once_run.mode.values()):
         assert row.domain() == once_run.interval
-    assert once_run.mode.find(UNPLANNED) == once_run.unplanned
+    for row in once_run.mode.values():
+        assert row.find(UNPLANNED) == once_run.unplanned
 
 
 def test_one_pass_takes_as_long_with_repeats_or_without(once_run, run):
@@ -640,7 +645,9 @@ def test_an_empty_list_leaves_the_whole_run_unplanned(data_dir, repeat):
     assert run.occurrences == []
     assert run.slews == []
     assert run.unplanned == run.interval
-    assert set(run.attitude.values()) == set(run.mode.values()) == {UNPLANNED}
+    assert set(run.attitude.values()) == {UNPLANNED}
+    for row in run.mode.values():
+        assert set(row.values()) == {UNPLANNED}
     assert np.isnan(body_rotations(run)).all()
     assert run.rate_excesses == []
     assert run.warnings == []

@@ -273,7 +273,7 @@ const view3d = (() => {
       const a = selection.item;
       const attitude = S.attitudes.items.find((x) => x.name === a.attitude);
       if (attitude) attitudeArrows(attitude);
-      text = `Activity <b>${escapeHtml(a.title || "with no title")}</b>: ${escapeHtml(a.attitude)}, mode ${escapeHtml(a.mode)}, until <b>${escapeHtml(triggerText(a.end))}</b>.`;
+      text = `Activity <b>${escapeHtml(a.title || "with no title")}</b>: ${escapeHtml(a.attitude)}, payload ${escapeHtml(a.mode.payload)}, platform ${escapeHtml(a.mode.platform)}, until <b>${escapeHtml(triggerText(a.end))}</b>.`;
     }
     $("#readout").innerHTML = text;
     if (selection && selection.kind === "part") drawParts();

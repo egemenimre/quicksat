@@ -6,6 +6,32 @@ Newest first. When a decision replaces an earlier one, the earlier one is kept i
 
 ---
 
+## 24. The payload and the platform each have a mode
+
+**2026-10-24. Implemented. Changes 12: a slew is now a platform mode only.**
+
+Each activity names two modes: the payload's, and the mode of the platform that carries it, written `{payload_mode: imaging, platform_mode: imaging}`. Before, it named one mode for the whole spacecraft. A slew then replaced that mode, so a payload file transfer stopped during the turn, though it does not depend on the attitude.
+
+**Four levels were weighed:** one mode for the spacecraft, as before; one for the payload and one for the platform; one for each subsystem; and one for each piece of equipment. The subsystem level was set aside. No example showed subsystems of one group changing on schedules of their own. The cases that do overlap fall elsewhere: the TT&C pass against the payload's data dump, imaging while dumping, and a second instrument. The CSV's subsystems do not match them either, since COMM holds both the S-band and the X-band transmitters. The equipment level is finer still.
+
+**A row that draws power during an event was set aside.** A consumption row could have named an event, such as an eclipse, a station in view or a slew, and drawn its power only then. That covers the heaters, the TT&C passes and the slews with no new mode. The user found it too complex.
+
+**Two consumption files.** `payload_consumption.csv` and `platform_consumption.csv` each keep the old format, with their own mode columns. One shared file would need a power for every row in the other group's modes, or empty cells, and names such as `payload idle` to keep the two groups' modes apart. The user chooses which equipment goes in which file. The samples put the mass memory and the X-band transmitter with the payload, as ESA's payload data handling and transmission does.
+
+**One activity list.** Each activity sets both modes. Two lists, one for each group, were set aside. Imaging needs its attitude, so both lists would end at the same events. The cost is that a TT&C pass during imaging still splits the imaging activity.
+
+**The user sets both modes.** Nothing ties a payload mode to a platform mode. Platform equipment that changes with the payload's work takes a platform mode of its own. In the samples, the platform's `imaging` mode parks the solar wings and holds the wheels steadier while the payload images.
+
+**A slew replaces only the platform's mode.** So only the platform's file needs a `slew` column. Entry 12 said: "During each slew, the run's mode row says `slew`, as its attitude row does. The slew takes the end of the activity before it, so the payload is not at its task then."
+
+**Each activity chooses the payload's mode in the slew into it.** `payload_mode_in_slew: prev_activity`, the default, keeps the mode of the activity before. A data transfer after imaging then carries on while the body turns back to nadir. `payload_mode_in_slew: this_activity` gives the payload the activity's own mode for the whole turn, so that the imager can prepare before imaging. The choice sits on the activity after the slew, because the run ties each slew to the activity it turns into. So each slew has one choice, and two activities cannot ask for opposite things. One payload mode for every slew, set in the `slew` block, was set aside: it could not tell a transfer that carries on from an imager that prepares.
+
+**The keys name the modes.** The mode map is written `{payload_mode: imaging, platform_mode: imaging, payload_mode_in_slew: this_activity}`, not `{payload: imaging, platform: imaging}`. The longer keys say that each value is a mode, and the three keys start the same way.
+
+**The park angles go by the platform's mode,** since the drives are platform equipment. A park angle that names a mode only the payload has is refused, as a misspelt mode is.
+
+---
+
 ## 23. The Budgets tab exports an Excel workbook, written by the page
 
 **2026-10-24. Implemented. Changes 22: each number also comes in full.**
@@ -195,7 +221,7 @@ The page was chosen over three other ways to give it the files:
 
 So the page checks only names, units and ranges. When Python writes the page, it also reads the files with quicksat's own loaders, and the page shows what they said. A run is still needed for the full checks.
 
-**One folder, one page.** A scenario folder and a power folder each get their own page, as each domain keeps its own files (entry 9). A power folder's page edits the scenario, the power system and the consumption together. The sizing files will get a page of their own, because their reference orbit is not the scenario's orbit, and one page would invite the user to think they are linked.
+**One folder, one page.** A scenario folder and a power folder each get their own page, as each domain keeps its own files (entry 9). A power folder's page edits the scenario, the power system and the consumption files together. The sizing files will get a page of their own, because their reference orbit is not the scenario's orbit, and one page would invite the user to think they are linked.
 
 **Extended on 2026-10-16: the help in one file per domain.** The page's information boxes and the `#` help lines it writes into saved files were two copies in the page's scripts. They now sit in `quicksat/editor/help/`: `scenario.yaml`, `power.yaml` and `sizing.yaml`. Each key holds a step's title and information box, the help written above a key of the file, or both. Python puts the files of a page's domains inside the page as JSON. The reference notebooks stay the full explanation. Whether pydantic's field descriptions should also come from these files is left open.
 
@@ -227,7 +253,7 @@ Since a section's notes sit under the key `comments`, no item may take that name
 
 1. **Up to the array's output:** `loss_factor` in the power system file. It takes the cells' temperature, ageing, mismatch between cells, UV and the array's own wiring, set for the year being sized. There is no loss per year and no temperature model: the user sets the factor.
 2. **The power conditioning:** one efficiency for each path the energy takes after that. From the array to the bus, into the battery, out of the battery, and from the bus to the loads.
-3. **Fixed overheads, as loads:** the power unit's own electronics and the heaters are rows of the consumption file.
+3. **Fixed overheads, as loads:** the power unit's own electronics and the heaters are rows of the consumption files.
 
 The reason is that energy routed through the battery pays both its paths, about 10%, and the rest does not. One efficiency for the whole system would hide that, and would understate a long eclipse. The split also keeps each loss in the file of the person who knows it.
 
@@ -235,7 +261,7 @@ The reason is that energy routed through the battery pays both its paths, about 
 
 **Each orbit must have energy to spare.** The budget checks that the battery's charge stays above its limit, and that each whole orbit has a margin of zero or more. The margin counts the energy that a full battery could not take as if it had taken it. So it does not depend on where in the orbit the window starts, nor on how full the battery is. The charge limit alone is not enough: a run that starts full can stay above it for a few orbits while losing energy every orbit.
 
-**A slew is a mode of its own.** During each slew, the run's mode row says `slew`, as its attitude row does. The slew takes the end of the activity before it, so the payload is not at its task then. The consumption file then gives the slew its own column, which the user fills: it is never assumed to equal another mode. `slew` is a reserved mode name. The alternative, a `slew` column that overrides the mode for some equipment only, was dropped as harder to read.
+**A slew is a mode of its own.** Changed by entry 24: a slew is now a platform mode only, and each activity chooses the payload's mode in the slew into it. During each slew, the run's mode row says `slew`, as its attitude row does. The slew takes the end of the activity before it, so the payload is not at its task then. The consumption file then gives the slew its own column, which the user fills: it is never assumed to equal another mode. `slew` is a reserved mode name. The alternative, a `slew` column that overrides the mode for some equipment only, was dropped as harder to read.
 
 ---
 
@@ -263,7 +289,7 @@ Entry 9 first gave each panel a named face, such as `+x`. The model replaced tha
 
 A third domain, `scenario`, sits next to `sizing` and `power`. It follows the layout in entry 9: `sample/scenario/`, `docs/scenario/`, `tests/scenario/` and `docs/guides/scenario/`, with the code in `quicksat/scenario/`.
 
-The scenario holds the orbit, the start time, the duration and a list of activities. Each activity has an end trigger, an attitude, a mode and an optional constraint. The scenario file is `scenario.yaml`. The scenario notebook checks the activities against the orbit, for example their eclipse constraints.
+The scenario holds the orbit, the start time, the duration and a list of activities. Each activity has an end trigger, an attitude, a mode and an optional constraint. Entry 24 gave it two modes, the payload's and the platform's. The scenario file is `scenario.yaml`. The scenario notebook checks the activities against the orbit, for example their eclipse constraints.
 
 **The dependency runs one way.** The scenario imports nothing from power. Power imports the scenario. The workflow follows from that:
 

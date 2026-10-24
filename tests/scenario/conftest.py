@@ -33,6 +33,12 @@ from quicksat.scenario.config import Scenario  # noqa: E402
 from quicksat.scenario.run import ScenarioRun, run_scenario  # noqa: E402
 
 
+def both(mode: str) -> dict[str, str]:
+    """An activity's modes, written as the file writes them, with the payload and
+    the platform in the same mode."""
+    return {"payload_mode": mode, "platform_mode": mode}
+
+
 @pytest.fixture(scope="session")
 def data_dir() -> Path:
     """The directory holding the scenario test data.

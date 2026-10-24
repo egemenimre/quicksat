@@ -44,6 +44,7 @@ from quicksat import u
 from quicksat.orbit.attitude import quaternions
 from quicksat.scenario.articulation import grid_modes
 from quicksat.scenario.attitude import attitude_names, body_rotations
+from quicksat.scenario.config import PLATFORM
 from quicksat.scenario.run import ScenarioRun
 
 ATTITUDE_FILE = "attitude.ecsv"
@@ -179,7 +180,7 @@ def articulation_tables(run: ScenarioRun) -> dict[str, Table]:
     if model is None or not model.articulations:
         return {}
     meta, seconds = _header(run)
-    modes = grid_modes(run)
+    modes = grid_modes(run, PLATFORM)
     tables = {}
     for name, articulation in model.articulations.items():
         about = {
@@ -215,7 +216,7 @@ def articulation_tables(run: ScenarioRun) -> dict[str, Table]:
                 Column(
                     np.isin(modes, list(articulation.park)),
                     name="parked",
-                    description="Held at the park angle of its mode",
+                    description="Held at the park angle of the platform's mode",
                 ),
             ],
             meta=meta | about,

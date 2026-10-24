@@ -271,7 +271,7 @@ def test_the_designer_data_keeps_the_rates_for_the_turn_rate_bands(design, once_
 
 def test_the_designer_tracks_end_in_the_unplanned_time(design):
     end = design["grid"]["t_s"][-1]
-    for name in ("attitude", "mode"):
+    for name in ("attitude", "payload_mode", "platform_mode"):
         pieces = design["tracks"][name]
         assert pieces[-1] == {
             "value": UNPLANNED,

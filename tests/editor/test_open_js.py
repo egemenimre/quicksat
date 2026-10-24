@@ -47,7 +47,7 @@ AWKWARD = {
     "lists": (
         "activities:\n"
         "# the first\n"
-        "- [a, 10 min, nadir, idle]\n"
+        "- [a, 10 min, nadir, {payload_mode: idle, platform_mode: idle}]\n"
         "- title: b\n"
         "  # its trigger\n"
         "  end: 10 min\n"

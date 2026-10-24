@@ -100,12 +100,17 @@ function scenarioYaml() {
   helpLines(lines, 0, "activities");
   lines.push("activities:");
   for (const a of S.activities) {
-    const fields = [a.title, triggerText(a.end), a.attitude, a.mode, a.constraint].filter((f) => f !== "").map(ys);
+    // the modes as one mapping: {payload_mode: imaging, platform_mode: imaging}, and the
+    // payload's mode in the slew into the activity where it is not the default
+    const pairs = GROUPS.map((group) => [MODE_KEYS[group], a.mode[group] === "" ? "" : ys(a.mode[group])]);
+    if (a.mode.in_slew !== PREV_ACTIVITY) pairs.push([IN_SLEW, a.mode.in_slew]);
+    const modes = flowMap(pairs);
+    const fields = [...[a.title, triggerText(a.end), a.attitude].filter((f) => f !== "").map(ys), modes, ...(a.constraint ? [ys(a.constraint)] : [])];
     if (!a.comments.trim()) { lines.push(`  - [${fields.join(", ")}]`); continue; }
     lines.push(`  - title: ${ys(a.title)}`);
     lines.push(`    end: ${ys(triggerText(a.end))}`);
     lines.push(`    attitude: ${ys(a.attitude)}`);
-    lines.push(`    mode: ${ys(a.mode)}`);
+    lines.push(`    mode: ${modes}`);
     if (a.constraint) lines.push(`    constraint: ${a.constraint}`);
     commentsLines(lines, 4, a.comments);
   }
@@ -176,11 +181,11 @@ function powerYaml() {
   return lines.join("\n") + "\n";
 }
 
-function consumptionCsv() {
-  const modes = consumptionModes();
+function consumptionCsv(group) {
+  const modes = consumptionModes(group);
   const lines = [["equipment_id", "equipment_name", "subsystem", "units_on", "eqpt_margin", ...modes, "comments"].map(csvCell).join(",")];
   const watts = (v) => (v === "" || v == null ? "" : `${v} W`);
-  for (const r of project.consumption) {
+  for (const r of project.consumption[group]) {
     const power = modes.map((m) => watts(m === SLEW ? r.slew : r.power[m]));
     lines.push([r.id, r.name, r.subsystem, r.units, r.margin, ...power, r.comments].map(csvCell).join(","));
   }
@@ -215,6 +220,9 @@ function projectFiles() {
     files.push({ kind: targetKind(name), path, text: targetFiles.get(name), note: note || "a satellite target's file" });
   }
   if (project.hasPower) files.push({ kind: "power", path: project.names.power, text: powerYaml() });
-  if (project.hasConsumption) files.push({ kind: "consumption", path: project.names.consumption, text: consumptionCsv() });
+  for (const group of GROUPS) {
+    const kind = consumptionKind(group);
+    if (project.hasConsumption[group]) files.push({ kind, path: project.names[kind], text: consumptionCsv(group) });
+  }
   return files;
 }

@@ -21,6 +21,8 @@ const designer = {
   ranRows: [],
   /** Whether anything on the page changed since the last run. */
   stale: false,
+  /** How many changes the page has had, to tell whether a run's answer is still current. */
+  changes: 0,
   /** The time cursor and the zoom that the frame last reported, in seconds, or null. */
   view: null,
   /** How many times the frame has loaded a run, so that each load is a new address. */
@@ -149,6 +151,7 @@ async function generate() {
   if (!designing() || designer.running) return;
   designer.running = true;
   const ran = S.activities.map(activityKey);
+  const changes = designer.changes;
   drawDesignerBar();
   let result;
   try {
@@ -170,7 +173,8 @@ async function generate() {
   designer.result = result;
   if (result.ok) {
     designer.ranRows = ran;
-    designer.stale = false;
+    // a change made while the run was under way is not in it
+    designer.stale = designer.changes !== changes;
     designer.frame.src = frameAddress();
   }
   drawDesignerBar();
@@ -348,7 +352,8 @@ function fillDesignerBar(node) {
         title: "Run the scenario on this page, as it is now, and show the result above", onclick: generate,
       }),
       el("label", { class: "check", title: "Repeat the list until the run ends, as the scenario file does" },
-        el("input", { type: "checkbox", checked: designer.repeat, onchange: (e) => { designer.repeat = e.target.checked; generate(); } }),
+        // during a run, the change waits for the next one, and the bar says so
+        el("input", { type: "checkbox", checked: designer.repeat, onchange: (e) => { designer.repeat = e.target.checked; designerChanged(); generate(); } }),
         " Repeat the list"),
       el("button", {
         class: "btn", text: designer.saving ? "Saving…" : "Save into the folder", disabled: designer.saving,
@@ -375,8 +380,9 @@ function drawDesignerBar() {
   for (const node of document.querySelectorAll("[data-designer-bar]")) fillDesignerBar(node);
 }
 
-/** A change anywhere on the page makes the last run out of date. */
+/** A change anywhere on the page makes the last run out of date, and any run under way. */
 function designerChanged() {
+  designer.changes += 1;
   if (designer.result && designer.result.ok && !designer.stale) {
     designer.stale = true;
     drawDesignerBar();

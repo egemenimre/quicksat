@@ -9,14 +9,16 @@ The scenario file: the orbit, the period, the attitudes and the activities.
 A scenario is one YAML file. It names the orbit and gives the start time and the
 duration of the run. It also defines the attitudes, and lists the activities.
 The list is written once, and the run repeats it until the duration ends. Each
-activity is a short list of four or five strings:
+activity is a short list of four or five items:
 
-    - [downlink pass, 10 min, nadir, downlink, eclipse]
+    - [downlink pass, 10 min, nadir, {payload_mode: downlink, platform_mode: ttc}, eclipse]
 
 They are the title, which names what the activity is for, the trigger that ends
-the activity, the attitude, the mode, and an optional constraint on the
-illumination. The activities form a chain. Each one
-starts where the one before it ends, and the first starts at the start time.
+the activity, the attitude, the modes, and an optional constraint on the
+illumination. The modes are two: the payload's, and the platform's that carries
+it. A third, optional key says which activity's mode the payload is in during
+the slew into this one. The activities form a chain. Each one starts where the
+one before it ends, and the first starts at the start time.
 
 An activity may also be written as a mapping with the same fields named, which
 leaves room for its comments:
@@ -24,7 +26,7 @@ leaves room for its comments:
     - title: downlink pass
       end: 10 min
       attitude: nadir
-      mode: downlink
+      mode: {payload_mode: downlink, platform_mode: ttc}
       comments: The X-band antenna is on +z.
 
 Every block of the file may hold the user's own notes in a `comments` field, and
@@ -134,15 +136,34 @@ FALLBACKS = (ORBIT_NORMAL, NADIR, VELOCITY)
 """The default fallback is the first of these that the attitude does not use."""
 
 SLEW = "slew"
-"""The value of the attitude row while the body turns or settles. No attitude may
-take this name."""
+"""The value of the attitude row and the platform's mode row while the body turns
+or settles. No attitude and no mode may take this name."""
 
 UNPLANNED = "unplanned"
 """The value of the attitude and mode rows after the last activity, in a run of
 the list once or of an empty list. No attitude and no mode may take this name."""
 
+PAYLOAD = "payload"
+PLATFORM = "platform"
+GROUPS = (PAYLOAD, PLATFORM)
+"""The two parts of the spacecraft that each have a mode at a time: the payload,
+and the platform that carries it."""
+
+MODE_KEYS = {group: f"{group}_mode" for group in GROUPS}
+"""The keys of an activity's modes in the file, by group."""
+
+IN_SLEW = "payload_mode_in_slew"
+"""The key of an activity's modes that says which mode the payload is in during
+the slew into the activity."""
+
+PREV_ACTIVITY = "prev_activity"
+THIS_ACTIVITY = "this_activity"
+"""The two values of `payload_mode_in_slew`. The payload keeps the mode of the
+activity before the slew, or takes this activity's mode for the whole slew."""
+
 _RESERVED = {
-    SLEW: "the run gives the attitude and mode rows that name while the body turns",
+    SLEW: "the run gives the attitude and the platform's mode that name while the "
+    "body turns",
     UNPLANNED: "the run gives the attitude and mode rows that name after the last "
     "activity",
 }
@@ -1111,6 +1132,97 @@ def parse_constraint(text: str) -> Illumination:
     raise ValueError(f"constraint '{text}' is not understood. Use one of {words}")
 
 
+class Modes(BaseModel):
+    """
+    An activity's two modes, the payload's and the platform's, and the payload's
+    mode in the slew into the activity.
+
+    Each mode names a column of its consumption file. The two are independent:
+    an imaging activity sets the payload to its imaging mode, and the platform
+    to the mode that supports it, such as one with the solar wings parked.
+
+    Parameters
+    ----------
+    payload : str
+        The payload's mode. Any name that is not empty, except `slew` and
+        `unplanned`.
+    platform : str
+        The platform's mode. Any name that is not empty, except `slew`, which
+        the run gives the platform while the body turns, and `unplanned`.
+    payload_mode_in_slew : str, optional
+        The payload's mode in the slew into this activity. `prev_activity`,
+        the default, keeps the mode of the activity before, so that a data
+        transfer can carry on through the turn. `this_activity` takes this
+        activity's mode for the whole slew, so that the payload can prepare for
+        it. Without a slew into the activity, it has no effect.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    payload: str
+    platform: str
+    payload_mode_in_slew: Literal["prev_activity", "this_activity"] = PREV_ACTIVITY
+
+    def __getitem__(self, group: str) -> str:
+        """The mode of one group, `payload` or `platform`."""
+        return getattr(self, group)
+
+
+def parse_modes(value) -> Modes:
+    """
+    Read an activity's modes, written `{payload_mode: imaging, platform_mode:
+    imaging}`, with an optional `payload_mode_in_slew`.
+
+    Parameters
+    ----------
+    value : dict
+        The payload's mode and the platform's, and optionally the payload's
+        mode in the slew into the activity
+
+    Returns
+    -------
+    modes : Modes
+        The two modes, stripped, and the payload's mode in the slew
+
+    Raises
+    ------
+    ValueError
+        If it is not a mapping of the two and the optional key, a mode is not
+        text, is empty or takes a reserved name, or `payload_mode_in_slew` is
+        neither of its two values
+    """
+    example = "{payload_mode: imaging, platform_mode: imaging}"
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"the mode must give the payload's and the platform's, written "
+            f"{example}. Got {value!r}"
+        )
+    keys = [str(key) for key in value]
+    required = list(MODE_KEYS.values())
+    if sorted(set(keys) - {IN_SLEW}) != sorted(required):
+        raise ValueError(
+            f"the mode takes the keys {required} and an optional {IN_SLEW}, "
+            f"written {example}. Got {keys}"
+        )
+    in_slew = value.get(IN_SLEW, PREV_ACTIVITY)
+    if in_slew not in (PREV_ACTIVITY, THIS_ACTIVITY):
+        raise ValueError(
+            f"{IN_SLEW} must be {PREV_ACTIVITY} or {THIS_ACTIVITY}, got {in_slew!r}"
+        )
+    modes = {IN_SLEW: in_slew}
+    for group in GROUPS:
+        mode = value[MODE_KEYS[group]]
+        if not isinstance(mode, str) or not mode.strip():
+            raise ValueError(
+                f"the {group}'s mode must be text that is not empty, got {mode!r}"
+            )
+        mode = mode.strip()
+        if mode in _RESERVED:
+            raise ValueError(f"no mode may be named '{mode}': {_RESERVED[mode]}")
+        modes[group] = mode
+    return Modes(**modes)
+
+
 class Activity(Commented):
     """
     One activity: what it is for, what ends it, how the satellite points, and
@@ -1126,9 +1238,9 @@ class Activity(Commented):
         What ends the activity
     attitude : str
         The name of the attitude, which must be one of the scenario's attitudes
-    mode : str
-        The name of the mode. Any name that is not empty, except `slew`, which
-        the run gives the mode row while the body turns.
+    mode : Modes
+        The payload's mode and the platform's, and the payload's mode in the
+        slew into the activity
     constraint : str, optional
         The illumination the activity expects: `sunlit`, `penumbra`, `umbra`,
         or `eclipse` for either of the last two
@@ -1141,7 +1253,7 @@ class Activity(Commented):
     title: str
     trigger: Trigger
     attitude: str
-    mode: str
+    mode: Modes
     constraint: Illumination | None = None
 
     @classmethod
@@ -1151,9 +1263,9 @@ class Activity(Commented):
 
         Parameters
         ----------
-        fields : list of str
-            The title, the trigger, the attitude, the mode and an optional
-            constraint
+        fields : list
+            The title, the trigger, the attitude, the modes as a mapping and an
+            optional constraint
 
         Returns
         -------
@@ -1168,23 +1280,20 @@ class Activity(Commented):
         if not isinstance(fields, (list, tuple)) or len(fields) not in (4, 5):
             raise ValueError(
                 "an activity is a list of four or five items: the title, the "
-                "trigger, the attitude, the mode and an optional constraint. Got "
+                "trigger, the attitude, the modes and an optional constraint. Got "
                 f"{fields!r}"
             )
-        names = ("title", "attitude", "mode")
-        for name, value in zip(names, (fields[0], fields[2], fields[3]), strict=True):
+        names = ("title", "attitude")
+        for name, value in zip(names, (fields[0], fields[2]), strict=True):
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(
                     f"the {name} must be text that is not empty, got {value!r}"
                 )
-        mode = fields[3].strip()
-        if mode in _RESERVED:
-            raise ValueError(f"no mode may be named '{mode}': {_RESERVED[mode]}")
         return cls(
             title=fields[0].strip(),
             trigger=parse_trigger(fields[1]),
             attitude=fields[2].strip(),
-            mode=fields[3].strip(),
+            mode=parse_modes(fields[3]),
             constraint=parse_constraint(fields[4]) if len(fields) == 5 else None,
         )
 
@@ -1379,8 +1488,8 @@ class Articulation(Commented):
 
     At each step, the part turns about `axis` until the axis that `point` names
     is as close to its direction as the turn allows. The angle is zero where the
-    model draws the part, and turns right-handed about the axis. In a mode that
-    `park` names, the part holds the angle given there instead.
+    model draws the part, and turns right-handed about the axis. In a platform
+    mode that `park` names, the part holds the angle given there instead.
 
     Parameters
     ----------
@@ -1400,7 +1509,7 @@ class Articulation(Commented):
         round by default. Where the direction asks for an angle outside it, the
         part stops at the nearer end.
     park : dict of str to Quantity, optional
-        A fixed angle for each mode named, inside the range
+        A fixed angle for each platform mode named, inside the range
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -1760,9 +1869,11 @@ class Scenario(Commented):
 
     def _park_problems(self) -> list[str]:
         """
-        Problems with the articulations: a park mode that no activity has.
+        Problems with the articulations: a park mode that no activity gives the
+        platform. The park angles go by the platform's mode, since the drives are
+        platform equipment.
 
-        `slew` counts as a mode when the scenario has slews, since the mode row
+        `slew` counts as a mode when the scenario has slews, since the platform
         takes it while the body turns.
 
         Returns
@@ -1772,12 +1883,12 @@ class Scenario(Commented):
         """
         if self.spacecraft_model is None:
             return []
-        modes = sorted({activity.mode for activity in self.activities})
+        modes = sorted({activity.mode.platform for activity in self.activities})
         if self.slew is not None:
             modes.append(SLEW)
         return [
-            f"articulation '{name}': park names the mode '{mode}', which the run "
-            f"never has. It has: {modes}"
+            f"articulation '{name}': park names the mode '{mode}', which the "
+            f"platform never has. It has: {modes}"
             for name, articulation in self.spacecraft_model.articulations.items()
             for mode in articulation.park
             if mode not in modes

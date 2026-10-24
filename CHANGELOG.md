@@ -12,6 +12,17 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 - `budget_results` gives each table row its `values`, the numbers in full beside the text of its `cells`. Each figure has its `number`, and each check its `numbers`. The delta-V table keeps its loss factor column, which the tab hides. The propellant table has a value column and a unit column.
 - On the Budgets tab, the margin columns of the mass budget's tables by location and by subsystem are titled "With eqpt margin" and "With sys margin".
+- Each activity names two modes, the payload's and the platform's, written `{payload_mode: imaging, platform_mode: imaging}`, in place of one mode. `Activity.mode` is a `Modes`, with `payload` and `platform`. A scenario file with one mode is refused.
+- `run.mode` holds two mode rows, `run.mode["payload"]` and `run.mode["platform"]`. A slew replaces only the platform's mode. In the slew into an activity, the payload keeps the mode of the activity before, or takes the activity's own mode with `payload_mode_in_slew: this_activity` in the activity's modes. The activity table has a payload mode and a platform mode column, and the Gantt chart a row for each.
+- The power consumption is in two files, `payload_consumption.csv` and `platform_consumption.csv`, in place of `power_consumption.csv`. Each keeps the old format, with its own group's mode columns, and only the platform's needs a `slew` column. `run_consumption` takes both, by the group's name. `ConsumptionRun` cuts the run where either mode changes, and `mode_watts` gives each group's modes. `python -m quicksat.power` and the editor's server read both files.
+- The articulations' park angles go by the platform's mode. A park angle that names a mode only the payload has is refused.
+- The viewer shows the payload's and the platform's modes on the timeline, in the current data and in the activity table, and can colour the tracks by either. `scenario.js` has the tracks `payload_mode` and `platform_mode`, and each occurrence's `mode` gives both. `power.js` gives each consumption file in `consumption_files`, and the Power tab's setup has a table of each group's consumption by mode.
+- The Scenario Editor lists the payload's modes and the platform's apart, on the Modes step. Each activity picks both, and, with slews, the payload's mode in the slew into it. Each group has its own consumption table, on the Consumption tab and a Setup step each. The editor flags a power folder that holds only one of the two consumption files.
+- The power and scenario samples, the reference notebooks and the guides use the two modes and the two consumption files. In the samples, the payload's file holds the mass memory and the X-band transmitter, and the platform's has a `ttc` mode for the Svalbard pass.
+
+### Fixed
+
+- In the Activity Designer, a change made while a run was under way no longer clears "Changed since the last run" when the run ends. The run holds the page as it was when it started, so the bar now says it is out of date. A click on Repeat the list during a run counts as such a change.
 
 ## [0.4.0] - 2026-10-23
 

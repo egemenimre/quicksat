@@ -62,9 +62,9 @@ def turned(axis: np.ndarray, vector: np.ndarray, angles: np.ndarray) -> np.ndarr
 
 
 def modes_of(run: ScenarioRun) -> np.ndarray:
-    """The mode at each time of the grid, the last one included."""
-    modes = labels_at(run.mode, run.times)
-    modes[-1] = run.occurrences[-1].activity.mode
+    """The platform's mode at each time of the grid, the last one included."""
+    modes = labels_at(run.mode["platform"], run.times)
+    modes[-1] = run.occurrences[-1].activity.mode.platform
     return modes
 
 
@@ -169,18 +169,31 @@ def wing(fields: str) -> str:
         ("part: Spider, axis: +y, point: [-z, sun]", "2 nodes named 'Spider'"),
         (
             "part: Wing +y, axis: +y, point: [-z, sun], park: {safe: 0 deg}",
-            "park names the mode 'safe', which the run never has",
+            "park names the mode 'safe', which the platform never has",
         ),
         # slew is a mode only when the scenario has slews, and this one has none
         (
             "part: Wing +y, axis: +y, point: [-z, sun], park: {slew: 0 deg}",
-            "park names the mode 'slew', which the run never has",
+            "park names the mode 'slew', which the platform never has",
         ),
     ],
 )
 def test_a_bad_articulation_stops_the_load(text, data_dir, fields, message):
     with pytest.raises(ValueError, match=message):
         Scenario.from_yaml_text(wing(fields) + text, data_dir)
+
+
+def test_the_park_angles_go_by_the_platform_mode(text, data_dir):
+    # the payload downlinks while the platform is in ttc: downlink parks nothing
+    text = text.replace("platform_mode: downlink", "platform_mode: ttc")
+    model = wing("part: Wing +y, axis: +y, point: [-z, sun], park: {downlink: 0 deg}")
+    with pytest.raises(ValueError, match="'downlink', which the platform never has"):
+        Scenario.from_yaml_text(model + text, data_dir)
+    model = wing("part: Wing +y, axis: +y, point: [-z, sun], park: {ttc: 0 deg}")
+    run = run_scenario(Scenario.from_yaml_text(model + text, data_dir))
+    parked = modes_of(run) == "ttc"
+    assert parked.any()
+    assert np.all(run.articulations["wing"].to_value(u.deg)[parked] == 0)
 
 
 def test_only_the_designer_skips_the_park_check(text, data_dir):
