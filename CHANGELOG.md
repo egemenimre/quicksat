@@ -4,6 +4,8 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-24
+
 ### Added
 
 - The Sizing Editor's Budgets tab has an Export to Excel button. It writes an .xlsx workbook: an overview of the headline figures and the checks, then a sheet for each budget. The mass budget has two sheets, in orbit and on the ground, with comments and without subsystem subtotals. Agility has two, about roll and about pitch, for the selected inertia case with the full set of wheels. Each number is written in full, and shows the decimals that the tab shows. The workbook holds values only, with no formulas. The page writes it, so it needs no server and no Python package.
@@ -149,7 +151,8 @@ Initial release.
 - A ground target search, through OpenStreetMap's Nominatim.
 - `python -m quicksat.editor serve FOLDER OUTPUT` serves the Scenario Editor on this computer, with a button that runs the page's files and writes the viewer.
 
-[Unreleased]: https://github.com/egemenimre/quicksat/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/egemenimre/quicksat/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/egemenimre/quicksat/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/egemenimre/quicksat/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/egemenimre/quicksat/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/egemenimre/quicksat/compare/v0.1.0...v0.2.0
