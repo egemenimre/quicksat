@@ -7,6 +7,8 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 ### Changed
 
 - In the power and scenario samples, the imaging activity puts the payload in its imaging mode for the turn into it, with `payload_mode_in_slew: this_activity`. In the power sample, each orbit now has at least 7.0 W h of energy to spare, down from 10.0 W h. The battery's lowest charge stays at 83.6%.
+- A run is about three times faster. Between the grid's steps, the searches for the shadow edges, the latitude crossings, the targets' rise and set and the slews read splines through the grid. Before, each request went through SGP4 and astropy's frames. The scenario sample's run takes 1.4 s instead of 4.1 s, and a Generate in the Activity Designer takes 1.6 s instead of 4.7 s. The results are the same to the millisecond.
+- `ScenarioRun.grid` is a `RunGrid`, from the new module `quicksat.scenario.grid`. It holds the splines, and the Earth's orientation on the grid. `elevations`, `line_of_sight_clear`, `geodetic`, `directions`, `attitude_rotations` and `plan_slews` take an optional `earth_at`, which gives the Earth's orientation. `target_visibility` takes the grid in place of `positions_at` and `sat_orbits`.
 
 ## [0.5.0] - 2026-10-24
 

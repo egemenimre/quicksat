@@ -6,6 +6,36 @@ Newest first. When a decision replaces an earlier one, the earlier one is kept i
 
 ---
 
+## 25. Between the grid's steps, the run reads splines through the grid
+
+**2026-10-24. Implemented, after measurement.**
+
+A Generate in the Activity Designer took 4.7 s on the scenario sample. The run took 4.1 s of it, and `plan_slews` took 2.5 s of the run. The time went on overhead, not on work. The searches for the slews, the shadow edges, the latitude crossings and the targets' rise and set ask for the orbit, the sun or the Earth's orientation at 1 to 20 times at once, hundreds of times over. Each request went through SGP4 and astropy's frames, and took about 10 ms however few the times were.
+
+The run already has all of these on its grid, every 10 s by default. So `RunGrid` keeps splines through the grid, and the searches read them. The values on the grid itself still come from SGP4 and astropy, as before.
+
+- **The satellite:** splines of degree 7 through its positions and its velocities.
+- **A satellite target:** a spline through its positions alone. Nothing needs its velocity, and astropy turns velocities five times slower.
+- **The sun:** a spline of degree 7.
+- **The Earth's orientation:** interpolated along the shortest turn between two steps.
+
+The splines were measured against SGP4 on the sample's 510 km orbit, the ends of the grid included. The table gives the largest position error.
+
+| Step | Degree 5 | Degree 7 | Degree 9 |
+|---|---|---|---|
+| 10 s | 5 µm | 5 µm | 5 µm |
+| 60 s | 8 mm | 0.04 mm | 0.006 mm |
+| 120 s | 0.47 m | 8 mm | 0.6 mm |
+| 300 s | 92 m | 10 m | 3.7 m |
+
+5 µm is the noise of the data itself. Degree 7 is the lowest degree that stays within 1 cm up to a step of 120 s. Above 120 s, the orbits are worked out in full. Hermite splines, through the positions and the velocities together, did worse: 2 cm at 10 s. SGP4's velocities, once astropy turns them into GCRS, differ from the slope of its positions by about 24 mm/s, and a Hermite spline is bent to meet both. The sun's spline is good to 1 cm, and the Earth's orientation to 1e-11 degrees, at any step.
+
+An orbit read from a trajectory file is used as it is. Its own splines keep each manoeuvre apart, and splines through the grid would spread a manoeuvre over the states around it. A time outside the grid is always worked out in full.
+
+**Results.** On the scenario sample, the power sample and the reference scenario, every edge, occurrence and slew time is the same to the millisecond. The slew angles agree to 1e-9 degrees. The power summary is the same, and the battery's charge agrees to 5e-14. The scenario sample's run takes 1.4 s instead of 4.1 s, and a Generate takes 1.6 s instead of 4.7 s. The viewer's data takes 0.14 s instead of 0.57 s, because the run keeps the Earth's orientation on the grid, and the attitudes reuse it.
+
+---
+
 ## 24. The payload and the platform each have a mode
 
 **2026-10-24. Implemented. Changes 12: a slew is now a platform mode only.**

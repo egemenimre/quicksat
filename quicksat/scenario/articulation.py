@@ -226,7 +226,7 @@ def _body_directions(run: "ScenarioRun", names: set[str]) -> dict[str, np.ndarra
         # the rotations turn body vectors into GCRS, so their transposes turn back
         rotations = body_rotations(run)
         for name, vectors in directions(
-            run.scenario, others, run.state, run.sun, run.sat_orbits
+            run.scenario, others, run.state, run.sun, run.grid.targets, run.grid.earth
         ).items():
             unit = vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
             found[name] = np.einsum("nji,nj->ni", rotations, unit)

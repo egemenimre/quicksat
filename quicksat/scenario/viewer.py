@@ -60,7 +60,6 @@ from quicksat.orbit.attitude import (
     quaternions,
     roll_pitch_yaw,
 )
-from quicksat.orbit.geometry import earth_rotations
 from quicksat.orbit.tle import Tle
 from quicksat.scenario.attitude import SlewWindow, attitude_names, body_rotations
 from quicksat.scenario.attitude_files import attitude_file_texts
@@ -618,7 +617,7 @@ def scenario_data(run: ScenarioRun, designer: bool = False) -> dict:
             "beta_deg": _flat(run.beta.to(u.deg).value, 4),
             "light": _flat(run.light, 6),
             "q_body": None if designer else _flat(quaternions(rotations), 6),
-            "q_earth": _flat(quaternions(earth_rotations(run.times)), 6),
+            "q_earth": _flat(quaternions(run.grid.earth_rotations), 6),
         },
         "tracks": tracks,
         "occurrences": occurrences,
