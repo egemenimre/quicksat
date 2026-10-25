@@ -1,0 +1,57 @@
+# The power sample's payload thermal file: the payload's surfaces, the heat that
+# crosses its boundary elsewhere, and the Earth's two constants.
+#
+# The payload thermal notebook reads it, with the other files of this folder. It
+# sums the payload's heat over the scenario run, by activity, by payload mode and
+# by orbit, and gives the heater power that balances each mode. Edit this file
+# and run the notebook again. It never writes it.
+#
+# The payload sits inside MLI, which the model takes as a perfect insulator. So
+# heat crosses its boundary in four places only: the dissipation of the rows
+# marked inside_mli in payload_consumption.csv, the row marked heater there, the
+# heat flows below, and the surfaces below. Every power is positive into the
+# payload.
+
+# The surfaces that absorb and radiate heat, each under a name of your choice. A
+# surface names a flat part of the 3D model, as a solar panel does, or is typed
+# in with a normal in body axes and an area. absorptance is the share of
+# sunlight it absorbs, for the year being sized: white paint starts near 0.20 and
+# rises to 0.40 or more over a mission. emissivity is the share of a black body's
+# infrared it emits, and also the share of the Earth's infrared it absorbs.
+# temperature is its design temperature, which it radiates at through the run.
+# Write it in kelvin, such as 273 K: a temperature in Celsius, such as 20 °C, is
+# turned into kelvin, but kelvin is safer. fixed_temperature: true says that
+# something else holds the surface there, such as the telescope's own heaters.
+# Without it, the surface floats, which matters only for the equilibrium ΔT.
+surfaces:
+  # The radiator: 0.2 m2 of white paint on the bus's +y face, which faces away
+  # from the orbit normal in nadir pointing. The 13:30 LTAN puts the sun on the
+  # orbit normal's side, so the radiator sees no sun in nadir pointing, and only
+  # edge on in sun pointing. The Svalbard pass rolls it toward the sun a little.
+  radiator: {part: Radiator, absorptance: 0.20, emissivity: 0.85, temperature: 273 K}
+  # The telescope's opening, flush with the nadir face, with a black, vaned tube
+  # behind it. Its absorptance and emissivity are the tube's, not the mirror's: a
+  # black tube takes in nearly all that enters it, from the whole hemisphere in
+  # front of it. Its temperature is the mean of what shows through the opening:
+  # the vanes, which see space and run cold, and the secondary mirror. The
+  # telescope's control holds it there, so it is fixed.
+  aperture:
+    part: Aperture
+    absorptance: 0.90
+    emissivity: 0.90
+    temperature: 273 K
+    fixed_temperature: true
+
+# The powers that cross the boundary elsewhere, each under a name of your choice.
+# Positive into the payload, so -3 W means 3 W leave it. A flow is one power for
+# every mode, or a power for each payload mode, 0 W included.
+heat_flows:
+  # Conduction through the payload's mounts to the platform.
+  platform interface: -3 W
+  # The X-band transmitter's row counts all its 55 W as dissipation in downlink.
+  # The antenna sends about 5 W of it out as radio waves.
+  x-band rf: {idle: 0 W, imaging: 0 W, downlink: -5 W}
+
+# The Earth's albedo, the share of sunlight it reflects, and its infrared flux.
+# These are the defaults, averaged over the globe. Leave the block out for them.
+earth: {albedo: 0.30, infrared: 237 W/m2}

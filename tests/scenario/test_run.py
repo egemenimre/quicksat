@@ -620,15 +620,40 @@ def test_one_pass_warns_as_the_same_occurrences_of_a_full_run(
     assert once_run.warnings == first
 
 
+def test_nadir_is_fixed_in_body_axes_in_the_nadir_attitude(slew_run):
+    # nadir points +z at the centre of the Earth, so the slews and the other
+    # attitudes are the only times it moves
+    names = attitude_names(slew_run)
+    nadir = names == "nadir"
+    assert nadir.any() and not nadir.all()
+    np.testing.assert_allclose(slew_run.nadir_body[nadir] - [0, 0, 1], 0, atol=1e-9)
+    np.testing.assert_allclose(np.linalg.norm(slew_run.nadir_body, axis=1), 1)
+    assert slew_run.nadir_body[~nadir, 2].min() < 0.99
+
+
+def test_the_sun_zenith_cosine_is_negative_in_the_umbra(slew_run):
+    umbra = labels_at(slew_run.illumination, slew_run.times) == "umbra"
+    assert umbra.any()
+    assert slew_run.sun_zenith_cosine[umbra].max() < 0
+    assert slew_run.sun_zenith_cosine.max() > 0
+
+
 @pytest.mark.parametrize(
     "work_out",
     [
         lambda run: run.sun_body,
+        lambda run: run.nadir_body,
         lambda run: run.report,
         lambda run: run.articulations,
         attitude_table,
     ],
-    ids=["sun in body axes", "report", "articulations", "attitude file"],
+    ids=[
+        "sun in body axes",
+        "nadir in body axes",
+        "report",
+        "articulations",
+        "attitude file",
+    ],
 )
 def test_what_needs_the_whole_run_planned_refuses_one_pass(once_run, work_out):
     with pytest.raises(

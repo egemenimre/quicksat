@@ -183,12 +183,54 @@ function powerYaml() {
 
 function consumptionCsv(group) {
   const modes = consumptionModes(group);
-  const lines = [["equipment_id", "equipment_name", "subsystem", "units_on", "eqpt_margin", ...modes, "comments"].map(csvCell).join(",")];
+  const thermalColumn = showsThermalColumn(group);
+  const lines = [["equipment_id", "equipment_name", "subsystem", "units_on", "eqpt_margin", ...modes, "comments", ...(thermalColumn ? [THERMAL_COLUMN] : [])].map(csvCell).join(",")];
   const watts = (v) => (v === "" || v == null ? "" : `${v} W`);
   for (const r of project.consumption[group]) {
     const power = modes.map((m) => watts(m === SLEW ? r.slew : r.power[m]));
-    lines.push([r.id, r.name, r.subsystem, r.units, r.margin, ...power, r.comments].map(csvCell).join(","));
+    lines.push([r.id, r.name, r.subsystem, r.units, r.margin, ...power, r.comments, ...(thermalColumn ? [r.thermal || ""] : [])].map(csvCell).join(","));
   }
+  return lines.join("\n") + "\n";
+}
+
+/** A power for the file, such as `-3 W`, or "" when the field is empty. */
+const yw = (value) => (value === "" || value == null ? "" : `${value} W`);
+
+function thermalYaml() {
+  const lines = [...HEADER, ""];
+  if (T.comments.trim()) { commentsLines(lines, 0, T.comments); lines.push(""); }
+  helpLines(lines, 0, "surfaces");
+  lines.push("surfaces:");
+  commentsLines(lines, 2, T.surfaces.comments);
+  for (const s of T.surfaces.items) {
+    const where = s.source === "part" ? [["part", ys(s.part)]] : [["normal", normalText(s.normal)], ["area", yq(s.area)]];
+    const pairs = [...where, ["absorptance", yn(s.absorptance)], ["emissivity", yn(s.emissivity)], ["temperature", yq(s.temperature)], ["fixed_temperature", s.fixed ? "true" : ""]];
+    itemLines(lines, 2, s.name, pairs, s.comments);
+  }
+  lines.push("");
+  const flows = T.heat_flows;
+  if (flows.items.length || flows.comments.trim()) {
+    helpLines(lines, 0, "heat_flows");
+    lines.push("heat_flows:");
+    commentsLines(lines, 2, flows.comments);
+    // a flow by mode takes a power for each of the payload's modes, as the Modes step names them
+    for (const f of flows.items) {
+      lines.push(`  ${ys(f.name)}: ${f.byMode ? flowMap(S.modes.payload.map((mode) => [ys(mode), yw(f.powers[mode])])) : yw(f.power)}`);
+    }
+    lines.push("");
+  }
+  const e = T.earth;
+  if (e.present || yn(e.albedo) !== "" || !blank(e.infrared) || e.comments.trim()) {
+    helpLines(lines, 0, "earth");
+    const pairs = [["albedo", yn(e.albedo)], ["infrared", yq(e.infrared)]];
+    if (!e.comments.trim()) lines.push(`earth: ${flowMap(pairs)}`);
+    else {
+      lines.push("earth:");
+      for (const [k, v] of pairs) if (v !== "") lines.push(`  ${k}: ${v}`);
+      commentsLines(lines, 2, e.comments);
+    }
+  }
+  while (lines[lines.length - 1] === "") lines.pop();
   return lines.join("\n") + "\n";
 }
 
@@ -224,5 +266,6 @@ function projectFiles() {
     const kind = consumptionKind(group);
     if (project.hasConsumption[group]) files.push({ kind, path: project.names[kind], text: consumptionCsv(group) });
   }
+  if (project.hasThermal) files.push({ kind: "payload_thermal", path: project.names.payload_thermal, text: thermalYaml() });
   return files;
 }

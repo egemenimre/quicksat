@@ -41,7 +41,7 @@ the scenario's model when the generation is worked out, in
 
 import os
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, ClassVar
 
 import numpy as np
 import yaml
@@ -64,6 +64,7 @@ from quicksat.utils.parser_helpers import (
     Commented,
     EnergyQty,
     FractionQty,
+    check_unit_fraction,
     without_comments,
 )
 
@@ -123,33 +124,79 @@ def _read_normal(value) -> tuple[float, float, float] | None:
     return (float(x), float(y), float(z))
 
 
-def _check_unit_fraction(value: Quantity, name: str) -> Quantity:
+class FlatItem(Commented):
     """
-    Checks that a fraction is above 0 and at most 1.
+    A flat item on the spacecraft: a part of the 3D model, or a normal and an area.
+
+    A solar panel is one, and so is a surface of the payload's thermal model. An
+    item from the model takes its area and its normal from the part's triangles.
+    It turns with an articulation above it in the model, and it can be shaded by
+    the rest of the model. A typed-in item stays fixed in body axes. It is never
+    shaded and shades nothing.
 
     Parameters
     ----------
-    value : Quantity
-        The fraction, dimensionless
-    name : str
-        The field's name, for the error message
-
-    Returns
-    -------
-    value : Quantity
-        The fraction, unchanged
-
-    Raises
-    ------
-    ValueError
-        If the fraction is 0, or above 1
+    part : str, optional
+        The name of the model's node that holds the item. Its triangles must all
+        face one way. Give either `part`, or both `normal` and `area`.
+    normal : tuple of float, optional
+        The direction the item faces, in body axes: a signed body axis such as
+        `+x`, or three numbers, scaled to unit length
+    area : Quantity, optional
+        The item's area, positive
+    comments : str, optional
+        Your own notes on this block. quicksat keeps them and does not read them.
     """
-    if not 0 < float(value.to(u.dimensionless_unscaled).value) <= 1:
-        raise ValueError(f"{name} must be above 0 and at most 1 (100 %), got {value}")
-    return value
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+    kind: ClassVar[str] = "item"
+    """What the item is, for the error messages."""
+
+    part_hint: ClassVar[str] = "the name of its part in the 3D model"
+    """What the part holds, for the error messages."""
+
+    part: str | None = None
+    normal: Annotated[
+        tuple[float, float, float] | None, BeforeValidator(_read_normal)
+    ] = None
+    area: AreaQty | None = None
+
+    @model_validator(mode="after")
+    def _one_kind(self):
+        """Checks that the item is either a part, or a normal and an area."""
+        typed = (self.normal is not None, self.area is not None)
+        if self.part is not None:
+            if any(typed):
+                raise ValueError(
+                    f"a {self.kind} gives either part, or normal and area, not "
+                    "both: the part gives its own normal and area"
+                )
+            if not self.part.strip():
+                raise ValueError("part must not be empty")
+        elif not all(typed):
+            raise ValueError(
+                f"a {self.kind} needs either part, {self.part_hint}, or both "
+                "normal and area"
+            )
+        elif self.area is not None and self.area.value == 0:
+            raise ValueError("area must be above zero")
+        return self
+
+    @property
+    def from_model(self) -> bool:
+        """
+        Whether the item is a part of the 3D model.
+
+        Returns
+        -------
+        from_model : bool
+            True for an item that names a part, False for a typed-in one
+        """
+        return self.part is not None
 
 
-class Panel(Commented):
+class Panel(FlatItem):
     """
     A solar panel: a part of the 3D model, or a normal and an area.
 
@@ -174,53 +221,16 @@ class Panel(Commented):
         Your own notes on this block. quicksat keeps them and does not read them.
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+    kind: ClassVar[str] = "panel"
+    part_hint: ClassVar[str] = "the name of its cells in the 3D model"
 
-    part: str | None = None
-    normal: Annotated[
-        tuple[float, float, float] | None, BeforeValidator(_read_normal)
-    ] = None
-    area: AreaQty | None = None
     fill_ratio: FractionQty
 
     @field_validator("fill_ratio")
     @classmethod
     def _fraction(cls, value: Quantity, info: ValidationInfo) -> Quantity:
         """Checks that the fill ratio is above 0 and at most 1."""
-        return _check_unit_fraction(value, str(info.field_name))
-
-    @model_validator(mode="after")
-    def _one_kind(self):
-        """Checks that the panel is either a part, or a normal and an area."""
-        typed = (self.normal is not None, self.area is not None)
-        if self.part is not None:
-            if any(typed):
-                raise ValueError(
-                    "a panel gives either part, or normal and area, not both: the "
-                    "part gives its own normal and area"
-                )
-            if not self.part.strip():
-                raise ValueError("part must not be empty")
-        elif not all(typed):
-            raise ValueError(
-                "a panel needs either part, the name of its cells in the 3D model, "
-                "or both normal and area"
-            )
-        elif self.area is not None and self.area.value == 0:
-            raise ValueError("area must be above zero")
-        return self
-
-    @property
-    def from_model(self) -> bool:
-        """
-        Whether the panel is a part of the 3D model.
-
-        Returns
-        -------
-        from_model : bool
-            True for a panel that names a part, False for a typed-in one
-        """
-        return self.part is not None
+        return check_unit_fraction(value, str(info.field_name))
 
 
 class SelfShadowing(Commented):
@@ -286,7 +296,7 @@ class Battery(Commented):
     @classmethod
     def _fraction(cls, value: Quantity, info: ValidationInfo) -> Quantity:
         """Checks that each share is in (0, 1]."""
-        return _check_unit_fraction(value, str(info.field_name))
+        return check_unit_fraction(value, str(info.field_name))
 
     @property
     def usable(self) -> Quantity:
@@ -336,7 +346,7 @@ class Conditioning(Commented):
     @classmethod
     def _fraction(cls, value: Quantity, info: ValidationInfo) -> Quantity:
         """Checks that each efficiency is in (0, 1]."""
-        return _check_unit_fraction(value, str(info.field_name))
+        return check_unit_fraction(value, str(info.field_name))
 
 
 class PowerSystem(Commented):
@@ -432,7 +442,7 @@ class PowerSystem(Commented):
     @classmethod
     def _fraction(cls, value: Quantity, info: ValidationInfo) -> Quantity:
         """Checks that the efficiency and the loss factor are in (0, 1]."""
-        return _check_unit_fraction(value, str(info.field_name))
+        return check_unit_fraction(value, str(info.field_name))
 
     @field_validator("panels")
     @classmethod

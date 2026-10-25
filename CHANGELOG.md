@@ -4,8 +4,14 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- Payload radiator sizing: a heat account of the payload over the scenario run, which sizes its radiators and heaters. Its code is the new package `quicksat.thermal`, a sub-domain of power. It reads a new optional file of the power folder, `payload_thermal.yaml`, and a `thermal` column in `payload_consumption.csv`. `python -m quicksat.thermal` prints the account after the power budget, and the Scenario Editor edits it on a Thermal tab. `docs/explanations/payload_thermal_model.md` explains it, `docs/power/payload_thermal_ref.ipynb` is the reference, and `sample/power/payload_thermal.ipynb` the worked example.
+
 ### Changed
 
+- For the radiator sizing, `panel_geometry` is `flat_geometry` and `PanelGeometry` is `FlatGeometry`, for panels and surfaces alike. A quantity's text loses its underscores in its number only.
+- The power sample's 3D model has a `Radiator` part, and its heater row comes from the heat account. Each orbit now has at least 42.2 W h of energy to spare, and the battery's lowest charge is 84.9%.
 - In the power and scenario samples, the imaging activity puts the payload in its imaging mode for the turn into it, with `payload_mode_in_slew: this_activity`. In the power sample, each orbit now has at least 7.0 W h of energy to spare, down from 10.0 W h. The battery's lowest charge stays at 83.6%.
 - A run is about three times faster. Between the grid's steps, the searches for the shadow edges, the latitude crossings, the targets' rise and set and the slews read splines through the grid. Before, each request went through SGP4 and astropy's frames. The scenario sample's run takes 1.4 s instead of 4.1 s, and a Generate in the Activity Designer takes 1.6 s instead of 4.7 s. The results are the same to the millisecond.
 - `ScenarioRun.grid` is a `RunGrid`, from the new module `quicksat.scenario.grid`. It holds the splines, and the Earth's orientation on the grid. `elevations`, `line_of_sight_clear`, `geodetic`, `directions`, `attitude_rotations` and `plan_slews` take an optional `earth_at`, which gives the Earth's orientation. `target_visibility` takes the grid in place of `positions_at` and `sat_orbits`.

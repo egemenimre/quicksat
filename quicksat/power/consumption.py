@@ -23,7 +23,11 @@ Equipment that draws none, such as the structure, is left out. The columns are
 - `eqpt_margin`, the equipment's margin in percent, such as `5`;
 - one column for each mode, with the power of one unit in that mode, such as
   `10 W`, averaged over the mode;
-- `comments`, optional free text.
+- `comments`, optional free text;
+- `thermal`, in the payload's file only, where the row's heat goes, for the
+  payload's thermal account: `inside_mli`, `outside_mli` or `heater`. It is
+  needed only when the folder has the thermal file. One row at most is the
+  heater row, which holds all the payload's heater lines together.
 
 The scenario names the modes, and each file says what its group's modes draw.
 Every mode the run gives a group needs its column in the group's file. The
@@ -46,7 +50,7 @@ import os
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import numpy as np
 import pandas as pd
@@ -55,7 +59,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from quicksat import Q_, u
 from quicksat.power.orbits import interval_pieces, whole_orbits
-from quicksat.scenario.config import GROUPS
+from quicksat.scenario.config import GROUPS, PLATFORM
 from quicksat.scenario.run import ScenarioRun
 from quicksat.utils.intervals import labels_at
 from quicksat.utils.parser_helpers import NoSpaceStr, PowerQty
@@ -69,7 +73,24 @@ REQUIRED_COLUMNS = (
 )
 """The columns every consumption file needs, before the modes."""
 
-OPTIONAL_COLUMNS = ("comments",)
+THERMAL_COLUMN = "thermal"
+"""The column that says where a payload row's heat goes."""
+
+INSIDE_MLI = "inside_mli"
+"""A row whose power is all dissipated inside the payload's MLI."""
+
+OUTSIDE_MLI = "outside_mli"
+"""A row whose power is dissipated outside the payload's MLI, and left out of its
+thermal account."""
+
+HEATER = "heater"
+"""The row of the payload's heater lines, all together. It dissipates inside the
+MLI too."""
+
+THERMAL_VALUES = (INSIDE_MLI, OUTSIDE_MLI, HEATER)
+"""The values of the `thermal` column."""
+
+OPTIONAL_COLUMNS = ("comments", THERMAL_COLUMN)
 """Columns that may be there, and are not modes."""
 
 
@@ -96,6 +117,10 @@ class Load(BaseModel):
         The power of one unit in each mode, by the mode's name
     comments : str, optional
         Free text notes
+    thermal : str, optional
+        Where the row's heat goes, for the payload's thermal account:
+        `inside_mli`, `outside_mli` or `heater`. None when the cell is blank,
+        or the file has no `thermal` column.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -107,6 +132,7 @@ class Load(BaseModel):
     eqpt_margin: Annotated[float, Field(ge=0)]
     power: dict[str, PowerQty]
     comments: str = ""
+    thermal: Literal["inside_mli", "outside_mli", "heater"] | None = None
 
     def watts(self, mode: str, margin: bool = True) -> float:
         """
@@ -142,6 +168,8 @@ class PowerConsumption:
         The file the rows were read from
     source_text : str, optional
         The file's text, as read, for the viewer to show
+    thermal_column : bool, optional
+        Whether the file has a `thermal` column. False by default.
     """
 
     def __init__(
@@ -150,11 +178,13 @@ class PowerConsumption:
         modes: list[str],
         source_file: Path | None = None,
         source_text: str | None = None,
+        thermal_column: bool = False,
     ):
         self.loads = loads
         self.modes = modes
         self.source_file = source_file
         self.source_text = source_text
+        self.thermal_column = thermal_column
 
     @classmethod
     def from_csv(cls, csv_path: str | Path) -> "PowerConsumption":
@@ -177,8 +207,8 @@ class PowerConsumption:
             If there is no such file
         ValueError
             If a column is missing, there is no mode column or no row, an
-            equipment ID is used twice, or a cell does not read. The message
-            names the row and the column.
+            equipment ID is used twice, a cell does not read, or more than one
+            row is the heater row. The message names the row and the column.
         """
         if not os.path.isfile(csv_path):
             raise FileNotFoundError(f"File does not exist: {csv_path}")
@@ -211,6 +241,7 @@ class PowerConsumption:
                 )
             fields = {name: record[name] for name in REQUIRED_COLUMNS}
             fields["comments"] = record.get("comments", "")
+            fields["thermal"] = record.get(THERMAL_COLUMN, "").strip() or None
             fields["power"] = {mode: record[mode] for mode in modes}
             try:
                 loads.append(Load(**fields))
@@ -221,7 +252,19 @@ class PowerConsumption:
         twice = sorted({name for name in ids if ids.count(name) > 1})
         if twice:
             raise ValueError(f"{path.name}: equipment IDs used more than once: {twice}")
-        return cls(loads, modes, path, path.read_text(encoding="utf-8"))
+        heaters = [load.equipment_id for load in loads if load.thermal == HEATER]
+        if len(heaters) > 1:
+            raise ValueError(
+                f"{path.name}: more than one heater row: {heaters}. Put all the "
+                "payload's heater lines together in one row."
+            )
+        return cls(
+            loads,
+            modes,
+            path,
+            path.read_text(encoding="utf-8"),
+            THERMAL_COLUMN in raw.columns,
+        )
 
     def mode_table(self, margin: bool = False) -> pd.DataFrame:
         """
@@ -523,8 +566,8 @@ def run_consumption(
     Raises
     ------
     ValueError
-        If a group is missing, or the run has a mode that its group's file has no
-        column for
+        If a group is missing, the run has a mode that its group's file has no
+        column for, or the platform's file has a `thermal` column
     """
     missing_groups = [group for group in GROUPS if group not in consumption]
     if missing_groups:
@@ -535,6 +578,11 @@ def run_consumption(
     for group in GROUPS:
         loads = consumption[group]
         name = loads.source_file.name if loads.source_file else f"the {group}'s file"
+        if group == PLATFORM and loads.thermal_column:
+            raise ValueError(
+                f"{name} has a '{THERMAL_COLUMN}' column, but the thermal account "
+                "covers the payload only. Take the column out."
+            )
         pieces[group] = sorted(
             (start, end, mode)
             for interval, mode in run.mode[group].items()

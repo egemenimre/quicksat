@@ -20,7 +20,7 @@ from quicksat.editor.editor import help_text
 
 TEMPLATES = files("quicksat") / "editor" / "templates"
 
-PAGES = {"scenario": ("scenario", "power"), "sizing": ("sizing",)}
+PAGES = {"scenario": ("scenario", "power", "thermal"), "sizing": ("sizing",)}
 
 
 def section_ids(page: str) -> list[str]:
@@ -54,7 +54,7 @@ def test_each_help_line_the_page_writes_is_there(page):
         assert help_.get(key, {}).get("file"), key
 
 
-@pytest.mark.parametrize("domain", ["scenario", "power", "sizing"])
+@pytest.mark.parametrize("domain", ["scenario", "power", "thermal", "sizing"])
 def test_each_entry_holds_only_the_known_parts(domain):
     for key, entry in help_text((domain,)).items():
         assert entry, key

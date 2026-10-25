@@ -42,6 +42,7 @@ from quicksat.orbit.geometry import (
     shadow_cones,
     shadow_intervals,
     sun_positions,
+    sun_zenith_cosine,
 )
 from quicksat.orbit.tle import tle_states
 from quicksat.utils.intervals import round_time
@@ -59,6 +60,24 @@ def sun_at(elevation_deg):
     """The sun 1 au away, at this angle above the orbit plane, toward +x."""
     angle = np.radians(elevation_deg)
     return CartesianRepresentation([np.cos(angle), 0.0, np.sin(angle)], unit=u.au)
+
+
+@pytest.mark.parametrize(
+    ("sun", "cosine"),
+    [
+        ([1.0, 0.0, 0.0], 1.0),
+        ([1.0, 0.0, 1.0], 2**-0.5),
+        ([0.0, 0.0, 1.0], 0.0),
+        ([0.0, -1.0, 0.0], 0.0),
+        ([-1.0, 0.0, 0.0], -1.0),
+    ],
+)
+def test_the_sun_zenith_cosine_is_one_below_the_sun_and_zero_on_the_terminator(
+    state, sun, cosine
+):
+    # the satellite is on the x axis, so the point below it is too
+    sun = CartesianRepresentation(sun, unit=u.au)
+    assert sun_zenith_cosine(state, sun) == pytest.approx(cosine, abs=1e-12)
 
 
 @pytest.mark.parametrize("elevation", [90.0, 45.0, 0.0, -30.0, -90.0])

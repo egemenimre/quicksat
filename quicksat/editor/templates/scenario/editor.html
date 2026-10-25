@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>quicksat Scenario Editor</title>
+<style>/*@uplot_css@*/</style>
 <style>
 /*@css@*/
 
@@ -55,6 +56,20 @@ main.with-3d { grid-template-columns: minmax(0, 1fr) minmax(320px, 38%); }
 .files-viewer a.btn { display: block; text-align: left; padding: 4px 8px; }
 
 .vp-message { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 20px; text-align: center; }
+
+/* The Thermal tab's heat account: its tables, and the plot of the net heat in */
+.account-panel { max-width: none; }
+.account-panel h4 { margin: 12px 0 4px; }
+.items.account td, .items.account th { padding: 3px 8px; white-space: nowrap; }
+.items.account .right { text-align: right; }
+.items.account td.name { color: var(--muted); }
+.items.account td.neg { color: var(--accent); }
+.items.account td.pos { color: var(--amber); }
+.items.account input { text-align: right; }
+.account-plot { min-height: 280px; }
+.account-plot .uplot, .account-plot .uplot * { font-family: var(--mono); }
+.band-legend { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 11px; margin-top: 4px; }
+.band-legend i { display: inline-block; width: 12px; height: 10px; margin-right: 5px; vertical-align: -1px; border-radius: 2px; }
 
 /* The Activity Designer: with the editor's server, the run in a frame above the
    list of activities, and a divider to drag between them. The list scrolls on
@@ -152,6 +167,7 @@ main:not(.with-3d) .panel3d { display: none; }
     </section>
     <section class="page" id="page-power"><div class="sheet" id="sheet-power"></div></section>
     <section class="page" id="page-consumption"><div class="sheet" id="sheet-consumption"></div></section>
+    <section class="page" id="page-thermal"><div class="sheet" id="sheet-thermal"></div></section>
     <section class="page" id="page-files">
       <nav class="filelist" id="filelist"></nav>
       <div class="preview" id="preview"></div>
@@ -182,6 +198,7 @@ main:not(.with-3d) .panel3d { display: none; }
 <script id="help" type="application/json">@help@</script>
 <script id="project" type="application/json">@project@</script>
 <script>/*@three@*/</script>
+<script>/*@uplot@*/</script>
 <script>/*@yaml@*/</script>
 <script>/*@editor@*/</script>
 </body>

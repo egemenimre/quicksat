@@ -38,7 +38,7 @@ import numpy as np
 
 from quicksat import u
 from quicksat.power.budget import BudgetRun, budget_summary
-from quicksat.power.generation import PanelGeometry
+from quicksat.power.generation import FlatGeometry
 from quicksat.scenario.spacecraft import (
     ModelGeometry,
     node_index,
@@ -87,7 +87,7 @@ def _body_box(model: ModelGeometry | None, turning: set[int]) -> list[float]:
 
 
 def _panel_entry(
-    panel: PanelGeometry, model: ModelGeometry | None, body: list[float]
+    panel: FlatGeometry, model: ModelGeometry | None, body: list[float]
 ) -> dict:
     """One panel as the page draws it: a box on the body axis nearest its normal."""
     axis = int(np.argmax(np.abs(panel.normal)))

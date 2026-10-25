@@ -21,12 +21,14 @@ At each time of the run's grid, the power of a panel is
 A panel from the 3D model takes its area and its normal from its part. If the
 part sits under an articulation, such as a solar wing, the normal turns with the
 articulation's angle at each step. A typed-in panel keeps its normal fixed in
-body axes.
+body axes. The payload's thermal surfaces take their geometry the same way,
+through `flat_geometry` and `item_cosines`.
 
 Light reflected by the Earth and the Earth's infrared are left out.
 
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
 
@@ -38,7 +40,7 @@ from astropy.units import Quantity
 
 from quicksat import Q_, u
 from quicksat.orbit.attitude import axis_vector
-from quicksat.power.config import PowerSystem
+from quicksat.power.config import FlatItem, PowerSystem
 from quicksat.power.orbits import (
     energy_until,
     interval_pieces,
@@ -73,25 +75,26 @@ no area, and its normal is not checked."""
 
 
 @dataclass(frozen=True)
-class PanelGeometry:
+class FlatGeometry:
     """
-    A panel's area and normal, in body axes, worked out from the file and model.
+    A flat item's area and normal, in body axes, worked out from its file and the
+    model. The item is a solar panel or a thermal surface.
 
     Parameters
     ----------
     name : str
-        The panel's name in the power generation file
+        The item's name in its file
     area : Quantity
-        The panel's area, before the fill ratio
+        The item's area, before a panel's fill ratio
     normal : ndarray
-        The direction the cells face in body axes, a unit vector of shape (3,).
-        For a panel that turns, this is its direction where the model draws it,
+        The direction the item faces in body axes, a unit vector of shape (3,).
+        For an item that turns, this is its direction where the model draws it,
         at an angle of zero.
     articulation : str or None
-        The name of the articulation that turns the panel, or None if it is fixed
+        The name of the articulation that turns the item, or None if it is fixed
     node : int or None
-        The index of the panel's part in the model's nodes. None for a typed-in
-        panel.
+        The index of the item's part in the model's nodes. None for a typed-in
+        item.
     """
 
     name: str
@@ -149,30 +152,32 @@ def flat_panel(triangles: np.ndarray) -> tuple[float, np.ndarray]:
     return float(lengths.sum() / 2), normal
 
 
-def panel_geometry(
-    power_system: PowerSystem, scenario: Scenario
-) -> tuple[dict[str, PanelGeometry], ModelGeometry | None]:
+def flat_geometry(
+    items: Mapping[str, FlatItem], scenario: Scenario
+) -> tuple[dict[str, FlatGeometry], ModelGeometry | None]:
     """
-    The area and normal of each panel, with the scenario's 3D model.
+    The area and normal of each flat item, such as a panel, with the scenario's
+    3D model.
 
     Parameters
     ----------
-    power_system : PowerSystem
-        The power system file
+    items : mapping of str to FlatItem
+        The items, by their names, such as the power system file's panels or the
+        thermal file's surfaces
     scenario : Scenario
         The scenario, for its 3D model and its articulations
 
     Returns
     -------
-    panels : dict of str to PanelGeometry
-        Each panel, by its name
+    items : dict of str to FlatGeometry
+        Each item, by its name
     model : ModelGeometry or None
         The model's triangles, or None if the scenario has no model
 
     Raises
     ------
     ValueError
-        If a panel names a part and the scenario has no model, or the model has
+        If an item names a part and the scenario has no model, or the model has
         no single node of that name, or the part has no triangles, is not flat,
         or sits under more than one articulation
     """
@@ -187,51 +192,52 @@ def panel_geometry(
             for name, articulation in spacecraft.articulations.items()
         }
 
-    panels, problems = {}, []
-    for name, panel in power_system.panels.items():
-        if panel.part is None:
-            assert panel.normal is not None and panel.area is not None
-            panels[name] = PanelGeometry(
-                name, panel.area.to(u.m**2), np.array(panel.normal)
+    flats, problems = {}, []
+    for name, item in items.items():
+        kind = item.kind
+        if item.part is None:
+            assert item.normal is not None and item.area is not None
+            flats[name] = FlatGeometry(
+                name, item.area.to(u.m**2), np.array(item.normal)
             )
             continue
         if model is None or gltf is None:
             problems.append(
-                f"panel '{name}' names the part '{panel.part}', but the scenario "
+                f"{kind} '{name}' names the part '{item.part}', but the scenario "
                 "has no 3D model"
             )
             continue
         try:
-            index = node_index(gltf, panel.part, "a panel")
+            index = node_index(gltf, item.part, f"a {kind}")
         except ValueError as exc:
-            problems.append(f"panel '{name}': {exc}")
+            problems.append(f"{kind} '{name}': {exc}")
             continue
         part = next((part for part in model.parts if part.node == index), None)
         if part is None:
             problems.append(
-                f"panel '{name}': the part '{panel.part}' has no triangles in the model"
+                f"{kind} '{name}': the part '{item.part}' has no triangles in the model"
             )
             continue
         try:
             area, normal = flat_panel(part.triangles)
         except ValueError as exc:
-            problems.append(f"panel '{name}': the part '{panel.part}' {exc}")
+            problems.append(f"{kind} '{name}': the part '{item.part}' {exc}")
             continue
         above = {*part.ancestors, part.node}
         moving = [joint for joint, node in turning.items() if node in above]
         if len(moving) > 1:
             problems.append(
-                f"panel '{name}': the part '{panel.part}' sits under "
-                f"{len(moving)} articulations, {moving}, and a panel can turn with "
-                "one only"
+                f"{kind} '{name}': the part '{item.part}' sits under "
+                f"{len(moving)} articulations, {moving}, and a {kind} can turn "
+                "with one only"
             )
             continue
-        panels[name] = PanelGeometry(
+        flats[name] = FlatGeometry(
             name, Q_(area, "m2"), normal, moving[0] if moving else None, part.node
         )
     if problems:
         raise ValueError("\n".join(problems))
-    return panels, model
+    return flats, model
 
 
 def panel_notes(power_system: PowerSystem, has_model: bool) -> list[str]:
@@ -309,6 +315,97 @@ def turned_normals(
     )
 
 
+def item_cosines(
+    items: dict[str, FlatGeometry], run: ScenarioRun, directions: np.ndarray
+) -> dict[str, np.ndarray]:
+    """
+    The cosine of the angle between each item's normal and a direction, on the
+    run's grid. An item under an articulation turns with it.
+
+    Parameters
+    ----------
+    items : dict of str to FlatGeometry
+        The items, from `flat_geometry`
+    run : ScenarioRun
+        The run, with its 3D model's articulations if any item turns
+    directions : ndarray
+        Unit vectors in body axes, one for each time of the grid, shape (n, 3),
+        such as `run.sun_body`
+
+    Returns
+    -------
+    cosines : dict of str to ndarray
+        Each item's cosine at each time of the grid, by its name. Negative while
+        the direction is behind the item.
+    """
+    spacecraft = run.scenario.spacecraft_model
+    cosines = {}
+    for name, item in items.items():
+        if item.articulation is None:
+            cosines[name] = directions @ item.normal
+        else:
+            assert spacecraft is not None
+            axis = axis_vector(spacecraft.articulations[item.articulation].axis)
+            normals = turned_normals(
+                item.normal, axis, run.articulations[item.articulation]
+            )
+            cosines[name] = np.einsum("ni,ni->n", normals, directions)
+    return cosines
+
+
+def shaded_fractions(
+    items: dict[str, FlatGeometry],
+    model: ModelGeometry | None,
+    power_system: PowerSystem,
+    run: ScenarioRun,
+    cosines: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
+    """
+    The share of each item that the rest of the model leaves in the sun, on the
+    run's grid, with the power system file's self-shadowing switch.
+
+    Parameters
+    ----------
+    items : dict of str to FlatGeometry
+        The items, from `flat_geometry`
+    model : ModelGeometry or None
+        The model's triangles, from `flat_geometry`
+    power_system : PowerSystem
+        The power system file, for its self-shadowing switch and points
+    run : ScenarioRun
+        The run
+    cosines : dict of str to ndarray
+        Each item's cosine to the sun, from `item_cosines`
+
+    Returns
+    -------
+    lit : dict of str to ndarray
+        Each item's lit fraction at each time of the grid, from 0 to 1, by its
+        name. All 1 without the self-shadowing, and for a typed-in item.
+    """
+    suns = run.sun_body
+    lit = {name: np.ones(len(suns)) for name in items}
+    from_model = [
+        (name, item.node, item.normal)
+        for name, item in items.items()
+        if item.node is not None
+    ]
+    spacecraft = run.scenario.spacecraft_model
+    if power_system.self_shadowing and power_system.shading and from_model:
+        assert model is not None and spacecraft is not None
+        lit |= lit_fractions(
+            model,
+            spacecraft,
+            from_model,
+            power_system.self_shadowing.points,
+            suns,
+            cosines,
+            run.light,
+            run.articulations,
+        )
+    return lit
+
+
 def solar_flux(run: ScenarioRun) -> Quantity:
     """
     The sun's flux at the satellite, on the run's grid.
@@ -346,7 +443,7 @@ class GenerationRun:
         The power system file
     run : ScenarioRun
         The scenario run
-    panels : dict of str to PanelGeometry
+    panels : dict of str to FlatGeometry
         Each panel's area and normal
     flux : Quantity
         The sun's flux at the satellite, on the grid, in W/m²
@@ -369,7 +466,7 @@ class GenerationRun:
 
     power_system: PowerSystem
     run: ScenarioRun
-    panels: dict[str, PanelGeometry]
+    panels: dict[str, FlatGeometry]
     flux: Quantity
     cosines: dict[str, np.ndarray]
     lit: dict[str, np.ndarray]
@@ -583,53 +680,23 @@ def run_generation(power_system: PowerSystem, run: ScenarioRun) -> GenerationRun
     Raises
     ------
     ValueError
-        If a panel's part does not suit, as `panel_geometry` checks
+        If a panel's part does not suit, as `flat_geometry` checks
     """
-    panels, model = panel_geometry(power_system, run.scenario)
+    panels, model = flat_geometry(power_system.panels, run.scenario)
     spacecraft = run.scenario.spacecraft_model
     flux = solar_flux(run)
-    suns = run.sun_body
     efficiency = float(
         power_system.cell_efficiency.to(u.dimensionless_unscaled).value
     ) * float(power_system.loss_factor.to(u.dimensionless_unscaled).value)
-
-    cosines = {}
-    for name, panel in panels.items():
-        if panel.articulation is None:
-            cosines[name] = suns @ panel.normal
-        else:
-            assert spacecraft is not None
-            axis = axis_vector(spacecraft.articulations[panel.articulation].axis)
-            normals = turned_normals(
-                panel.normal, axis, run.articulations[panel.articulation]
-            )
-            cosines[name] = np.einsum("ni,ni->n", normals, suns)
-
-    lit = {name: np.ones(len(suns)) for name in panels}
-    from_model = [
-        (name, panel.node, panel.normal)
-        for name, panel in panels.items()
-        if panel.node is not None
-    ]
-    if power_system.self_shadowing and power_system.shading and from_model:
-        assert model is not None and spacecraft is not None
-        lit |= lit_fractions(
-            model,
-            spacecraft,
-            from_model,
-            power_system.self_shadowing.points,
-            suns,
-            cosines,
-            run.light,
-            run.articulations,
-        )
+    cosines = item_cosines(panels, run, run.sun_body)
+    lit = shaded_fractions(panels, model, power_system, run, cosines)
 
     unshaded, power = {}, {}
     for name, panel in panels.items():
         fill = float(
             power_system.panels[name].fill_ratio.to(u.dimensionless_unscaled).value
         )
-        unshaded[name] = (
+        unshaded[name] = Q_(
             flux
             * panel.area
             * (fill * efficiency)

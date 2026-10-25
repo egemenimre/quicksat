@@ -430,6 +430,33 @@ def beta_angle(state: SkyCoord, sun: CartesianRepresentation):
     return Q_(np.arcsin(sine), "rad").to(u.deg)
 
 
+def sun_zenith_cosine(state: SkyCoord, sun: CartesianRepresentation) -> np.ndarray:
+    """
+    The cosine of the sun's zenith angle at the point below the satellite.
+
+    The Earth is taken as a sphere, so the point below lies along the satellite's
+    direction from the centre of the Earth.
+
+    Parameters
+    ----------
+    state : SkyCoord
+        The satellite's state in GCRS
+    sun : CartesianRepresentation
+        Positions of the sun relative to the centre of the Earth, as from
+        `sun_positions`
+
+    Returns
+    -------
+    cosine : ndarray
+        At each time: 1 at the subsolar point, 0 on the terminator, and negative
+        over the night side
+    """
+    position = cast(CartesianRepresentation, state.cartesian).without_differentials()
+    return np.clip(
+        (position / position.norm()).dot(sun / sun.norm()).to_value(u.one), -1, 1
+    )
+
+
 def earth_rotations(times: TimeArray) -> np.ndarray:
     """
     The orientation of the Earth: rotations from ITRS, fixed to the Earth, into

@@ -287,6 +287,22 @@ function addConsumption(group) {
   changed(true);
 }
 
+/** For a folder with no thermal file: say so, and offer to start one. */
+function noThermal(body) {
+  body.append(el("p", { class: "hint", text: `This folder has no ${project.names.payload_thermal}. Start one to sum the payload's heat over the run, and size its radiators and heaters. The folder sizes power only without it.` }),
+    el("button", { class: "btn", text: `add ${project.names.payload_thermal}`, onclick: addThermal }));
+}
+
+/** Start the payload's thermal file, for a folder that has none. */
+function addThermal() {
+  project.hasThermal = true;
+  fileAdded("payload_thermal");
+  changed(true);
+}
+
+/** Whether the payload's consumption table shows its `thermal` column: with the thermal file, or when the file has the column. */
+const showsThermalColumn = (group) => group === "payload" && (project.hasThermal || project.thermalColumn.payload);
+
 /**
  * The modes a row of a group's consumption table needs: each of the group's
  * modes, and for the platform slew while the body turns. A slew column that
@@ -326,6 +342,7 @@ function modesTable(group) {
       for (let n = 2; modes.includes(name); n++) name = `new mode ${n}`;
       modes.push(name);
       project.consumption[group].forEach((r) => (r.power[name] = ""));
+      if (group === "payload") addFlowMode(T, name);
       changed(true);
     },
   }));
@@ -345,8 +362,9 @@ function consumptionSection(group) {
       }
       const rows = project.consumption[group];
       const modes = consumptionModes(group);
+      const thermalColumn = showsThermalColumn(group);
       const table = el("table", { class: "items" });
-      table.append(el("tr", {}, ["id", "name", "subsystem", "units on", "margin %", ...modes.map((m) => `${m} W`), "comments", ""].map((h) => el("th", { text: h }))));
+      table.append(el("tr", {}, ["id", "name", "subsystem", "units on", "margin %", ...modes.map((m) => `${m} W`), "comments", ...(thermalColumn ? ["heat goes"] : []), ""].map((h) => el("th", { text: h }))));
       rows.forEach((item, index) => {
         const tr = el("tr");
         const power = (m) => (m === SLEW ? numberInput(item, "slew", { min: 0, width: 60 }) : numberInput(item.power, m, { min: 0, width: 60 }));
@@ -358,18 +376,22 @@ function consumptionSection(group) {
           el("td", {}, numberInput(item, "margin", { step: 1, min: 0, width: 55 })),
           ...modes.map((m) => el("td", {}, power(m))),
           el("td", {}, textInput(item, "comments", { cls: "wide" })),
+          ...(thermalColumn ? [el("td", {}, selectInput(item, "thermal", THERMAL_VALUES, { blank: "choose" }))] : []),
           el("td", { class: "tools" }, itemTools(rows, index, { copy: (row) => copyEquipment(group, row) })));
         table.append(tr);
       });
       body.append(el("div", { class: "scroll-x" }, table));
       body.append(el("div", { class: "add-row" }, el("button", {
         class: "btn", text: "+ equipment",
-        onclick: () => { rows.push({ id: "", name: "", subsystem: "", units: 1, margin: 5, power: Object.fromEntries(S.modes[group].map((m) => [m, ""])), slew: "", comments: "" }); changed(true); },
+        onclick: () => { rows.push({ id: "", name: "", subsystem: "", units: 1, margin: 5, power: Object.fromEntries(S.modes[group].map((m) => [m, ""])), slew: "", comments: "", thermal: "" }); changed(true); },
       })));
       const slew = group === "platform"
         ? ", and a slew column when the scenario has slews"
         : ". In a slew, the payload stays in one of its own modes, so it needs no slew column";
       body.append(el("p", { class: "hint", text: `One column per ${group} mode, from the Modes step${slew}. Every cell needs a power, 0 W included. The comments column is the CSV's own place for comments, and is kept as written.` }));
+      if (thermalColumn) {
+        body.append(el("p", { class: "hint", text: "Where each row's heat goes, for the payload's heat account: all of it inside the payload's MLI, outside it, or the heater row, which holds all the payload's heater lines together. One row at most is the heater row." }));
+      }
     },
   };
 }
@@ -410,7 +432,7 @@ const SECTIONS = {
     render(body) {
       body.append(openFolderButton());
       const targetRows = satTargetFiles().filter((name) => targetFiles.has(name)).map((name) => ({ kind: targetKind(name) }));
-      const adds = { power: addPower, ...Object.fromEntries(GROUPS.map((group) => [consumptionKind(group), () => addConsumption(group)])) };
+      const adds = { power: addPower, ...Object.fromEntries(GROUPS.map((group) => [consumptionKind(group), () => addConsumption(group)])), payload_thermal: addThermal };
       body.append(filesTable([{ rows: [...FILES.map(({ kind }) => ({ kind, add: adds[kind] })), ...targetRows] }]));
       body.append(commentsBox(S, "Your comments on the overall scenario", { open: true, note: `They go in the comments field at the top of ${project.names.scenario}. The comments on the overall power subsystem are in the Power steps.` }));
     },
@@ -778,6 +800,95 @@ const SECTIONS = {
 
   payload_consumption: consumptionSection("payload"),
   platform_consumption: consumptionSection("platform"),
+
+  surfaces: {
+    title: "Surfaces", file: "payload_thermal",
+    render(body) {
+      if (!project.hasThermal) return noThermal(body);
+      const list = T.surfaces.items;
+      const table = el("table", { class: "items" });
+      table.append(el("tr", {}, ["name", "from", "part, or normal and area", "absorptance", "emissivity", "temperature", "fixed", ""].map((h) => el("th", { text: h }))));
+      const tbody = el("tbody");
+      table.append(tbody);
+      list.forEach((item, index) => {
+        const tr = selectable(el("tr"), { kind: "surface", item });
+        const where = item.source === "part"
+          ? selectInput(item, "part", partOptions(), { blank: "choose a part", cls: "wide" })
+          : el("span", { class: "ctl" }, textInput(item, "normal", { placeholder: "+x, or 0, 1, -1" }), quantityInput(item, "area", ["m2"]));
+        tr.append(
+          el("td", {}, nameInput(item, null, () => list.map((s) => s.name))),
+          el("td", {}, selectInput(item, "source", [["part", "the model"], ["typed", "typed in"]], { onchange: () => {} })),
+          el("td", {}, where),
+          el("td", {}, numberInput(item, "absorptance", { step: 0.01, min: 0, max: 1, width: 60 })),
+          el("td", {}, numberInput(item, "emissivity", { step: 0.01, min: 0, max: 1, width: 60 })),
+          el("td", {}, quantityInput(item, "temperature", ["K"])),
+          el("td", {}, checkbox(item, "fixed", "held there")),
+          el("td", { class: "tools" }, commentsButton(item, 8, tbody, tr), " ", itemTools(list, index)));
+        tbody.append(tr);
+      });
+      body.append(el("div", { class: "scroll-x" }, table));
+      body.append(el("div", { class: "add-row" }, el("button", {
+        class: "btn", text: "+ surface",
+        onclick: () => { list.push({ name: `surface ${list.length + 1}`, source: model.parts.length ? "part" : "typed", part: "", normal: "+x", area: q(0.1, "m2"), absorptance: 0.2, emissivity: 0.85, temperature: q(273, "K"), fixed: false, comments: "" }); changed(true); },
+      })));
+      body.append(commentsBox(T.surfaces, "Your comments on all the surfaces"));
+    },
+  },
+
+  heat_flows: {
+    title: "Heat flows", file: "payload_thermal",
+    render(body) {
+      if (!project.hasThermal) return noThermal(body);
+      const list = T.heat_flows.items;
+      const modes = S.modes.payload;
+      const table = el("table", { class: "items" });
+      table.append(el("tr", {}, ["name", "given", "power, W, positive into the payload", ""].map((h) => el("th", { text: h }))));
+      list.forEach((item, index) => {
+        const given = selectInput({ v: item.byMode ? "each" : "one" }, "v", [["one", "for every mode"], ["each", "for each mode"]], {
+          onchange: (value) => {
+            item.byMode = value === "each";
+            if (item.byMode) item.powers = Object.fromEntries(modes.map((mode) => [mode, item.power]));
+            else item.power = modes.map((mode) => item.powers[mode]).find((watts) => watts !== "" && watts != null) ?? "";
+          },
+        });
+        const powers = item.byMode
+          ? el("span", { class: "ctl wrap" }, modes.map((mode) => el("span", { class: "ctl" }, el("span", { class: "hint", text: mode }), numberInput(item.powers, mode, { width: 60 }))))
+          : numberInput(item, "power", { width: 70 });
+        table.append(el("tr", {},
+          el("td", {}, nameInput(item, null, () => list.map((f) => f.name))),
+          el("td", {}, given),
+          el("td", {}, powers),
+          el("td", { class: "tools" }, itemTools(list, index))));
+      });
+      body.append(el("div", { class: "scroll-x" }, table));
+      body.append(el("div", { class: "add-row" }, el("button", {
+        class: "btn", text: "+ heat flow",
+        onclick: () => { list.push({ name: `flow ${list.length + 1}`, byMode: false, power: 0, powers: {} }); changed(true); },
+      })));
+      body.append(el("p", { class: "hint", text: "A flow given for each mode needs a power in every payload mode, 0 W included. A flow has no comments field of its own: describe it in the comments on all the flows." }));
+      body.append(commentsBox(T.heat_flows, "Your comments on all the heat flows"));
+    },
+  },
+
+  earth: {
+    title: "The Earth", file: "payload_thermal",
+    render(body) {
+      if (!project.hasThermal) return noThermal(body);
+      const e = T.earth;
+      const g = grid(body);
+      row(g, "Albedo", numberInput(e, "albedo", { step: 0.01, min: 0, max: 1, placeholder: "0.30" }), "share of sunlight reflected, 0.30 if left out");
+      row(g, "Infrared", quantityInput(e, "infrared", ["W/m2"], { placeholder: "237" }), "237 W/m² if left out");
+      body.append(commentsBox(e));
+    },
+  },
+
+  thermal_account: {
+    title: "Heat account", file: "payload_thermal", also: "and the payload's heater row", wide: true,
+    render(body) {
+      if (!project.hasThermal) return noThermal(body);
+      body.append(accountPanel());
+    },
+  },
 
   save: {
     title: "Save and view", file: "all files",

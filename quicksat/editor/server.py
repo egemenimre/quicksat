@@ -39,6 +39,13 @@ that changed on disk since the page was written.
 After each change, the page sends them, and `budget_files` works out every
 budget in a temporary folder, and writes nothing.
 
+**Work out**, on the Scenario Editor's Thermal tab, sends the files in the same
+way. `thermal_files` works out the payload's heat account, and writes nothing.
+The server keeps the run and each surface's absorbed heat, with a hash of what
+they depend on: the scenario and its files, the self-shadowing and the
+surfaces. A change to the heaters, the flows or the dissipation then reuses
+them, and only the sums are done again.
+
 **Stop the server**, in the page's header, stops the server, as Ctrl+C does in
 its window. A server started from a shortcut has no window to press Ctrl+C in.
 The server also stops by itself after 48 h with no editor page open, as
@@ -80,8 +87,8 @@ from quicksat.editor.budgets import budget_results
 from quicksat.editor.editor import _check, editor_data, editor_page
 from quicksat.editor.sizing import NAMES as SIZING_NAMES
 from quicksat.editor.sizing import sizing_data, sizing_page
+from quicksat.editor.thermal import surfaces_key, thermal_results
 from quicksat.power import CONSUMPTION_FILES, POWER_FILE
-from quicksat.power.__main__ import run_folder, summary
 from quicksat.power.config import PowerSystem
 from quicksat.power.consumption import PowerConsumption
 from quicksat.power.viewer import PAGE_FILE as POWER_PAGE
@@ -96,6 +103,11 @@ from quicksat.scenario.viewer import (
     scenario_data,
     write_scenario_viewer,
 )
+from quicksat.thermal import THERMAL_FILE
+from quicksat.thermal.__main__ import run_folder, summary
+from quicksat.thermal.account import run_thermal
+from quicksat.thermal.config import PayloadThermal
+from quicksat.thermal.surfaces import surface_powers
 
 HOST = "127.0.0.1"
 """The address the server listens on: this computer only."""
@@ -109,7 +121,8 @@ PORTS_TRIED = 20
 
 PREFIX = "/quicksat/"
 """The start of every address the server answers: `editor`, `status`, `run`,
-`design`, `designer`, `save`, `budgets`, `stop` and `viewer/` follow it."""
+`design`, `designer`, `save`, `budgets`, `thermal`, `stop` and `viewer/` follow
+it."""
 
 IDLE_S = 48 * 3600
 """How long the server runs with no request from a page before it stops by
@@ -132,6 +145,7 @@ _ROLES = {
     "power": PowerSystem.from_yaml_file,
     "payload_consumption": PowerConsumption.from_csv,
     "platform_consumption": PowerConsumption.from_csv,
+    "payload_thermal": PayloadThermal.from_yaml_file,
 }
 """The files that quicksat reads, by their kind, with their loaders."""
 
@@ -311,8 +325,9 @@ def run_files(files: list[dict], output: str | Path) -> dict:
     two consumption files. If they all read, the run goes ahead: the power
     budget when the power system and both consumption files are there, and the
     scenario alone otherwise. The viewer
-    goes in `output`, as `python -m quicksat.scenario` or `python -m quicksat.power`
-    would write it.
+    goes in `output`, as `python -m quicksat.scenario` or `python -m quicksat.thermal`
+    would write it. With the thermal file too, the report gives the payload's heat
+    account.
 
     Parameters
     ----------
@@ -338,10 +353,13 @@ def run_files(files: list[dict], output: str | Path) -> dict:
     def work(base: Path, names: dict) -> dict:
         consumption = {group: names.get(f"{group}_consumption") for group in GROUPS}
         if "power" in names and all(consumption.values()):
-            budget = run_folder(base, names["scenario"], names["power"], consumption)
+            thermal_file = names.get("payload_thermal", THERMAL_FILE)
+            budget, thermal = run_folder(
+                base, names["scenario"], names["power"], consumption, thermal_file
+            )
             return {
                 "page": write_power_viewer(budget, output).name,
-                "report": summary(budget),
+                "report": summary(budget, thermal, thermal_file),
             }
         run = run_scenario(Scenario.from_yaml_file(base / names["scenario"]))
         return {"page": write_scenario_viewer(run, output).name, "report": run.report}
@@ -400,6 +418,60 @@ def design_files(files: list[dict], repeat: bool) -> dict:
         }
 
     return _run_inputs(files, _DESIGN_ROLES, work)
+
+
+def thermal_files(files: list[dict], cache: dict) -> dict:
+    """
+    Work out the payload's heat account from the editor's files, and write
+    nothing.
+
+    The files go in a temporary folder, as for `run_files`. The run and the
+    surfaces' heat are kept in `cache` with `surfaces_key`. A request with the
+    same key reuses them, so a change to the heaters, the flows or the
+    dissipation only redoes the sums.
+
+    Parameters
+    ----------
+    files : list of dict
+        The page's files, as `run_files` takes them. They must hold the power
+        system file, the payload's consumption file and the thermal file.
+    cache : dict
+        The server's cache, which this reads and fills: `key`, `run` and
+        `surfaces`
+
+    Returns
+    -------
+    result : dict
+        `ok`, `checks` and `seconds`, or `error`, as from `run_files`. When
+        `ok`: `results`, from `thermal_results`, and `reused`, whether the run
+        and the surfaces' heat came from the cache.
+    """
+
+    def work(base: Path, names: dict) -> dict:
+        needed = {
+            "power": POWER_FILE,
+            "payload_consumption": CONSUMPTION_FILES["payload"],
+            "payload_thermal": THERMAL_FILE,
+        }
+        missing = [name for kind, name in needed.items() if kind not in names]
+        if missing:
+            raise ValueError(f"The heat account needs {', '.join(missing)} too.")
+        power_system = PowerSystem.from_yaml_file(base / names["power"])
+        consumption = PowerConsumption.from_csv(base / names["payload_consumption"])
+        thermal = PayloadThermal.from_yaml_file(base / names["payload_thermal"])
+        key = surfaces_key(files, power_system, thermal)
+        reused = cache.get("key") == key
+        if reused:
+            run, surfaces = cache["run"], cache["surfaces"]
+        else:
+            run = run_scenario(Scenario.from_yaml_file(base / names["scenario"]))
+            surfaces = surface_powers(thermal, power_system, run)
+            cache.clear()
+            cache.update(key=key, run=run, surfaces=surfaces)
+        account = run_thermal(thermal, consumption, power_system, run, surfaces)
+        return {"results": thermal_results(account), "reused": reused}
+
+    return _run_inputs(files, _ROLES, work)
 
 
 def budget_files(files: list[dict]) -> dict:
@@ -549,7 +621,7 @@ class EditorServer(ThreadingHTTPServer):
     port : int, optional
         The port to listen on, and 0 for any free one. By default, `PORT` or the
         next free one after it.
-    scenario_file, power_file, consumption_files : optional
+    scenario_file, power_file, consumption_files, thermal_file : optional
         The files' names, if not the usual ones. See `editor_data`.
     idle_s : float, optional
         The time with no request from a page after which the server stops by
@@ -569,9 +641,10 @@ class EditorServer(ThreadingHTTPServer):
         power_file: str = POWER_FILE,
         consumption_files: dict[str, str] = CONSUMPTION_FILES,
         idle_s: float = IDLE_S,
+        thermal_file: str = THERMAL_FILE,
     ):
         self.folder = Path(folder)
-        self.names = (scenario_file, power_file, consumption_files)
+        self.names = (scenario_file, power_file, consumption_files, thermal_file)
         # the Sizing Editor, for a folder of sizing files with no scenario file
         self.sizing = not (self.folder / scenario_file).is_file()
         if self.sizing and not any(
@@ -591,6 +664,10 @@ class EditorServer(ThreadingHTTPServer):
         self.save_lock = threading.Lock()
         # the Sizing Editor's budgets, worked out one request at a time
         self.budgets_lock = threading.Lock()
+        # the Thermal tab's heat account, one request at a time, with the run
+        # and the surfaces' heat it keeps
+        self.thermal_lock = threading.Lock()
+        self.thermal_cache: dict = {}
         # the Activity Designer's last run, as the page its frame shows
         self.design_page: str | None = None
         self.idle_s = idle_s
@@ -668,10 +745,15 @@ class EditorServer(ThreadingHTTPServer):
             return sizing_page(data)
         assert self.output is not None
         data = editor_data(self.folder, *self.names)
-        scenario_file, power_file, consumption_files = self.names
+        scenario_file, power_file, consumption_files, thermal_file = self.names
         hashes = {
             name: file_hash(self.folder / name)
-            for name in (scenario_file, power_file, *consumption_files.values())
+            for name in (
+                scenario_file,
+                power_file,
+                *consumption_files.values(),
+                thermal_file,
+            )
             if (self.folder / name).is_file()
         }
         data["server"] = {
@@ -703,11 +785,12 @@ _REQUESTS = {
     "design": "a run of the Activity Designer",
     "save": "a save",
     "budgets": "a work-out of the budgets",
+    "thermal": "a work-out of the heat account",
     "stop": "a stop",
 }
 """What each address of a POST request takes, for the message that refuses one."""
 
-_SCENARIO_REQUESTS = ("run", "design", "save", "stop")
+_SCENARIO_REQUESTS = ("run", "design", "save", "thermal", "stop")
 """The POST requests that the Scenario Editor's server answers."""
 
 _SIZING_REQUESTS = ("budgets", "stop")
@@ -857,6 +940,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._save(files)
         elif route == "budgets":
             self._budgets(files)
+        elif route == "thermal":
+            self._thermal(files)
         else:
             self._run(route, files, bool(request.get("repeat", False)))
 
@@ -919,6 +1004,29 @@ class _Handler(BaseHTTPRequestHandler):
         if not result["ok"]:
             print(
                 f"{time.strftime('%H:%M:%S')}  no budgets: {result['error']}",
+                flush=True,
+            )
+        self._json(HTTPStatus.OK, result)
+
+    def _thermal(self, files: list) -> None:
+        """A work-out of the heat account from the page's files, one at a time."""
+        with self.server.thermal_lock:
+            try:
+                result = thermal_files(files, self.server.thermal_cache)
+            except Exception as error:  # a fault in quicksat: show it, and keep serving
+                traceback.print_exc()
+                result = {
+                    "ok": False,
+                    "error": f"quicksat failed: {type(error).__name__}: {error}. The server's window shows the details.",
+                    "checks": [],
+                }
+        now = time.strftime("%H:%M:%S")
+        if not result["ok"]:
+            print(f"{now}  no heat account: {result['error']}", flush=True)
+        else:
+            how = "from the kept run" if result["reused"] else "with a new run"
+            print(
+                f"{now}  worked out the heat account {how} in {result['seconds']} s",
                 flush=True,
             )
         self._json(HTTPStatus.OK, result)

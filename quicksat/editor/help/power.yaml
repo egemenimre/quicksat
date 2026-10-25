@@ -5,6 +5,7 @@
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 #
 # The help for the power files: the power system and the two consumption files.
+# The payload's thermal file has its own, in thermal.yaml.
 #
 # Each key is a step of the editor, a key of the file, or both:
 #
@@ -76,6 +77,8 @@ payload_consumption:
     <p>One row for each powered equipment of the payload: the power of one unit in each of the payload's modes, how many units are on, and its margin in percent. Which equipment goes with the payload is your choice. The mass memory and the payload data transmitter can go here, as ESA's payload data handling and transmission does.</p>
     <span class="k">Slews</span>
     <p>While the body turns, the payload stays in one of its own modes: the mode of the activity before, or of the activity after, as each activity chooses. So this table needs no slew column.</p>
+    <span class="k">Where the heat goes</span>
+    <p>With the payload's thermal file, each row also says where its heat goes, in the <code>thermal</code> column. <b>Inside MLI:</b> all its power is dissipated inside the payload. <b>Outside MLI:</b> the heat account leaves it out. <b>Heater:</b> the row of the payload's heater lines, all together, which dissipates inside the payload too. One row at most is the heater row, and the Thermal tab sets its powers. The heat account takes each row's power without its margin, since less dissipation is the safe side for the heaters. For the radiators, that is the optimistic side, so check them with the margins too.</p>
 
 platform_consumption:
   title: Platform consumption

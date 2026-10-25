@@ -7,7 +7,8 @@ passes wherever pytest is invoked from.
 - `scenario.yaml` and `power_system.yaml` use the power sample's model, with
   turning wings, fixed deck cells and one typed-in panel, over one orbit.
 - `payload_consumption.csv` and `platform_consumption.csv` are copies of the
-  power sample's consumption files.
+  power sample's consumption files, and `payload_thermal.yaml` of its thermal
+  file.
 - `short_run` is `scenario.yaml` cut to 30 min, shorter than one orbit.
 - `six_faces_scenario.yaml` and `six_faces_power_system.yaml` are the Orekit case:
   six typed-in 1 m2 faces in nadir pointing, for one day.
@@ -34,6 +35,8 @@ from quicksat.power.consumption import (  # noqa: E402
 from quicksat.power.generation import GenerationRun, run_generation  # noqa: E402
 from quicksat.scenario.config import Scenario  # noqa: E402
 from quicksat.scenario.run import ScenarioRun, run_scenario  # noqa: E402
+from quicksat.thermal.account import ThermalRun, run_thermal  # noqa: E402
+from quicksat.thermal.config import PayloadThermal  # noqa: E402
 
 
 @pytest.fixture(scope="session")
@@ -162,6 +165,30 @@ def consumption_run(consumption, model_run) -> ConsumptionRun:
         The loads
     """
     return run_consumption(consumption, model_run)
+
+
+@pytest.fixture(scope="session")
+def thermal(data_dir) -> PayloadThermal:
+    """The payload's thermal file, `payload_thermal.yaml`.
+
+    Returns
+    -------
+    PayloadThermal
+        The thermal file
+    """
+    return PayloadThermal.from_yaml_file(data_dir / "payload_thermal.yaml")
+
+
+@pytest.fixture(scope="session")
+def thermal_run(thermal, consumption, power_system, model_run) -> ThermalRun:
+    """The payload's heat account over `model_run`.
+
+    Returns
+    -------
+    ThermalRun
+        The account
+    """
+    return run_thermal(thermal, consumption["payload"], power_system, model_run)
 
 
 @pytest.fixture(scope="session")

@@ -6,6 +6,30 @@ Newest first. When a decision replaces an earlier one, the earlier one is kept i
 
 ---
 
+## 26. The payload's heat is an account over the run, not a thermal model
+
+**2026-10-24. Implemented on 2026-10-25. Extends 12: the payload's consumption rows also say where their heat goes.**
+
+The payload's radiators and heaters are sized from a heat account over a scenario run. [The payload's thermal model](payload_thermal_model.md) explains the model and how to use it.
+
+**An account, not a thermal model.** A model with one temperature node for the payload was set aside. It needs the properties of every surface of the box, which a first design does not have. Each surface keeps a constant design temperature instead, and an equilibrium ΔT says whether an imbalance matters.
+
+**A sub-domain of power.** Thermal cannot exist without power. Its dissipation and heaters are rows of the payload's consumption file, marked in a `thermal` column, so power and thermal read one number. So its data stays in power's folders: the thermal file sits in the power folder, and the sample, the reference notebook and the tests stay with power's, as entry 9 lays them out. A domain of its own would keep its own copies of the files, as entry 9 requires, and the heater powers would drift apart. Entry 10 had named thermal as a possible later domain.
+
+**A package of its own.** The code is in `quicksat.thermal`, which depends on power as power depends on the scenario. Power does not import it. So `python -m quicksat.thermal` runs the power budget and then the heat account, on one scenario run, as the power command runs the scenario first. Without the thermal file, it gives the power budget alone, and says so.
+
+**A file of its own.** The surfaces and the heat flows are in `payload_thermal.yaml`, not in `power_system.yaml`. The file stays optional, and with the person who knows it, as entry 12 does for the losses.
+
+**Powers without margins.** Less dissipation is the safe side for the heaters, so the account leaves the margins out. For the radiators, this is the optimistic side.
+
+**Temperatures in kelvin.** A temperature in Celsius is turned into kelvin when it is read, since astropy's offset units are fragile. This settles the offset units that entry 6 left for the radiator work.
+
+**The code gives figures, and the user sizes.** How the heaters are set, the radiator's size, the heater to install and the cases are the user's decisions. The explanation lists them, and each sample notebook explains its own.
+
+**A Thermal tab in the editor, not a designer.** The heaters are tuned as the Sizing Editor's budgets are: a number changes, and the figures follow. So the server keeps the run and the surfaces' heat.
+
+---
+
 ## 25. Between the grid's steps, the run reads splines through the grid
 
 **2026-10-24. Implemented, after measurement.**

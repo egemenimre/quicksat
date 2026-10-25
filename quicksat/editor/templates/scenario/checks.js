@@ -199,6 +199,51 @@ function runChecks() {
     });
   }
 
+  // The payload's thermal file, and the consumption column it needs
+  if (project.hasThermal) {
+    const flatPart = (section, what, part) => {
+      checkPart(section, what, part);
+      if (!(model.bytes && partNames.has(part) && partCount(part) === 1)) return;
+      const geometry = view3d.partGeometry(part);
+      if (!geometry) add(section, `${what}: "${part}" has no surface of its own`);
+      else if (!geometry.flat) add(section, `${what}: "${part}" is not flat (its faces differ by up to ${geometry.maxAngle.toFixed(0)} deg)`);
+    };
+    names("surfaces", "surface", T.surfaces.items);
+    if (!T.surfaces.items.length) add("surfaces", "there must be at least one surface");
+    for (const s of T.surfaces.items) {
+      const what = `surface ${s.name}`;
+      if (s.source === "part") flatPart("surfaces", what, s.part);
+      else {
+        if (!readNormalVector(s.normal)) add("surfaces", `${what}: the normal is a body axis, such as +x, or three numbers, such as 0, 1, -1`);
+        positive("surfaces", `${what}: the area`, s.area);
+        add("surfaces", `${what} is typed in, so nothing shades it`, "note");
+      }
+      fraction("surfaces", `${what}: the absorptance`, s.absorptance);
+      fraction("surfaces", `${what}: the emissivity`, s.emissivity);
+      if (blank(s.temperature)) add("surfaces", `${what}: the temperature is missing`);
+      else if (s.temperature.u !== "K") add("surfaces", `${what}: the temperature must be in K, got ${qText(s.temperature)}`);
+      else if (!(s.temperature.v > 0)) add("surfaces", `${what}: the temperature must be above 0 K`);
+    }
+    if (T.surfaces.items.length && T.surfaces.items.every((s) => s.fixed)) add("surfaces", "every surface has a fixed temperature, so the account gives no equilibrium ΔT", "note");
+    names("heat_flows", "heat flow", T.heat_flows.items);
+    for (const f of T.heat_flows.items) {
+      if (!f.byMode && (f.power === "" || f.power == null)) add("heat_flows", `heat flow ${f.name} has no power`);
+      if (!f.byMode) continue;
+      const missing = S.modes.payload.filter((mode) => f.powers[mode] === "" || f.powers[mode] == null);
+      if (missing.length) add("heat_flows", `heat flow ${f.name}: no power for ${missing.join(", ")}`);
+    }
+    const e = T.earth;
+    if (e.albedo !== "" && e.albedo != null && !(e.albedo >= 0 && e.albedo <= 1)) add("earth", "the albedo must be from 0 to 1");
+    if (!blank(e.infrared) && !(e.infrared.v >= 0)) add("earth", "the infrared flux must not be negative");
+    if (!project.hasPower) add("surfaces", `the heat account needs ${project.names.power} too, for its self-shadowing`, "note");
+    if (!project.hasConsumption.payload) add("payload_consumption", `the heat account needs ${project.names.payload_consumption} too`);
+    const rows = project.consumption.payload;
+    const blankRows = rows.map((r, i) => (THERMAL_VALUES.some(([value]) => value === r.thermal) ? null : r.id || `row ${i + 1}`)).filter(Boolean);
+    if (project.hasConsumption.payload && blankRows.length) add("payload_consumption", `where the heat goes is not set for ${blankRows.join(", ")}`);
+    const heaters = rows.filter((r) => r.thermal === HEATER).map((r) => r.id);
+    if (heaters.length > 1) add("payload_consumption", `more than one heater row: ${heaters.join(", ")}. Put all the payload's heater lines together in one row`);
+  }
+
   state.problems = problems;
   showProblems();
 }
