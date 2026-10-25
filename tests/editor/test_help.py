@@ -16,7 +16,7 @@ from importlib.resources import files
 
 import pytest
 
-from quicksat.editor.editor import help_text
+from quicksat.editor.shared import help_text
 
 TEMPLATES = files("quicksat") / "editor" / "templates"
 

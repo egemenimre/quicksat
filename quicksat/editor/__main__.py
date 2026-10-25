@@ -27,7 +27,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from quicksat.editor.editor import write_editor
+from quicksat.editor.scenario import write_editor
 from quicksat.editor.sizing import NAMES, write_sizing_editor
 from quicksat.scenario import SCENARIO_FILE
 

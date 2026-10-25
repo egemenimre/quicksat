@@ -24,7 +24,7 @@ the cases again with:
 import json
 from pathlib import Path
 
-from quicksat.editor.editor import _key_lines, comment_blocks
+from quicksat.editor.shared import _key_lines, comment_blocks
 
 ROOT = Path(__file__).parent.parent.parent
 CASES = Path(__file__).parent / "js" / "open_cases.json"
