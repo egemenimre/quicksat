@@ -22,6 +22,14 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 - The power budget's `Check` is `PowerCheck`, so that its name differs from the sizing budgets' `Check`.
 - The fractions of the power system and the thermal file, such as an efficiency, are of the type `UnitFractionQty`, which checks that each is above 0 and at most 1. `check_unit_fraction` is gone.
 - `write_data_js`, in `quicksat.scenario.viewer`, writes both `scenario.js` and `power.js`.
+- `quicksat.scenario.config` and `quicksat.scenario.run` are split into smaller modules, with no change to what they do. `Scenario` stays in `config`, and `ScenarioRun` and `run_scenario` stay in `run`. The rest moved:
+  - `quicksat.scenario.names`: the names the file and the run share, such as `SLEW`, `UNPLANNED`, `PAYLOAD`, `PLATFORM`, `GROUPS`, the directions and the event names. `_RESERVED` is the public `RESERVED_NAMES`.
+  - `quicksat.scenario.orbit_config`: `Orbit`, `SsoOrbit`, `GroundTarget` and `SatelliteTarget`.
+  - `quicksat.scenario.triggers`: `Trigger`, `parse_trigger` and `parse_constraint`.
+  - `quicksat.scenario.activities`: `Activity`, `Modes` and `parse_modes`.
+  - `quicksat.scenario.sources`: `scenario_orbit`, `target_orbits` and `orbit_warnings`.
+  - `quicksat.scenario.events`: `Occurrence`, the statuses, `next_event`, `find_events` and `resolve_activities`.
+  - `quicksat.scenario.tables`: `activity_table`, `activity_summary`, `gantt_rows` and `pass_table`.
 
 ### Fixed
 

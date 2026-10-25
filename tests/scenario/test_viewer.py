@@ -24,7 +24,8 @@ import pytest
 from quicksat.orbit.omm import write_omm_file
 from quicksat.orbit.tle import read_tle_file
 from quicksat.scenario import viewer
-from quicksat.scenario.config import UNPLANNED, Scenario
+from quicksat.scenario.config import Scenario
+from quicksat.scenario.names import UNPLANNED
 from quicksat.scenario.viewer import (
     DATA_FILE,
     FORMAT,

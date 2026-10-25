@@ -58,7 +58,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from quicksat import Q_, u
 from quicksat.power.orbits import interval_pieces, whole_orbits
-from quicksat.scenario.config import GROUPS, PLATFORM
+from quicksat.scenario.names import GROUPS, PLATFORM
 from quicksat.scenario.run import ScenarioRun
 from quicksat.utils.intervals import labels_at
 from quicksat.utils.parser_helpers import (

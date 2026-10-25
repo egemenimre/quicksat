@@ -23,15 +23,10 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 from quicksat import u
-from quicksat.scenario.config import (
-    GROUPS,
-    PAYLOAD,
-    PLATFORM,
-    SLEW,
-    UNPLANNED,
-    Scenario,
-)
-from quicksat.scenario.run import NEGATIVE_DURATION, OUTSIDE_CONSTRAINT, ScenarioRun
+from quicksat.scenario.config import Scenario
+from quicksat.scenario.events import NEGATIVE_DURATION, OUTSIDE_CONSTRAINT
+from quicksat.scenario.names import GROUPS, PAYLOAD, PLATFORM, SLEW, UNPLANNED
+from quicksat.scenario.run import ScenarioRun
 from quicksat.utils.intervals import TimeArray, labels_at
 from quicksat.utils.plot_helpers import (
     AXIS,

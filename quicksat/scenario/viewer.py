@@ -63,9 +63,10 @@ from quicksat.orbit.attitude import (
 from quicksat.orbit.tle import Tle
 from quicksat.scenario.attitude import SlewWindow, attitude_names, body_rotations
 from quicksat.scenario.attitude_files import attitude_file_texts
-from quicksat.scenario.config import GROUPS, PAYLOAD, PLATFORM, SLEW, UNPLANNED
+from quicksat.scenario.events import STATUS_OK
+from quicksat.scenario.names import GROUPS, PAYLOAD, PLATFORM, SLEW, UNPLANNED
 from quicksat.scenario.plots import scenario_colours
-from quicksat.scenario.run import STATUS_OK, ScenarioRun
+from quicksat.scenario.run import ScenarioRun
 from quicksat.scenario.spacecraft import node_index, read_glb_json
 from quicksat.utils.intervals import TimeArray
 

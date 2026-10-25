@@ -94,7 +94,8 @@ from quicksat.power.consumption import PowerConsumption
 from quicksat.power.viewer import PAGE_FILE as POWER_PAGE
 from quicksat.power.viewer import write_power_viewer
 from quicksat.scenario import SCENARIO_FILE
-from quicksat.scenario.config import GROUPS, Scenario
+from quicksat.scenario.config import Scenario
+from quicksat.scenario.names import GROUPS
 from quicksat.scenario.run import run_scenario
 from quicksat.scenario.viewer import PAGE_FILE as SCENARIO_PAGE
 from quicksat.scenario.viewer import (

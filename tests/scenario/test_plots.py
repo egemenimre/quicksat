@@ -12,13 +12,13 @@ import matplotlib.pyplot as plt
 import pytest
 from matplotlib.colors import to_rgb
 
+from quicksat.scenario.events import NEGATIVE_DURATION, OUTSIDE_CONSTRAINT
 from quicksat.scenario.plots import (
     _label,
     gantt_chart,
     ground_track_map,
     scenario_colours,
 )
-from quicksat.scenario.run import NEGATIVE_DURATION, OUTSIDE_CONSTRAINT
 from quicksat.utils.plot_helpers import DIM, ILLUMINATION_COLOURS, MUTED, PALETTE
 
 

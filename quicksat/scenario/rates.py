@@ -36,7 +36,8 @@ from quicksat.scenario.attitude import body_rotations
 from quicksat.utils.intervals import TimeArray
 
 if TYPE_CHECKING:  # a type annotation only, as run.py imports this module
-    from quicksat.scenario.run import Occurrence, ScenarioRun
+    from quicksat.scenario.events import Occurrence
+    from quicksat.scenario.run import ScenarioRun
 
 
 @dataclass(frozen=True)

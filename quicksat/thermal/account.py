@@ -54,7 +54,7 @@ from quicksat.power.orbits import (
     run_seconds,
     whole_orbits,
 )
-from quicksat.scenario.config import PAYLOAD
+from quicksat.scenario.names import PAYLOAD
 from quicksat.scenario.run import ScenarioRun
 from quicksat.thermal.config import PayloadThermal
 from quicksat.thermal.surfaces import ABSORBED, SurfacePowers, surface_powers
