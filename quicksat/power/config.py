@@ -39,20 +39,15 @@ the scenario's model when the generation is worked out, in
 
 """
 
-import os
-from pathlib import Path
 from typing import Annotated, ClassVar
 
 import numpy as np
-import yaml
 from astropy.units import Quantity
 from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
-    PrivateAttr,
     StrictBool,
-    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -64,7 +59,8 @@ from quicksat.utils.parser_helpers import (
     Commented,
     EnergyQty,
     FractionQty,
-    check_unit_fraction,
+    UnitFractionQty,
+    YamlFile,
     without_comments,
 )
 
@@ -224,13 +220,7 @@ class Panel(FlatItem):
     kind: ClassVar[str] = "panel"
     part_hint: ClassVar[str] = "the name of its cells in the 3D model"
 
-    fill_ratio: FractionQty
-
-    @field_validator("fill_ratio")
-    @classmethod
-    def _fraction(cls, value: Quantity, info: ValidationInfo) -> Quantity:
-        """Checks that the fill ratio is above 0 and at most 1."""
-        return check_unit_fraction(value, str(info.field_name))
+    fill_ratio: UnitFractionQty
 
 
 class SelfShadowing(Commented):
@@ -280,9 +270,9 @@ class Battery(Commented):
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     capacity: EnergyQty
-    capacity_factor: FractionQty
-    max_depth_of_discharge: FractionQty
-    initial_charge: FractionQty = Q_(100, "%")
+    capacity_factor: UnitFractionQty
+    max_depth_of_discharge: UnitFractionQty
+    initial_charge: UnitFractionQty = Q_(100, "%")
 
     @field_validator("capacity")
     @classmethod
@@ -291,12 +281,6 @@ class Battery(Commented):
         if value.value == 0:
             raise ValueError("capacity must be above zero")
         return value
-
-    @field_validator("capacity_factor", "max_depth_of_discharge", "initial_charge")
-    @classmethod
-    def _fraction(cls, value: Quantity, info: ValidationInfo) -> Quantity:
-        """Checks that each share is in (0, 1]."""
-        return check_unit_fraction(value, str(info.field_name))
 
     @property
     def usable(self) -> Quantity:
@@ -335,21 +319,13 @@ class Conditioning(Commented):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
-    array_regulator: FractionQty
-    battery_charge: FractionQty
-    battery_discharge: FractionQty
-    distribution: FractionQty
-
-    @field_validator(
-        "array_regulator", "battery_charge", "battery_discharge", "distribution"
-    )
-    @classmethod
-    def _fraction(cls, value: Quantity, info: ValidationInfo) -> Quantity:
-        """Checks that each efficiency is in (0, 1]."""
-        return check_unit_fraction(value, str(info.field_name))
+    array_regulator: UnitFractionQty
+    battery_charge: UnitFractionQty
+    battery_discharge: UnitFractionQty
+    distribution: UnitFractionQty
 
 
-class PowerSystem(Commented):
+class PowerSystem(YamlFile):
     """
     The power system file: the panels, the battery and the conditioning.
 
@@ -392,40 +368,13 @@ class PowerSystem(Commented):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
-    cell_efficiency: FractionQty
-    loss_factor: FractionQty
+    cell_efficiency: UnitFractionQty
+    loss_factor: UnitFractionQty
     panels: Annotated[dict[str, Panel], BeforeValidator(without_comments)]
     self_shadowing: SelfShadowing | None = None
     battery: Battery | None = None
     conditioning: Conditioning | None = None
     system_margin: FractionQty | None = None
-
-    _source_file: Path | None = PrivateAttr(None)
-    _source_text: str | None = PrivateAttr(None)
-
-    @property
-    def source_file(self) -> Path | None:
-        """
-        The file the power system was read from.
-
-        Returns
-        -------
-        path : Path or None
-            None when it was read from text
-        """
-        return self._source_file
-
-    @property
-    def source_text(self) -> str | None:
-        """
-        The text the power system was read from, as written.
-
-        Returns
-        -------
-        text : str or None
-            None when it was built in code
-        """
-        return self._source_text
 
     @property
     def shading(self) -> bool:
@@ -438,12 +387,6 @@ class PowerSystem(Commented):
         """
         return self.self_shadowing is not None and self.self_shadowing.enabled
 
-    @field_validator("cell_efficiency", "loss_factor")
-    @classmethod
-    def _fraction(cls, value: Quantity, info: ValidationInfo) -> Quantity:
-        """Checks that the efficiency and the loss factor are in (0, 1]."""
-        return check_unit_fraction(value, str(info.field_name))
-
     @field_validator("panels")
     @classmethod
     def _name_panels(cls, panels: dict[str, Panel]) -> dict[str, Panel]:
@@ -453,59 +396,3 @@ class PowerSystem(Commented):
         if any(not str(name).strip() for name in panels):
             raise ValueError("a panel's name must not be empty")
         return panels
-
-    @classmethod
-    def from_yaml_file(cls, file_path: str | Path) -> "PowerSystem":
-        """
-        Initialise the power system from a YAML file.
-
-        Parameters
-        ----------
-        file_path : str | Path
-            Path to the YAML file
-
-        Returns
-        -------
-        power_system : PowerSystem
-            The power system from the file
-
-        Raises
-        ------
-        FileNotFoundError
-            If there is no such file
-        """
-        if not os.path.isfile(file_path):
-            raise FileNotFoundError(f"File does not exist: {file_path}")
-        path = Path(file_path)
-        power_system = cls.from_yaml_text(path.read_text())
-        power_system._source_file = path
-        return power_system
-
-    @classmethod
-    def from_yaml_text(cls, yaml_text: str) -> "PowerSystem":
-        """
-        Initialise the power system from YAML text.
-
-        Parameters
-        ----------
-        yaml_text : str
-            Text containing the power system (YAML)
-
-        Returns
-        -------
-        power_system : PowerSystem
-            The power system from the text
-
-        Raises
-        ------
-        ValueError
-            If the text is empty, or is not a mapping of keys to values
-        """
-        if not yaml_text:
-            raise ValueError("Text content is None.")
-        data = yaml.safe_load(yaml_text)
-        if not isinstance(data, dict):
-            raise ValueError("A power system file must be a mapping of keys to values.")
-        power_system = cls.model_validate(data)
-        power_system._source_text = yaml_text
-        return power_system

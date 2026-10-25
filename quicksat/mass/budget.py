@@ -8,19 +8,23 @@ Mass budget assembly and reporting.
 
 """
 
-import os
 from pathlib import Path
 from typing import Annotated, cast
 
 import pandas as pd
-import yaml
 from pandas.io.formats.style import Styler
-from pydantic import BeforeValidator, ConfigDict, Field, ValidationError
+from pydantic import BeforeValidator, ConfigDict, Field
 
 from quicksat import Q_
 from quicksat.mass.equipment import Equipment, MassClass
 from quicksat.mass.report import tabulate
-from quicksat.utils.parser_helpers import Commented, without_comments
+from quicksat.utils.parser_helpers import (
+    Commented,
+    YamlFile,
+    read_csv_rows,
+    validated_rows,
+    without_comments,
+)
 
 LAUNCHER_LOCATION = "Launcher"
 """Reserved location name for hardware that stays with the launch vehicle."""
@@ -82,7 +86,7 @@ class LocationConfig(Commented):
 _LAUNCHER_DEFAULT = LocationConfig(retained_in_orbit=False)
 
 
-class MassBudgetConfig(Commented):
+class MassBudgetConfig(YamlFile):
     """
     Budget settings, keyed on location.
 
@@ -96,48 +100,6 @@ class MassBudgetConfig(Commented):
     locations: Annotated[
         dict[str, LocationConfig], BeforeValidator(without_comments)
     ] = Field(default_factory=dict)
-
-    @classmethod
-    def from_yaml_file(cls, file_path: str | Path) -> "MassBudgetConfig":
-        """
-        Initialise the budget config from a YAML file.
-
-        Parameters
-        ----------
-        file_path : str | Path
-            Filepath containing the config data (YAML)
-
-        Returns
-        -------
-        config : MassBudgetConfig
-            Config object from the input data
-        """
-        if not file_path:
-            raise ValueError("Path is None. No file to be found.")
-        elif not os.path.isfile(file_path):
-            raise FileNotFoundError(f"File does not exist: {file_path}")
-        else:
-            with open(file_path, "rt") as file:
-                return cls.from_yaml_text(file.read())
-
-    @classmethod
-    def from_yaml_text(cls, yaml_text: str) -> "MassBudgetConfig":
-        """
-        Initialise the budget config from YAML text.
-
-        Parameters
-        ----------
-        yaml_text : str
-            Text containing the config data (YAML)
-
-        Returns
-        -------
-        config : MassBudgetConfig
-            Config object from the input data
-        """
-        if not yaml_text:
-            raise ValueError("Text content is None.")
-        return cls(**yaml.safe_load(yaml_text))
 
     def for_location(self, name: str) -> LocationConfig:
         """
@@ -237,18 +199,10 @@ class MassBudget:
             The assembled budget
         """
         config = MassBudgetConfig.from_yaml_file(Path(config_path))
-        raw = pd.read_csv(csv_path, dtype=str, keep_default_na=False)
-
-        missing = [name for name in REQUIRED_COLUMNS if name not in raw.columns]
-        if missing:
-            raise ValueError(f"{csv_path}: missing columns {missing}")
-
-        equipment = []
-        for row_number, record in enumerate(raw.to_dict("records"), start=2):
-            try:
-                equipment.append(Equipment(**record))
-            except ValidationError as exc:
-                raise ValueError(f"{csv_path}, row {row_number}:\n{exc}") from exc
+        raw = read_csv_rows(csv_path, REQUIRED_COLUMNS)
+        equipment = validated_rows(
+            Equipment, raw.to_dict("records"), Path(csv_path).name
+        )
 
         return cls(equipment, config)
 

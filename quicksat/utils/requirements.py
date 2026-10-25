@@ -16,11 +16,8 @@ still works out its figures, and gives no check for that requirement.
 
 """
 
-import os
-from pathlib import Path
 from typing import Annotated
 
-import yaml
 from pydantic import BeforeValidator, ConfigDict, Field
 
 from quicksat.agility.budget import Axis
@@ -28,6 +25,7 @@ from quicksat.utils.parser_helpers import (
     AngleQty,
     Commented,
     TimeQty,
+    YamlFile,
     without_comments,
 )
 
@@ -91,7 +89,7 @@ class DataRequirements(Commented):
     orbits_without_downlink: float = Field(ge=0)
 
 
-class Requirements(Commented):
+class Requirements(YamlFile):
     """
     What the mission asks of the spacecraft, by budget.
 
@@ -107,46 +105,8 @@ class Requirements(Commented):
 
     model_config = ConfigDict(extra="forbid")
 
+    # text with no requirement in it gives none
+    _EMPTY_ALLOWED = True
+
     agility: AgilityRequirements | None = None
     data: DataRequirements | None = None
-
-    @classmethod
-    def from_yaml_file(cls, file_path: str | Path) -> "Requirements":
-        """
-        Initialise the requirements from a YAML file.
-
-        Parameters
-        ----------
-        file_path : str | Path
-            Filepath containing the requirements (YAML)
-
-        Returns
-        -------
-        requirements : Requirements
-            Requirements object from the input data
-        """
-        if not file_path:
-            raise ValueError("Path is None. No file to be found.")
-        elif not os.path.isfile(file_path):
-            raise FileNotFoundError(f"File does not exist: {file_path}")
-        else:
-            with open(file_path, "rt") as file:
-                return cls.from_yaml_text(file.read())
-
-    @classmethod
-    def from_yaml_text(cls, yaml_text: str) -> "Requirements":
-        """
-        Initialise the requirements from YAML text. Text with no requirement in
-        it gives none.
-
-        Parameters
-        ----------
-        yaml_text : str
-            Text containing the requirements (YAML)
-
-        Returns
-        -------
-        requirements : Requirements
-            Requirements object from the input data
-        """
-        return cls(**(yaml.safe_load(yaml_text) or {}))

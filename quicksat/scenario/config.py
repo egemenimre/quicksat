@@ -37,15 +37,13 @@ This module reads and checks the file. It does not run anything.
 
 """
 
-import os
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
 from pathlib import Path
-from typing import Annotated, Literal, cast, get_args
+from typing import Annotated, Literal, Self, cast, get_args
 
 import numpy as np
-import yaml
 from astropy.time import Time
 from astropy.units import Quantity
 from pydantic import (
@@ -53,7 +51,6 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
-    PrivateAttr,
     ValidationInfo,
     field_validator,
     model_validator,
@@ -73,6 +70,7 @@ from quicksat.utils.parser_helpers import (
     SignedAngleQty,
     SignedLengthQty,
     TimeQty,
+    YamlFile,
     without_comments,
 )
 
@@ -1572,7 +1570,7 @@ class SpacecraftModel(Commented):
     ] = Field(default_factory=dict)
 
 
-class Scenario(Commented):
+class Scenario(YamlFile):
     """
     A scenario: the orbit, the period of the run, and the activities.
 
@@ -1632,38 +1630,8 @@ class Scenario(Commented):
         SpacecraftModel | None, BeforeValidator(_model_mapping)
     ] = Field(None, alias="3d_model")
 
-    _source_file: Path | None = PrivateAttr(None)
-    _source_text: str | None = PrivateAttr(None)
-
-    @property
-    def source_file(self) -> Path | None:
-        """
-        The file the scenario was read from.
-
-        Returns
-        -------
-        path : Path or None
-            The path given to `from_yaml_file`, or None if the scenario was not
-            read from a file
-        """
-        return self._source_file
-
-    @property
-    def source_text(self) -> str | None:
-        """
-        The YAML text the scenario was read from, as written.
-
-        Returns
-        -------
-        text : str or None
-            The text, or None if the scenario was not read from YAML text
-        """
-        return self._source_text
-
     @classmethod
-    def from_yaml_file(
-        cls, file_path: str | Path, designer: bool = False
-    ) -> "Scenario":
+    def from_yaml_file(cls, file_path: str | Path, designer: bool = False) -> Self:
         """
         Initialise the scenario from a YAML file.
 
@@ -1681,18 +1649,7 @@ class Scenario(Commented):
         scenario : Scenario
             Scenario object from the input data
         """
-        if not file_path:
-            raise ValueError("Path is None. No file to be found.")
-        elif not os.path.isfile(file_path):
-            raise FileNotFoundError(f"File does not exist: {file_path}")
-        else:
-            path = Path(file_path)
-            with open(path, "rt") as file:
-                scenario = cls.from_yaml_text(
-                    file.read(), base_dir=path.parent, designer=designer
-                )
-            scenario._source_file = path
-            return scenario
+        return cls._from_file(file_path, designer=designer)
 
     @classmethod
     def from_yaml_text(
@@ -1700,7 +1657,7 @@ class Scenario(Commented):
         yaml_text: str,
         base_dir: str | Path | None = None,
         designer: bool = False,
-    ) -> "Scenario":
+    ) -> Self:
         """
         Initialise the scenario from YAML text.
 
@@ -1721,16 +1678,7 @@ class Scenario(Commented):
         scenario : Scenario
             Scenario object from the input data
         """
-        if not yaml_text:
-            raise ValueError("Text content is None.")
-        data = yaml.safe_load(yaml_text)
-        if not isinstance(data, dict):
-            raise ValueError("A scenario file must be a mapping of keys to values.")
-        scenario = cls.model_validate(
-            data, context={"base_dir": base_dir, "designer": designer}
-        )
-        scenario._source_text = yaml_text
-        return scenario
+        return cls._from_text(yaml_text, base_dir=base_dir, designer=designer)
 
     @field_validator("step")
     @classmethod

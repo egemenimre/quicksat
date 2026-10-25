@@ -104,9 +104,9 @@ from quicksat.scenario.viewer import (
     write_scenario_viewer,
 )
 from quicksat.thermal import THERMAL_FILE
-from quicksat.thermal.__main__ import run_folder, summary
 from quicksat.thermal.account import run_thermal
 from quicksat.thermal.config import PayloadThermal
+from quicksat.thermal.folder import run_folder, summary
 from quicksat.thermal.surfaces import surface_powers
 
 HOST = "127.0.0.1"
@@ -604,6 +604,41 @@ def save_files(folder: str | Path, files: list[dict]) -> dict:
     return {"ok": True, "files": saved}
 
 
+def _log(text: str) -> None:
+    """Print a line in the server's window, after the time of day."""
+    print(f"{time.strftime('%H:%M:%S')}  {text}", flush=True)
+
+
+def _guarded(work: Callable[[], dict], **fields) -> dict:
+    """
+    The result of a request's work, with a fault in quicksat as an error, so that
+    the server keeps serving.
+
+    Parameters
+    ----------
+    work : callable
+        Does the work, and gives the result
+    **fields
+        The fields that an error result also needs, such as `checks`
+
+    Returns
+    -------
+    result : dict
+        The work's result. After a fault, `ok` is false and `error` names the
+        fault, and the traceback goes to the server's window.
+    """
+    try:
+        return work()
+    except Exception as error:  # a fault in quicksat: show it, and keep serving
+        traceback.print_exc()
+        return {
+            "ok": False,
+            "error": f"quicksat failed: {type(error).__name__}: {error}. The "
+            "server's window shows the details.",
+            **fields,
+        }
+
+
 class EditorServer(ThreadingHTTPServer):
     """
     An editor for one folder, served on this computer, with its runs: the
@@ -696,7 +731,7 @@ class EditorServer(ThreadingHTTPServer):
         if self.stopping:
             return
         self.stopping = True
-        print(f"{time.strftime('%H:%M:%S')}  stopping, {why}", flush=True)
+        _log(f"stopping, {why}")
         # in a thread of its own: `shutdown` waits for `serve_forever` to end
         threading.Thread(target=self.shutdown, daemon=True).start()
 
@@ -958,77 +993,54 @@ class _Handler(BaseHTTPRequestHandler):
             )
             return
         design = route == "design"
+        output = self.server.output
+
+        def work() -> dict:
+            if not design:
+                assert output is not None
+                return run_files(files, output)
+            result = design_files(files, repeat)
+            if result["ok"]:
+                self.server.design_page = designer_page(result.pop("data"))
+            return result
+
         try:
-            doing = "generating the scenario" if design else "running the page's files"
-            print(f"{time.strftime('%H:%M:%S')}  {doing} ...", flush=True)
-            if design:
-                result = design_files(files, repeat)
-                if result["ok"]:
-                    self.server.design_page = designer_page(result.pop("data"))
-            else:
-                assert self.server.output is not None
-                result = run_files(files, self.server.output)
-        except Exception as error:  # a fault in quicksat: show it, and keep serving
-            traceback.print_exc()
-            result = {
-                "ok": False,
-                "error": f"quicksat failed: {type(error).__name__}: {error}. The server's window shows the details.",
-                "checks": [],
-            }
+            _log(
+                "generating the scenario ..."
+                if design
+                else "running the page's files ..."
+            )
+            result = _guarded(work, checks=[])
         finally:
             self.server.run_lock.release()
-        now = time.strftime("%H:%M:%S")
         if not result["ok"]:
-            missing = "no scenario" if design else "no viewer"
-            print(f"{now}  {missing}: {result['error']}", flush=True)
+            _log(f"{'no scenario' if design else 'no viewer'}: {result['error']}")
         elif design:
-            print(f"{now}  generated in {result['seconds']} s", flush=True)
+            _log(f"generated in {result['seconds']} s")
         else:
-            print(
-                f"{now}  wrote {self.server.output / result['page']} in {result['seconds']} s",
-                flush=True,
-            )
+            assert output is not None
+            _log(f"wrote {output / result['page']} in {result['seconds']} s")
         self._json(HTTPStatus.OK, result)
 
     def _budgets(self, files: list) -> None:
         """A work-out of the sizing budgets from the page's files, one at a time."""
         with self.server.budgets_lock:
-            try:
-                result = budget_files(files)
-            except Exception as error:  # a fault in quicksat: show it, and keep serving
-                traceback.print_exc()
-                result = {
-                    "ok": False,
-                    "error": f"quicksat failed: {type(error).__name__}: {error}. The server's window shows the details.",
-                }
+            result = _guarded(lambda: budget_files(files))
         if not result["ok"]:
-            print(
-                f"{time.strftime('%H:%M:%S')}  no budgets: {result['error']}",
-                flush=True,
-            )
+            _log(f"no budgets: {result['error']}")
         self._json(HTTPStatus.OK, result)
 
     def _thermal(self, files: list) -> None:
         """A work-out of the heat account from the page's files, one at a time."""
         with self.server.thermal_lock:
-            try:
-                result = thermal_files(files, self.server.thermal_cache)
-            except Exception as error:  # a fault in quicksat: show it, and keep serving
-                traceback.print_exc()
-                result = {
-                    "ok": False,
-                    "error": f"quicksat failed: {type(error).__name__}: {error}. The server's window shows the details.",
-                    "checks": [],
-                }
-        now = time.strftime("%H:%M:%S")
+            result = _guarded(
+                lambda: thermal_files(files, self.server.thermal_cache), checks=[]
+            )
         if not result["ok"]:
-            print(f"{now}  no heat account: {result['error']}", flush=True)
+            _log(f"no heat account: {result['error']}")
         else:
             how = "from the kept run" if result["reused"] else "with a new run"
-            print(
-                f"{now}  worked out the heat account {how} in {result['seconds']} s",
-                flush=True,
-            )
+            _log(f"worked out the heat account {how} in {result['seconds']} s")
         self._json(HTTPStatus.OK, result)
 
     def _save(self, files: list) -> None:
@@ -1038,12 +1050,11 @@ class _Handler(BaseHTTPRequestHandler):
                 result = save_files(self.server.folder, files)
             except OSError as error:
                 result = {"ok": False, "error": f"Cannot save: {error}"}
-        now = time.strftime("%H:%M:%S")
         if result["ok"]:
             names = ", ".join(file["name"] for file in result["files"])
-            print(f"{now}  saved {names} in {_label(self.server.folder)}", flush=True)
+            _log(f"saved {names} in {_label(self.server.folder)}")
         else:
-            print(f"{now}  nothing saved: {result['error']}", flush=True)
+            _log(f"nothing saved: {result['error']}")
         self._json(HTTPStatus.OK, result)
 
     def _stop(self) -> None:

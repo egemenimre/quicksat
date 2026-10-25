@@ -16,18 +16,16 @@ delta-V already worked out elsewhere.
 
 """
 
-import os
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import numpy as np
 import pandas as pd
-import yaml
 
 # astropy.constants creates its constants at import, so pyright cannot see them
 from astropy.constants import g0  # pyright: ignore[reportAttributeAccessIssue]
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from quicksat import MU_EARTH, Q_, R_EARTH, u
 from quicksat.delta_v.report import tabulate
@@ -42,6 +40,9 @@ from quicksat.utils.parser_helpers import (
     NoSpaceStr,
     PlainQty,
     TimeQty,
+    YamlFile,
+    read_csv_rows,
+    validated_rows,
 )
 
 REQUIRED_COLUMNS = (
@@ -176,7 +177,7 @@ class CollisionAvoidance(Commented):
     manoeuvre also serves as that raise."""
 
 
-class DeltaVConfig(Commented):
+class DeltaVConfig(YamlFile):
     """
     Budget settings.
 
@@ -193,48 +194,6 @@ class DeltaVConfig(Commented):
     little, because the counts are the uncertain part."""
 
     collision_avoidance: CollisionAvoidance = CollisionAvoidance()
-
-    @classmethod
-    def from_yaml_file(cls, file_path: str | Path) -> "DeltaVConfig":
-        """
-        Initialise the config from a YAML file.
-
-        Parameters
-        ----------
-        file_path : str | Path
-            Filepath containing the config data (YAML)
-
-        Returns
-        -------
-        config : DeltaVConfig
-            Config object from the input data
-        """
-        if not file_path:
-            raise ValueError("Path is None. No file to be found.")
-        elif not os.path.isfile(file_path):
-            raise FileNotFoundError(f"File does not exist: {file_path}")
-        else:
-            with open(file_path, "rt") as file:
-                return cls.from_yaml_text(file.read())
-
-    @classmethod
-    def from_yaml_text(cls, yaml_text: str) -> "DeltaVConfig":
-        """
-        Initialise the config from YAML text.
-
-        Parameters
-        ----------
-        yaml_text : str
-            Text containing the config data (YAML)
-
-        Returns
-        -------
-        config : DeltaVConfig
-            Config object from the input data
-        """
-        if not yaml_text:
-            raise ValueError("Text content is None.")
-        return cls(**yaml.safe_load(yaml_text))
 
 
 def hohmann_deltav(radius_1, radius_2):
@@ -364,18 +323,10 @@ class DeltaVBudget:
         """
         config = DeltaVConfig.from_yaml_file(Path(config_path))
         mission = Mission.from_yaml_file(Path(mission_path))
-        raw = pd.read_csv(csv_path, dtype=str, keep_default_na=False)
-
-        missing = [name for name in REQUIRED_COLUMNS if name not in raw.columns]
-        if missing:
-            raise ValueError(f"{csv_path}: missing columns {missing}")
-
-        manoeuvres = []
-        for row_number, record in enumerate(raw.to_dict("records"), start=2):
-            try:
-                manoeuvres.append(Manoeuvre(**record))
-            except ValidationError as exc:
-                raise ValueError(f"{csv_path}, row {row_number}:\n{exc}") from exc
+        raw = read_csv_rows(csv_path, REQUIRED_COLUMNS)
+        manoeuvres = validated_rows(
+            Manoeuvre, raw.to_dict("records"), Path(csv_path).name
+        )
 
         return cls(manoeuvres, config, mission, mass_budget)
 

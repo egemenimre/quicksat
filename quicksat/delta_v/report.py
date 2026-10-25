@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, Any
 import pandas as pd
 from pandas.io.formats.style import Styler
 
+from quicksat.utils.report_helpers import bold_rows, styled_report
+
 if TYPE_CHECKING:
     from quicksat.delta_v.budget import DeltaVConfig
 
@@ -36,7 +38,7 @@ _COLUMNS = (
     "row_type",
 )
 
-_HEADERS = {
+HEADERS = {
     "manoeuvre_id": "Item",
     "name": "Name",
     "type": "Type",
@@ -47,13 +49,15 @@ _HEADERS = {
     "deltav": "ΔV total [m/s]",
     "comments": "Comments",
 }
+"""The header of each column shown, by the column's name."""
 
-_FORMATS = {
+FORMATS = {
     "loss_factor": "{:,.3g}",
     "each": "{:,.3f}",
     "occurrences": "{:,.1f}",
     "deltav": "{:,.2f}",
 }
+"""The format of each column of numbers, by the column's name."""
 
 _BOLD_ROW_TYPES = frozenset({"phase_subtotal", "subtotal", "margin", "total"})
 
@@ -89,7 +93,14 @@ def tabulate(
     report : Styler
         One row per manoeuvre and per subtotal, rendered for reading
     """
-    return _style(_assemble(frame, config, margin), comments, loss_factor)
+    report = _assemble(frame, config, margin)
+    hidden = ["row_type"]
+    if not comments:
+        hidden.append("comments")
+    # in a budget of impulsive burns, the loss factor is a column of ones
+    if not loss_factor:
+        hidden.append("loss_factor")
+    return styled_report(report, FORMATS, HEADERS, bold_rows(_BOLD_ROW_TYPES), hidden)
 
 
 def _row(manoeuvre_id: str, name: str, row_type: str, **values) -> dict[str, Any]:
@@ -183,49 +194,3 @@ def _assemble(
         rows.append(_row("", "Total ΔV", "total", deltav=subtotal + allowance))
 
     return pd.DataFrame(rows, columns=list(_COLUMNS))
-
-
-def _style(report: pd.DataFrame, comments: bool, loss_factor: bool) -> Styler:
-    """
-    Renders the report for reading: blanks instead of NaN, bold summaries.
-
-    Columns are hidden rather than dropped, so `.data` stays complete whatever the
-    flags. Headers are looked up per column, rather than passed as a list by position. A
-    list would no longer match as soon as a column is hidden.
-
-    Parameters
-    ----------
-    report : pd.DataFrame
-        The assembled report rows
-    comments : bool
-        Show the comments column
-    loss_factor : bool
-        Show the loss factor column. Off by default, because in a budget of impulsive
-        burns it is a column of ones. It is worth the width only once a manoeuvre has a
-        correction
-
-    Returns
-    -------
-    styled : Styler
-        The report rendered for reading
-    """
-
-    def _bold_summary(row):
-        """Makes a row bold if it is a subtotal or a total."""
-        style = "font-weight: bold" if row["row_type"] in _BOLD_ROW_TYPES else ""
-        return [style] * len(row)
-
-    hidden = ["row_type"]
-    if not comments:
-        hidden.append("comments")
-    if not loss_factor:
-        hidden.append("loss_factor")
-    headers = [_HEADERS[name] for name in report.columns if name not in hidden]
-
-    return (
-        report.style.format(_FORMATS, na_rep="")  # pyright: ignore[reportArgumentType]
-        .apply(_bold_summary, axis=1)  # pyright: ignore[reportAttributeAccessIssue]
-        .hide(axis="index")
-        .hide(hidden, axis="columns")
-        .relabel_index(headers, axis="columns")
-    )

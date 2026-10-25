@@ -31,7 +31,6 @@ What `power.js` holds, as the page reads it:
 """
 
 import dataclasses
-import json
 from pathlib import Path
 
 import numpy as np
@@ -48,6 +47,7 @@ from quicksat.scenario.spacecraft import (
 from quicksat.scenario.viewer import (
     scenario_data,
     viewer_page,
+    write_data_js,
     write_scenario_js,
 )
 
@@ -289,16 +289,7 @@ def write_power_viewer(budget: BudgetRun, folder: str | Path) -> Path:  # noqa: 
     scenario = scenario_data(run)
     write_scenario_js(run, folder, scenario)
     data = power_data(budget, scenario["id"])
-    source = data["power_file"]
-    text = (
-        f"// Written by quicksat from {source}. Rerun the notebook instead of "
-        "editing this file.\n"
-        "window.quicksat = window.quicksat || {};\n"
-        "window.quicksat.power = "
-        + json.dumps(data, allow_nan=False, separators=(",", ":"))
-        + ";\n"
-    )
-    (Path(folder) / DATA_FILE).write_text(text)
+    write_data_js(Path(folder) / DATA_FILE, "power", data, data["power_file"])
     page = Path(folder) / PAGE_FILE
     page.write_text(viewer_page(), encoding="utf-8")
     return page

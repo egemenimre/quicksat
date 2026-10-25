@@ -17,6 +17,8 @@ from typing import cast
 import pandas as pd
 from pandas.io.formats.style import Styler
 
+from quicksat.utils.report_helpers import styled_report
+
 _COLUMNS = (
     "angle",
     "profile",
@@ -28,7 +30,7 @@ _COLUMNS = (
     "verdict",
 )
 
-_HEADERS = {
+HEADERS = {
     "angle": "Slew [deg]",
     "profile": "Limited by",
     "slew_time": "Slew [s]",
@@ -38,8 +40,9 @@ _HEADERS = {
     "margin": "Time margin",
     "verdict": "",
 }
+"""The header of each column shown, by the column's name."""
 
-_FORMATS = {
+FORMATS = {
     "angle": "{:,.0f}",
     "slew_time": "{:,.1f}",
     "total_time": "{:,.1f}",
@@ -47,8 +50,14 @@ _FORMATS = {
     "momentum_used": "{:.1%}",
     "margin": "{:+.1%}",
 }
+"""The format of each column of numbers, by the column's name."""
 
 _LIMIT_LABELS = {"triangular": "torque", "trapezoidal": "momentum"}
+
+
+def _failed(row: pd.Series) -> str:
+    """Colours a row red when its slew does not fit the target duration."""
+    return "color: #b00020" if row.get("verdict") == "FAILS" else ""
 
 
 def tabulate(frame: pd.DataFrame, target_duration=None) -> Styler:
@@ -72,7 +81,7 @@ def tabulate(frame: pd.DataFrame, target_duration=None) -> Styler:
     report : Styler
         One row per slew angle, rendered for reading
     """
-    return _style(_assemble(frame, target_duration))
+    return styled_report(_assemble(frame, target_duration), FORMATS, HEADERS, _failed)
 
 
 def _assemble(frame: pd.DataFrame, target_duration=None) -> pd.DataFrame:
@@ -105,31 +114,3 @@ def _assemble(frame: pd.DataFrame, target_duration=None) -> pd.DataFrame:
         ]
         columns = list(_COLUMNS)
     return cast(pd.DataFrame, report[columns])
-
-
-def _style(report: pd.DataFrame) -> Styler:
-    """
-    Renders the report for reading: fixed decimals, the failures marked.
-
-    Parameters
-    ----------
-    report : pd.DataFrame
-        The assembled report rows
-
-    Returns
-    -------
-    styled : Styler
-        The report rendered for reading
-    """
-
-    def _mark_failures(row):
-        """Colours a row red when its slew does not fit the target duration."""
-        failed = row.get("verdict") == "FAILS"
-        return ["color: #b00020" if failed else ""] * len(row)
-
-    return (
-        report.style.format(_FORMATS, na_rep="")  # pyright: ignore[reportArgumentType]
-        .apply(_mark_failures, axis=1)  # pyright: ignore[reportAttributeAccessIssue]
-        .hide(axis="index")
-        .relabel_index([_HEADERS[name] for name in report.columns], axis="columns")
-    )
