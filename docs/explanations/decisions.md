@@ -8,29 +8,25 @@ Newest first. When a decision replaces an earlier one, the earlier one is kept i
 
 ## 26. The payload's heat is an account over the run, not a thermal model
 
-**2026-10-24. Agreed, not yet built. Extends 12: the payload's consumption rows also say where their heat goes.**
+**2026-10-24. Implemented on 2026-10-25. Extends 12: the payload's consumption rows also say where their heat goes.**
 
-The payload's radiators and heaters are sized from a heat account over a scenario run. [The payload's thermal model](payload_thermal_model.md) explains the model.
+The payload's radiators and heaters are sized from a heat account over a scenario run. [The payload's thermal model](payload_thermal_model.md) explains the model and how to use it.
 
-**An account, not a thermal model.** A model with one temperature node for the payload was set aside. It needs the properties of every surface of the box, which a first design does not have. A design aims to keep the payload in balance, or any imbalance short. So a constant design temperature is a fair assumption.
+**An account, not a thermal model.** A model with one temperature node for the payload was set aside. It needs the properties of every surface of the box, which a first design does not have. Each surface keeps a constant design temperature instead, and an equilibrium ΔT says whether an imbalance matters.
 
-**An equilibrium ΔT, with `fixed_temperature`.** The W h figures alone do not say whether an imbalance matters. So each activity and mode also gives the ΔT at which it would balance. All floating surfaces move by the same ΔT. Scaling every temperature by one factor has a closed form, but moves a hotter surface by more kelvins, which is harder to read. A first proposal gave each surface a kind, `radiator` or `aperture`. It was dropped, since a payload may have no aperture: what matters is whether the temperature moves.
+**A sub-domain of power.** Thermal cannot exist without power. Its dissipation and heaters are rows of the payload's consumption file, marked in a `thermal` column, so power and thermal read one number. So its data stays in power's folders: the thermal file sits in the power folder, and the sample, the reference notebook and the tests stay with power's, as entry 9 lays them out. A domain of its own would keep its own copies of the files, as entry 9 requires, and the heater powers would drift apart. Entry 10 had named thermal as a possible later domain.
 
-**Part of power, not a domain of its own.** The heater powers stay in the consumption file, so power and thermal read one number. A domain of its own would keep its own copies of the scenario and the consumption files, as entry 9 requires. The heaters would then have two numbers that drift apart. Entry 10 had named thermal as a possible later domain.
+**A package of its own.** The code is in `quicksat.thermal`, which depends on power as power depends on the scenario. Power does not import it. So `python -m quicksat.thermal` runs the power budget and then the heat account, on one scenario run, as the power command runs the scenario first. Without the thermal file, it gives the power budget alone, and says so.
 
-**A file of its own.** `payload_thermal.yaml` sits in the power folder, not in `power_system.yaml`. It stays optional, and in the file of the person who knows it, as entry 12 does for the losses.
+**A file of its own.** The surfaces and the heat flows are in `payload_thermal.yaml`, not in `power_system.yaml`. The file stays optional, and with the person who knows it, as entry 12 does for the losses.
 
-**A `thermal` column.** Each payload consumption row says `inside_mli`, `outside_mli` or `heater`. The Editor needs to know the heater row, to write the heater powers into it. There is one heater row at most, the total of all the payload's heater lines, since a mode's balancing power is one figure.
+**Powers without margins.** Less dissipation is the safe side for the heaters, so the account leaves the margins out. For the radiators, this is the optimistic side.
 
-**Temperatures in kelvin, Celsius accepted.** The loader turns a temperature in °C into kelvin, and everything after it works and reports in kelvin. Kelvin is preferred, and the samples use it, since astropy's parsing of °C is fragile: its offset unit needs care, and some spellings fail. This settles the offset units that entry 6 left for the radiator work.
+**Temperatures in kelvin.** A temperature in Celsius is turned into kelvin when it is read, since astropy's offset units are fragile. This settles the offset units that entry 6 left for the radiator work.
 
-**Powers without margins.** More power is the safe side for power, so power adds the margins. Less dissipation is the safe side for the heaters, so the account leaves them out.
+**The code gives figures, and the user sizes.** How the heaters are set, the radiator's size, the heater to install and the cases are the user's decisions. The explanation lists them, and each sample notebook explains its own.
 
-**Heat flows by mode.** A flow given by mode needs a power for every payload mode, as the consumption columns do. The loader checks them in the same way, and the Editor's Modes step renames or adds their modes.
-
-**A Thermal tab, not a designer.** The Activity Designer needs a run on request and the viewer in a frame. The heaters are tuned more like the Sizing Editor's Budgets tab: a number changes, and the figures follow. So the server keeps the run and each surface's absorbed power, and a heater edit only redoes the sums.
-
-**Figures only, at first.** The account gives no checks yet. Warnings on imbalances may come later.
+**A Thermal tab in the editor, not a designer.** The heaters are tuned as the Sizing Editor's budgets are: a number changes, and the figures follow. So the server keeps the run and the surfaces' heat.
 
 ---
 

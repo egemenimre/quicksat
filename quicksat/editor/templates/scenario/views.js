@@ -4,10 +4,10 @@
 const PAGE_TITLE = "quicksat Scenario Editor";
 
 /** The kinds of the folder's YAML files, whose `#` comments the page reviews. */
-const YAML_KINDS = ["scenario", "power"];
+const YAML_KINDS = ["scenario", "power", "payload_thermal"];
 
 /** The folder's files, by kind, in the order the Start step lists them. */
-const FILES = ["scenario", "model", "orbit", "power", "payload_consumption", "platform_consumption"].map((kind) => ({ kind }));
+const FILES = ["scenario", "model", "orbit", "power", "payload_consumption", "platform_consumption", "payload_thermal"].map((kind) => ({ kind }));
 
 const TABS = [
   { id: "setup", title: "Setup" },
@@ -23,6 +23,10 @@ const TABS = [
   {
     id: "consumption", title: "Consumption", sections: ["payload_consumption", "platform_consumption"],
     intro: "What each equipment draws in each mode: the payload's in the payload's modes, and the platform's in the platform's, from the two consumption files.",
+  },
+  {
+    id: "thermal", title: "Thermal", sections: ["surfaces", "heat_flows", "earth", "thermal_account"],
+    intro: "The payload's heat account: its radiators and its aperture, the heat that crosses its boundary elsewhere, and the Earth. Work out sums the heat over the run, by payload mode and by activity, and the table by mode sets the heater powers. Select a surface to see it in the 3D panel.",
   },
   { id: "files", title: "Files", sections: ["project"] },
 ];
@@ -45,6 +49,7 @@ const STEPS = [
   { title: "Power conditioning", sections: ["conditioning"] },
   { title: "Payload consumption", sections: ["payload_consumption"] },
   { title: "Platform consumption", sections: ["platform_consumption"] },
+  { title: "Payload thermal", sections: ["surfaces", "heat_flows", "earth"], needs3d: true },
   { group: "Finish", title: "Save and view", sections: ["save"] },
 ];
 
@@ -52,6 +57,7 @@ const STEPS = [
 function fileComments(path) {
   if (path === project.names.scenario) return commentsBox(S, "Your comments on the overall scenario", { note: "They go in the comments field at the top of the file." });
   if (project.hasPower && path === project.names.power) return commentsBox(P, "Your comments on the overall power subsystem", { note: "They go in the comments field at the top of the file." });
+  if (project.hasThermal && path === project.names.payload_thermal) return commentsBox(T, "Your comments on the payload's thermal design", { note: "They go in the comments field at the top of the file." });
   if (path.endsWith(".csv")) return el("p", { class: "hint", text: "A CSV has no place for comments on the whole file. Each row has its comments column." });
   return null;
 }
@@ -63,6 +69,13 @@ function fileComments(path) {
 function commentTarget(kind, path) {
   const [first, second, third] = path;
   const item = (section, name) => section.items.find((x) => x.name === name);
+  if (kind === "payload_thermal") {
+    if (first === "surfaces") return second != null && item(T.surfaces, second) ? [item(T.surfaces, second), `surfaces › ${second}`, 2] : [T.surfaces, "surfaces", 1];
+    // a heat flow has no comments field of its own, so its comments go on all the flows
+    if (first === "heat_flows") return [T.heat_flows, "heat_flows", 1];
+    if (first === "earth") return [T.earth, "earth", 1];
+    return [T, "the payload's thermal design", 0];
+  }
   if (kind === "power") {
     if (first === "panels") return second != null && item(P.panels, second) ? [item(P.panels, second), `panels › ${second}`, 2] : [P.panels, "panels", 1];
     if (["self_shadowing", "battery", "conditioning"].includes(first)) return [P[first], first, 1];
@@ -90,6 +103,7 @@ function commentTarget(kind, path) {
 const looksLike = {
   scenario: (data) => Boolean(data && typeof data === "object" && "orbit" in data && "activities" in data),
   power: (data) => Boolean(data && typeof data === "object" && "panels" in data),
+  thermal: (data) => Boolean(data && typeof data === "object" && "surfaces" in data),
   consumption: (file) => file.header.includes("equipment_id") && file.header.includes("units_on"),
 };
 
@@ -133,9 +147,11 @@ async function findPicked(picked, name, test) {
   return null;
 }
 
-/** The modes in each group's consumption table's columns, as they are now, by the group. */
-const consumptionColumns = () =>
-  Object.fromEntries(GROUPS.map((group) => [group, [...new Set(project.consumption[group].flatMap((row) => Object.keys(row.power)))]]));
+/** The modes in each group's consumption table's columns, and the payload's in its heat flows, as they are now, by the group. */
+const consumptionColumns = () => Object.fromEntries(GROUPS.map((group) => {
+  const columns = project.consumption[group].flatMap((row) => Object.keys(row.power));
+  return [group, [...new Set(group === "payload" ? [...columns, ...flowModes(T)] : columns)]];
+}));
 
 const OPENERS = {
   folder: {
@@ -145,6 +161,7 @@ const OPENERS = {
       const scenario = await findPicked(picked, "scenario.yaml", (file) => file.data !== undefined && looksLike.scenario(file.data));
       if (!scenario) throw new Error(`${picked.folder || "The folder"} holds no scenario file: a YAML file with an orbit and activities, such as scenario.yaml.`);
       const power = await findPicked(picked, "power_system.yaml", (file) => file.data !== undefined && looksLike.power(file.data));
+      const thermalFile = await findPicked(picked, "payload_thermal.yaml", (file) => file.data !== undefined && looksLike.thermal(file.data));
       // a consumption file by its usual name, or else one whose name names its group
       const consumption = {};
       for (const group of GROUPS) {
@@ -152,14 +169,15 @@ const OPENERS = {
           (file) => Boolean(file.header) && looksLike.consumption(file) && file.name.toLowerCase().includes(group));
       }
       notices.files = {};
-      DATA = { ...DATA, folder: picked.folder, label: picked.folder, files: { scenario, power, ...consumption }, model: null, orbit_file: null, target_files: [], checks: [] };
+      DATA = { ...DATA, folder: picked.folder, label: picked.folder, files: { scenario, power, ...consumption, payload_thermal: thermalFile }, model: null, orbit_file: null, target_files: [], checks: [] };
       project = readProject(DATA);
       S = project.scenario;
       P = project.power;
+      T = project.thermal;
       targetFiles.clear();
       await takeNamedFiles(picked);
       state.file = project.names.scenario;
-      return ["scenario", "power", ...GROUPS.map(consumptionKind)];
+      return ["scenario", "power", ...GROUPS.map(consumptionKind), "payload_thermal"];
     },
   },
   scenario: {
@@ -191,6 +209,19 @@ const OPENERS = {
       return ["power"];
     },
   },
+  payload_thermal: {
+    label: "the payload's thermal file",
+    pick: { accept: ".yaml,.yml" },
+    async open(picked) {
+      const file = await readPicked(picked.files[0]);
+      DATA.files.payload_thermal = file;
+      project.thermal = T = readingFile("payload_thermal", () => readThermal(file.data));
+      project.hasThermal = true;
+      project.names.payload_thermal = file.name;
+      for (const mode of flowModes(T)) if (!S.modes.payload.includes(mode)) S.modes.payload.push(mode);
+      return ["payload_thermal"];
+    },
+  },
   target: {
     label: "a satellite target's file",
     pick: { multiple: true },
@@ -214,6 +245,7 @@ const OPENERS = {
       const consumption = readingFile(kind, () => readConsumption(file));
       project.consumption[group] = consumption.rows;
       project.slewColumn[group] = consumption.slewColumn;
+      project.thermalColumn[group] = consumption.thermalColumn;
       project.hasConsumption[group] = true;
       project.names[kind] = file.name;
       for (const mode of consumption.modes) if (!S.modes[group].includes(mode)) S.modes[group].push(mode);
@@ -232,6 +264,7 @@ Object.assign(page, {
   afterChange: () => {
     view3d.update();
     designerChanged();
+    scheduleThermal();
   },
   filesExtra: () => el("div", { class: "files-viewer" }, el("div", { class: "folder", text: "the viewer" }), viewerPanel()),
   serverBusy: () => viewer.running,
@@ -239,6 +272,7 @@ Object.assign(page, {
   serverChanged: () => {
     drawViewerPanels();
     designerServerChanged();
+    refreshThermal();
   },
   kindOfFile: (name) => (satTargetFiles().includes(name) ? "target" : null),
   // the folder's opener finds the model, the orbit file and a satellite target's

@@ -8,8 +8,10 @@ Pydantic and unit parsing helpers.
 
 """
 
+import re
 from typing import Annotated
 
+from astropy.units import Quantity
 from pydantic import (
     AfterValidator,
     BaseModel,
@@ -19,6 +21,9 @@ from pydantic import (
 )
 
 from quicksat import Q_, u
+
+_LEADING_NUMBER = re.compile(r"^\s*[-+]?[\d_.]+(?:[eE][-+]?[\d_]+)?")
+"""The number at the start of a quantity's text, before its unit."""
 
 
 def _parse_quantity(v):
@@ -41,11 +46,17 @@ def _parse_quantity(v):
         If the text is not a number followed by a unit. astropy raises a
         `TypeError` when the text does not start with a number, which Pydantic
         would not report as a validation error
+
+    Notes
+    -----
+    Underscores are taken out of the number only, so `1_000 kg` reads as 1000 kg.
+    A unit such as `deg_C` keeps its own.
     """
     if isinstance(v, u.Quantity):
         return v
+    text = _LEADING_NUMBER.sub(lambda m: m.group().replace("_", ""), str(v), count=1)
     try:
-        return Q_(str(v).replace("_", ""))
+        return Q_(text)
     except TypeError as exc:
         raise ValueError(str(exc)) from exc
 
@@ -65,6 +76,32 @@ def _serialize_quantity(v) -> str:
         The quantity as text, value and unit
     """
     return str(v)
+
+
+def check_unit_fraction(value: Quantity, name: str) -> Quantity:
+    """
+    Checks that a fraction is above 0 and at most 1.
+
+    Parameters
+    ----------
+    value : Quantity
+        The fraction, dimensionless
+    name : str
+        The field's name, for the error message
+
+    Returns
+    -------
+    value : Quantity
+        The fraction, unchanged
+
+    Raises
+    ------
+    ValueError
+        If the fraction is 0, or above 1
+    """
+    if not 0 < float(value.to(u.dimensionless_unscaled).value) <= 1:
+        raise ValueError(f"{name} must be above 0 and at most 1 (100 %), got {value}")
+    return value
 
 
 def non_negative_quantity(unit, label: str):
@@ -150,6 +187,74 @@ astropy does not read `Wh`, so watt-hours are written with a space."""
 
 AreaQty = non_negative_quantity(u.m**2, "area")
 """Annotated Quantity type restricted to non-negative areas, such as `0.2 m2`."""
+
+
+def _parse_temperature(v):
+    """
+    Pydantic BeforeValidator for temperatures, which turns Celsius into kelvin.
+
+    Parameters
+    ----------
+    v : str or Quantity
+        Text such as "293 K" or "20 °C", or an already-parsed Quantity
+
+    Returns
+    -------
+    temperature : Quantity
+        The temperature in kelvin, or the parsed quantity unchanged when it is
+        not a temperature, for the dimension check to refuse
+
+    Raises
+    ------
+    ValueError
+        If the text is not a number followed by a unit
+    """
+    v = _parse_quantity(v)
+    if v.unit is None or v.unit.physical_type != "temperature":
+        return v
+    return v.to(u.K, equivalencies=u.temperature())
+
+
+def _validate_temperature(v):
+    """
+    Pydantic AfterValidator that refuses a temperature at or below absolute zero.
+
+    Parameters
+    ----------
+    v : Quantity
+        The temperature, already in kelvin
+
+    Returns
+    -------
+    v : Quantity
+        The same temperature
+
+    Raises
+    ------
+    ValueError
+        If the value is not a temperature, or is 0 K or less
+    """
+    if v.unit.physical_type != "temperature":
+        raise ValueError(f"Value must have temperature dimensions, got '{v}'")
+    if v <= 0 * u.K:
+        raise ValueError(f"Temperature must be above 0 K, got '{v}'")
+    return v
+
+
+TemperatureQty = Annotated[
+    u.Quantity,
+    BeforeValidator(_parse_temperature),
+    AfterValidator(_validate_temperature),
+    PlainSerializer(_serialize_quantity, return_type=str),
+]
+"""Annotated Quantity type for absolute temperatures, held in kelvin.
+
+A temperature in Celsius, such as `20 °C`, `20 Celsius` or `20 deg_C`, is turned
+into kelvin when it is read, with astropy's `u.temperature()` equivalency. Kelvin is
+preferred: astropy reads °C as a unit with an offset, and spellings such as `20 degC`
+do not read. A temperature difference must not use this type, since the offset
+would be added to it.
+"""
 
 AngleQty = non_negative_quantity(u.deg, "angle")
 """Annotated Quantity type for angles.

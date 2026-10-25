@@ -20,8 +20,8 @@ import pytest
 from quicksat import Q_, u
 from quicksat.power.config import PowerSystem
 from quicksat.power.generation import (
+    flat_geometry,
     flat_panel,
-    panel_geometry,
     panel_notes,
     turned_normals,
 )
@@ -59,7 +59,7 @@ def test_a_part_that_is_not_flat_is_refused():
 
 
 def test_the_panels_come_from_the_model(power_system, model_run):
-    panels, model = panel_geometry(power_system, model_run.scenario)
+    panels, model = flat_geometry(power_system.panels, model_run.scenario)
     assert model is not None
     wing = panels["wing +y outer"]
     assert wing.area.to_value(u.m**2) == pytest.approx(0.4026, abs=1e-6)
@@ -97,12 +97,12 @@ def scenario_with(data_dir, articulations: str) -> Scenario:
 def test_a_part_that_does_not_suit_is_refused(model_run, part, message):
     text = f"cell_efficiency: 1\nloss_factor: 1\npanels:\n  only: {{part: {part}, fill_ratio: 1}}\n"
     with pytest.raises(ValueError, match=message):
-        panel_geometry(PowerSystem.from_yaml_text(text), model_run.scenario)
+        flat_geometry(PowerSystem.from_yaml_text(text).panels, model_run.scenario)
 
 
 def test_a_part_without_a_model_is_refused(power_system, six_faces_run):
     with pytest.raises(ValueError, match="has no 3D model"):
-        panel_geometry(power_system, six_faces_run.run.scenario)
+        flat_geometry(power_system.panels, six_faces_run.run.scenario)
 
 
 def test_a_panel_turns_with_one_articulation_only(power_system, data_dir):
@@ -113,7 +113,7 @@ def test_a_panel_turns_with_one_articulation_only(power_system, data_dir):
         "    panel: {part: Wing +y inner cells, axis: +y, point: [-z, sun]}\n",
     )
     with pytest.raises(ValueError, match="sits under 2 articulations"):
-        panel_geometry(power_system, scenario)
+        flat_geometry(power_system.panels, scenario)
 
 
 # ------------------------------------------------------------------ the notes

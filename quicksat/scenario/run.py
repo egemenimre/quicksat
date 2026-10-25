@@ -52,6 +52,7 @@ from quicksat.orbit.geometry import (
     shadow_cones,
     shadow_intervals,
     sun_positions,
+    sun_zenith_cosine,
 )
 from quicksat.orbit.omm import read_omm_file, read_omm_sets
 from quicksat.orbit.sso import sso_tle
@@ -1102,8 +1103,57 @@ class ScenarioRun:
         assert isinstance(cartesian, CartesianRepresentation)
         to_sun = self.sun.xyz.to_value(u.km).T - cartesian.xyz.to_value(u.km).T
         to_sun /= np.linalg.norm(to_sun, axis=1, keepdims=True)
+        return self._in_body(to_sun)
+
+    @cached_property
+    def nadir_body(self) -> np.ndarray:
+        """
+        The direction from the satellite to the centre of the Earth in body axes,
+        on the grid.
+
+        Worked out on first use, from `body_rotations`, as `sun_body` is. It is
+        the `nadir` of the attitudes.
+
+        Returns
+        -------
+        nadirs : ndarray
+            Unit vectors, shape (n, 3), one for each time of the grid
+
+        Raises
+        ------
+        ValueError
+            If part of the run is unplanned, so that the body has no orientation
+            then
+        """
+        self.check_planned("the direction to nadir in body axes")
+        cartesian = self.state.cartesian
+        assert isinstance(cartesian, CartesianRepresentation)
+        position = cartesian.xyz.to_value(u.km).T
+        return self._in_body(
+            -position / np.linalg.norm(position, axis=1, keepdims=True)
+        )
+
+    @cached_property
+    def sun_zenith_cosine(self) -> np.ndarray:
+        """
+        The cosine of the sun's zenith angle at the point below the satellite, on
+        the grid.
+
+        It is worked out from the geocentric directions of the satellite and the
+        sun, on a spherical Earth, by `sun_zenith_cosine`. It is 1 at the
+        subsolar point, 0 at the terminator, and negative over the night side.
+
+        Returns
+        -------
+        cosines : ndarray
+            One for each time of the grid, from -1 to 1
+        """
+        return sun_zenith_cosine(self.state, self.sun)
+
+    def _in_body(self, vectors: np.ndarray) -> np.ndarray:
+        """GCRS vectors on the grid, shape (n, 3), turned into body axes."""
         # the rotations turn body vectors into GCRS, so their transposes turn back
-        return np.einsum("nji,nj->ni", body_rotations(self), to_sun)
+        return np.einsum("nji,nj->ni", body_rotations(self), vectors)
 
     @property
     def activity_summary(self) -> str:

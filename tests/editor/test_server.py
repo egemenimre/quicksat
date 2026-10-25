@@ -35,6 +35,7 @@ from quicksat.editor.server import (
     file_hash,
     run_files,
     serve,
+    thermal_files,
 )
 
 TESTS = Path(__file__).parent.parent
@@ -46,6 +47,7 @@ NAMES = {
     "power": "power_system.yaml",
     "payload_consumption": "payload_consumption.csv",
     "platform_consumption": "platform_consumption.csv",
+    "payload_thermal": "payload_thermal.yaml",
 }
 
 
@@ -82,6 +84,8 @@ def test_run_power(tmp_path):
     assert [c["file"] for c in result["checks"]] == list(NAMES.values())
     assert all(c["ok"] for c in result["checks"])
     assert "Loads met" in result["report"]
+    # the thermal file adds the heat account to the run's results
+    assert "Payload heat account, by activity:" in result["report"]
 
 
 def test_run_power_needs_both_consumption_files(tmp_path):
@@ -557,6 +561,18 @@ def test_save_writes_the_file_and_gives_its_new_hash(copy_server):
     assert result["ok"], result.get("error")
 
 
+def test_save_writes_the_thermal_file_with_its_hash(copy_server):
+    path = copy_server.folder / "payload_thermal.yaml"
+    hashes = page_hashes(copy_server)
+    text = path.read_text().replace(
+        "platform interface: -3 W", "platform interface: -4 W"
+    )
+    file = {"name": path.name, "text": text, "sha256": hashes[path.name]}
+    status, result = save(copy_server, [file])
+    assert result["ok"], result.get("error")
+    assert path.read_text() == text
+
+
 def test_save_refuses_a_file_changed_on_disk(copy_server):
     """A file changed since the page was written stops the save of every file."""
     folder = copy_server.folder
@@ -622,7 +638,115 @@ def test_save_needs_the_key_and_this_page(copy_server):
     assert path.read_text() == text
 
 
-@pytest.mark.parametrize("route", ["design", "save"])
+# ---------------------------------------------------------------- the heat account
+
+
+def changed_file(files: list[dict], kind: str, old: str, new: str) -> list[dict]:
+    """The page's files with one file's text changed."""
+    out = []
+    for file in files:
+        if file["kind"] == kind:
+            assert old in file["text"]
+            file = {**file, "text": file["text"].replace(old, new)}
+        out.append(file)
+    return out
+
+
+def test_the_heat_account_comes_back_as_the_tab_shows_it():
+    result = thermal_files(page_files(POWER), {})
+    assert result["ok"], result.get("error")
+    assert not result["reused"]
+    results = result["results"]
+    assert [row["payload mode"] for row in results["modes"]] == ["idle", "imaging"]
+    assert {"balancing heater [W]", "ΔT [K]", "net [Wh]"} <= set(results["modes"][0])
+    assert [row["surface"] for row in results["surfaces"]] == ["radiator", "aperture"]
+    assert len(results["t_min"]) == len(results["energy_wh"])
+    assert results["energy_wh"][0] == 0
+    assert results["bands"][0]["start_min"] == 0
+    assert results["bands"][-1]["end_min"] == pytest.approx(results["t_min"][-1])
+    # the test folder's run has no downlink, which the flow by mode names
+    assert "downlink" in results["notes"][-1]
+    json.dumps(results, allow_nan=False)
+
+
+def test_the_heat_account_reuses_the_run_until_the_surfaces_change():
+    cache: dict = {}
+    files = page_files(POWER)
+    first = thermal_files(files, cache)
+    assert first["ok"] and not first["reused"]
+    run = cache["run"]
+    again = thermal_files(files, cache)
+    assert again["reused"] and cache["run"] is run
+    assert again["results"] == first["results"]
+
+    # the heaters, the flows, the dissipation and the comments keep the run
+    heaters = changed_file(
+        files, "payload_consumption", "22.1 W,0 W,0 W", "50 W,0 W,0 W"
+    )
+    flows = changed_file(
+        files, "payload_thermal", "platform interface: -3 W", "platform interface: -4 W"
+    )
+    notes = changed_file(
+        files, "payload_thermal", "surfaces:\n", "comments: A note.\nsurfaces:\n"
+    )
+    for edited in (heaters, flows, notes):
+        result = thermal_files(edited, cache)
+        assert result["ok"] and result["reused"], result.get("error")
+        assert cache["run"] is run
+    idle = thermal_files(heaters, cache)["results"]["modes"][0]
+    assert idle["heaters [W]"] == pytest.approx(50)
+
+    # a surface, the Earth, the self-shadowing or the scenario takes a new run
+    surface = changed_file(
+        files, "payload_thermal", "absorptance: 0.20", "absorptance: 0.30"
+    )
+    earth = changed_file(files, "payload_thermal", "albedo: 0.30", "albedo: 0.35")
+    shading = changed_file(
+        files,
+        "power",
+        "system_margin: 5 %",
+        "system_margin: 5 %\nself_shadowing: {enabled: true, points: 64}",
+    )
+    scenario = changed_file(
+        files, "scenario", "duration: 1 orbit", "duration: 0.5 orbit"
+    )
+    for edited in (surface, earth, shading, scenario):
+        result = thermal_files(edited, cache)
+        assert result["ok"] and not result["reused"], result.get("error")
+        assert cache["run"] is not run
+        run = cache["run"]
+
+
+def test_the_heat_account_needs_the_thermal_file():
+    kinds = ("scenario", "power", "payload_consumption", "platform_consumption")
+    result = thermal_files(page_files(POWER, kinds), {})
+    assert not result["ok"]
+    assert result["error"] == "The heat account needs payload_thermal.yaml too."
+
+
+def test_the_heat_account_reports_a_file_that_does_not_read():
+    files = changed_file(
+        page_files(POWER), "payload_thermal", "emissivity: 0.85", "emissivity: 1.85"
+    )
+    cache: dict = {}
+    result = thermal_files(files, cache)
+    assert not result["ok"]
+    assert "cannot read payload_thermal.yaml" in result["error"]
+    assert cache == {}
+
+
+def test_thermal_route(server):
+    body, headers = run_request(page_files(POWER))
+    status, answer, _ = ask(server, "POST", at(server, "thermal"), body, headers)
+    assert status == 200
+    result = json.loads(answer)
+    assert result["ok"], result.get("error")
+    assert server.thermal_cache["key"]
+    status, answer, _ = ask(server, "POST", at(server, "thermal"), body, headers)
+    assert json.loads(answer)["reused"]
+
+
+@pytest.mark.parametrize("route", ["design", "save", "thermal"])
 def test_not_a_design_or_a_save(server, route):
     status, answer, _ = ask(
         server,

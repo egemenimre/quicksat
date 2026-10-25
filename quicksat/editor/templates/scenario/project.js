@@ -385,7 +385,10 @@ function readPower(raw) {
 /** A power with no file yet: starting values only. */
 const newPower = () => readPower({ cell_efficiency: "30 %", loss_factor: 0.8, panels: {} });
 
-const FIXED_COLUMNS = ["equipment_id", "equipment_name", "subsystem", "units_on", "eqpt_margin", "comments"];
+/** The payload consumption file's column that says where each row's heat goes, for the heat account. */
+const THERMAL_COLUMN = "thermal";
+
+const FIXED_COLUMNS = ["equipment_id", "equipment_name", "subsystem", "units_on", "eqpt_margin", "comments", THERMAL_COLUMN];
 
 /** A power in watts, from text such as `10 W` or `0.5 kW`. */
 function readWatts(value, where) {
@@ -404,6 +407,7 @@ function readConsumption(file) {
   return {
     modes,
     slewColumn: header.includes(SLEW),
+    thermalColumn: header.includes(THERMAL_COLUMN),
     rows: (file.rows || []).map((row, i) => {
       const where = `${file.name}, row ${i + 2}`;
       return {
@@ -412,10 +416,72 @@ function readConsumption(file) {
         power: Object.fromEntries(modes.map((mode) => [mode, readWatts(at(row, mode), where)])),
         slew: header.includes(SLEW) ? readWatts(at(row, SLEW), where) : "",
         comments: at(row, "comments"),
+        thermal: at(row, THERMAL_COLUMN),
       };
     }),
   };
 }
+
+// ---------------------------------------------------------------- the payload's thermal file
+
+/** The Celsius spellings that quicksat reads, which the page turns into kelvin. */
+const CELSIUS = ["°C", "deg_C", "Celsius", "degC"];
+
+/** A temperature in kelvin, from `273 K` or a Celsius one, such as `20 °C`, which it turns into kelvin. */
+function readTemperature(value, where) {
+  const quantity = readQ(value, "K", where);
+  if (blank(quantity) || quantity.u === "K") return quantity;
+  if (CELSIUS.includes(quantity.u)) {
+    const kelvin = tidy(quantity.v + 273.15);
+    notice("changed", `${where}: ${qText(quantity)} was turned into ${kelvin} K, which the page writes`);
+    return q(kelvin, "K");
+  }
+  notice("changed", `${where}: "${value}" is not a temperature in K or °C, and was left empty`);
+  return q("", "K");
+}
+
+/** A heat flow: one power for every mode, or a power for each payload mode, in W of either sign. */
+function readFlow(name, raw) {
+  const where = `heat_flows › ${name}`;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    return { name, byMode: true, power: "", powers: Object.fromEntries(Object.entries(raw).map(([mode, watts]) => [mode, readWatts(watts, `${where} › ${mode}`)])) };
+  }
+  return { name, byMode: false, power: readWatts(raw, where), powers: {} };
+}
+
+function readThermal(raw) {
+  raw = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  knownKeys(raw, ["comments", "surfaces", "heat_flows", "earth"], "payload thermal");
+  const earthRaw = raw.earth && typeof raw.earth === "object" ? raw.earth : null;
+  knownKeys(earthRaw, ["albedo", "infrared", "comments"], "earth");
+  const e = earthRaw || {};
+  return {
+    comments: str(raw.comments),
+    surfaces: {
+      comments: sectionComments(raw.surfaces),
+      items: namedItems(raw.surfaces).map(([name, s]) => {
+        s = s || {};
+        const where = `surfaces › ${name}`;
+        knownKeys(s, ["part", "normal", "area", "absorptance", "emissivity", "temperature", "fixed_temperature", "comments"], where);
+        return {
+          name, source: s.part != null ? "part" : "typed", part: str(s.part), normal: readNormal(s.normal), area: readQ(s.area, "m2", where),
+          absorptance: readFraction(s.absorptance, where), emissivity: readFraction(s.emissivity, where),
+          temperature: readTemperature(s.temperature, where), fixed: s.fixed_temperature === true, comments: str(s.comments),
+        };
+      }),
+    },
+    heat_flows: {
+      comments: sectionComments(raw.heat_flows),
+      items: namedItems(raw.heat_flows).map(([name, flow]) => readFlow(name, flow)),
+    },
+    earth: {
+      present: Boolean(earthRaw), albedo: readFraction(e.albedo, "earth"), infrared: readQ(e.infrared, "W/m2", "earth"), comments: str(e.comments),
+    },
+  };
+}
+
+/** A thermal file with no file yet: the Earth's defaults only. */
+const newThermal = () => readThermal({ surfaces: {}, earth: { albedo: 0.3, infrared: "237 W/m2" } });
 
 // ---------------------------------------------------------------- the project
 
@@ -433,7 +499,7 @@ function collectModes(scenario, columns) {
 }
 
 /** A consumption file with no rows, for a group whose folder has none. */
-const noConsumption = () => ({ modes: [], slewColumn: false, rows: [] });
+const noConsumption = () => ({ modes: [], slewColumn: false, thermalColumn: false, rows: [] });
 
 function readProject(data) {
   const files = data.files;
@@ -442,7 +508,9 @@ function readProject(data) {
     const file = files[consumptionKind(group)];
     return [group, file ? readingFile(consumptionKind(group), () => readConsumption(file)) : noConsumption()];
   }));
-  scenario.modes = collectModes(scenario, { payload: consumption.payload.modes, platform: consumption.platform.modes });
+  const thermalFile = files.payload_thermal;
+  const thermal = thermalFile ? readingFile("payload_thermal", () => readThermal(thermalFile.data)) : newThermal();
+  scenario.modes = collectModes(scenario, { payload: [...consumption.payload.modes, ...flowModes(thermal)], platform: consumption.platform.modes });
   const byGroup = (value) => Object.fromEntries(GROUPS.map((group) => [group, value(group)]));
   return {
     name: data.folder || "quicksat_project",
@@ -453,13 +521,17 @@ function readProject(data) {
         const file = files[consumptionKind(group)];
         return [consumptionKind(group), file ? file.name : `${group}_consumption.csv`];
       })),
+      payload_thermal: thermalFile ? thermalFile.name : "payload_thermal.yaml",
     },
     scenario,
     hasPower: Boolean(files.power),
     power: files.power ? readingFile("power", () => readPower(files.power.data)) : newPower(),
     hasConsumption: byGroup((group) => Boolean(files[consumptionKind(group)])),
     slewColumn: byGroup((group) => consumption[group].slewColumn),
+    thermalColumn: byGroup((group) => consumption[group].thermalColumn),
     consumption: byGroup((group) => consumption[group].rows),
+    hasThermal: Boolean(thermalFile),
+    thermal,
   };
 }
 
@@ -479,6 +551,7 @@ Object.assign(state, { file: project.names.scenario, selection: null, show3d: {}
 
 let S = project.scenario;
 let P = project.power;
+let T = project.thermal;
 
 // ---------------------------------------------------------------- names and their uses
 
@@ -509,6 +582,7 @@ function usesOf(kind, name) {
     if (group === "platform") {
       S.model.articulations.items.forEach((r) => r.park.some((p) => p.mode === name) && uses.push(`articulation ${r.name}`));
     }
+    if (group === "payload" && project.hasThermal) flowsUsing(T, name).forEach((flow) => uses.push(`heat flow ${flow}`));
     if (project.hasConsumption[group]) uses.push(`a column of the ${group}'s consumption table`);
   }
   return uses;
@@ -537,5 +611,6 @@ function rename(kind, from, to) {
       row.power[to] = row.power[from];
       delete row.power[from];
     });
+    if (group === "payload") renameFlowMode(T, from, to);
   }
 }

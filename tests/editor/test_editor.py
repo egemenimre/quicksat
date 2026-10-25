@@ -121,6 +121,14 @@ def test_a_power_folder_gives_every_file(power_dir):
     for kind in ("payload_consumption", "platform_consumption"):
         assert files[kind]["header"][0] == "equipment_id"
         assert len(files[kind]["rows"]) > 0
+    assert files["payload_consumption"]["header"][-1] == "thermal"
+    assert files["payload_thermal"]["name"] == "payload_thermal.yaml"
+    assert list(files["payload_thermal"]["data"]["surfaces"]) == [
+        "radiator",
+        "aperture",
+    ]
+    comments = files["payload_thermal"]["comments"]
+    assert ["surfaces", "aperture"] in [block["path"] for block in comments]
     assert (
         base64.b64decode(data["model"]["glb_base64"])
         == (power_dir / "spacecraft.glb").read_bytes()
@@ -132,6 +140,7 @@ def test_a_power_folder_gives_every_file(power_dir):
         ("power_system.yaml", True),
         ("payload_consumption.csv", True),
         ("platform_consumption.csv", True),
+        ("payload_thermal.yaml", True),
     ]
 
 
@@ -156,6 +165,7 @@ def test_a_scenario_folder_has_no_power_files(scenario_dir):
     assert data["files"]["power"] is None
     assert data["files"]["payload_consumption"] is None
     assert data["files"]["platform_consumption"] is None
+    assert data["files"]["payload_thermal"] is None
     assert data["model"] is None  # its scenario names no model
     assert [check["file"] for check in data["checks"]] == ["scenario.yaml"]
 

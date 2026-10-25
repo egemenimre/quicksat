@@ -27,7 +27,11 @@ INPUTS = (
 def test_the_command_prints_the_results_and_writes_the_viewer(
     data_dir, budget, tmp_path, capsys
 ):
-    main([str(data_dir), str(tmp_path)])
+    folder = tmp_path / "case"
+    folder.mkdir()
+    for name in INPUTS:
+        shutil.copy(data_dir / name, folder)
+    main([str(folder), str(tmp_path / "out")])
     lines = capsys.readouterr().out.splitlines()
     # the folder's typed-in panel gives a note
     assert budget.generation.notes
@@ -36,9 +40,9 @@ def test_the_command_prints_the_results_and_writes_the_viewer(
         *budget.generation.notes,
         *budget.consumption.notes,
         *(f"{check.status:<4} {check.name}: {check.detail}" for check in budget.checks),
-        str(tmp_path / PAGE_FILE),
+        str(tmp_path / "out" / PAGE_FILE),
     ]
-    assert {path.name for path in tmp_path.iterdir()} == {
+    assert {path.name for path in (tmp_path / "out").iterdir()} == {
         PAGE_FILE,
         DATA_FILE,
         SCENARIO_DATA_FILE,

@@ -51,7 +51,7 @@ def test_the_fixture_reads(consumption):
     assert wheels.watts("ttc", margin=False) == pytest.approx(60)
     assert wheels.watts("ttc") == pytest.approx(63)
     totals = payload.mode_totals()
-    assert list(totals.loc["without margins"]) == pytest.approx([50, 150, 120])
+    assert list(totals.loc["without margins"]) == pytest.approx([37.1, 115, 85])
     totals = platform.mode_totals()
     assert list(totals.loc["without margins"]) == pytest.approx([138, 140, 173, 138])
     assert totals.loc["with equipment margins", "idle [W]"] == pytest.approx(149.05)
@@ -117,6 +117,51 @@ def test_comments_are_not_a_mode(tmp_path):
     assert consumption.loads[0].comments == "spare"
 
 
+def test_the_thermal_column_is_not_a_mode(tmp_path):
+    rows = ["a,A,OBDH,1,5,1 W,2 W,inside_mli", "b,B,OBDH,1,5,1 W,2 W,"]
+    path = write(tmp_path, *rows, header=HEADER + ",thermal")
+    consumption = PowerConsumption.from_csv(path)
+    assert consumption.modes == ["idle", "imaging"]
+    assert consumption.thermal_column
+    assert [load.thermal for load in consumption.loads] == ["inside_mli", None]
+
+
+def test_a_file_without_the_thermal_column_says_so(consumption):
+    assert not consumption["platform"].thermal_column
+    assert all(load.thermal is None for load in consumption["platform"].loads)
+
+
+@pytest.mark.parametrize("value", ["inside_mli", "outside_mli", "heater"])
+def test_each_thermal_value_reads(tmp_path, value):
+    path = write(tmp_path, f"a,A,OBDH,1,5,1 W,2 W,{value}", header=HEADER + ",thermal")
+    assert PowerConsumption.from_csv(path).loads[0].thermal == value
+
+
+def test_another_thermal_value_is_refused(tmp_path):
+    path = write(tmp_path, "a,A,OBDH,1,5,1 W,2 W,inside", header=HEADER + ",thermal")
+    with pytest.raises(ValueError, match="(?s)row 2:.*thermal"):
+        PowerConsumption.from_csv(path)
+
+
+def test_a_file_has_one_heater_row_at_most(tmp_path):
+    rows = ["a,A,Thermal,1,5,1 W,2 W,heater", "b,B,Thermal,1,5,1 W,2 W,heater"]
+    path = write(tmp_path, *rows, header=HEADER + ",thermal")
+    with pytest.raises(ValueError, match="more than one heater row: \\['a', 'b'\\]"):
+        PowerConsumption.from_csv(path)
+
+
+def test_the_platform_file_takes_no_thermal_column(tmp_path, consumption, model_run):
+    source = consumption["platform"].source_file
+    assert source is not None
+    lines = source.read_text().splitlines()
+    lines = [lines[0] + ",thermal"] + [line + ",inside_mli" for line in lines[1:]]
+    path = tmp_path / "platform_consumption.csv"
+    path.write_text("\n".join(lines) + "\n")
+    platform = PowerConsumption.from_csv(path)
+    with pytest.raises(ValueError, match="covers the payload only"):
+        run_consumption(consumption | {"platform": platform}, model_run)
+
+
 # --------------------------------------------------------------- over a run
 
 
@@ -159,7 +204,7 @@ def test_the_load_follows_each_group_mode(consumption_run, model_run):
         assert both.any()
         expected = watts["payload"][mode] + watts["platform"][mode]
         assert total[both] == pytest.approx(expected)
-    assert both_in(consumption_run, "idle") == pytest.approx(207.55)
+    assert both_in(consumption_run, "idle") == pytest.approx(192.07)
 
 
 def test_the_energy_is_exact_over_the_mode_intervals(consumption_run, model_run):

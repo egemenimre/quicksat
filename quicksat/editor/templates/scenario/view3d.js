@@ -8,7 +8,7 @@ const viewKey = () => (state.tab === "setup" ? `step:${STEPS[state.step].section
 function wants3d() {
   const key = viewKey();
   if (key in state.show3d) return state.show3d[key];
-  return state.tab === "setup" ? Boolean(STEPS[state.step].needs3d) : state.tab === "spacecraft";
+  return state.tab === "setup" ? Boolean(STEPS[state.step].needs3d) : ["spacecraft", "thermal"].includes(state.tab);
 }
 
 function apply3d() {
@@ -212,7 +212,7 @@ const view3d = (() => {
     if (toggles.axes) {
       for (const axis of ["+x", "+y", "+z"]) arrow(axisVector(axis), new THREE.Vector3(), size * 0.75, COLOURS[axis[1]], axis[1]);
     }
-    let text = "Select a part, an articulation, an attitude or a panel to see it here.";
+    let text = "Select a part, an articulation, an attitude, a panel or a surface to see it here.";
     if (selection && selection.kind === "part") {
       highlight(selection.name);
       const g = partGeometry(selection.name);
@@ -235,6 +235,25 @@ const view3d = (() => {
           arrow(vector, new THREE.Vector3(), size * 0.8, "#f5b13d", `${p.name}: ${p.normal}`);
         }
         text = `Panel <b>${escapeHtml(p.name)}</b> is typed in: ${escapeHtml(qText(p.area))} facing ${escapeHtml(p.normal)}. It has no part in the model, so it is not drawn, and is never shaded.`;
+      }
+    } else if (selection && selection.kind === "surface") {
+      const s = selection.item;
+      const properties = `α ${s.absorptance === "" ? "?" : s.absorptance} · ε ${s.emissivity === "" ? "?" : s.emissivity} · ${escapeHtml(qText(s.temperature) || "no temperature")}${s.fixed ? ", fixed" : ""}`;
+      if (s.source === "part") {
+        highlight(s.part);
+        const g = partGeometry(s.part);
+        if (g) {
+          arrow(g.normal, g.centre, size * 0.45, "#f5b13d", `${s.name} normal`);
+          const n = g.normal.toArray().map((v) => v.toFixed(3)).join(", ");
+          text = `Surface <b>${escapeHtml(s.name)}</b> on <b>${escapeHtml(s.part)}</b> · ${g.flat ? "" : '<span class="bad">not flat</span> · '}area ${g.area.toFixed(4)} m² · normal [${n}] · ${properties}`;
+        } else text = `Surface <b>${escapeHtml(s.name)}</b>: <span class="bad">the part "${escapeHtml(s.part || "none")}" has no surface of its own${model.bytes ? "" : ", or the page holds no model"}</span>`;
+      } else {
+        const normal = readNormalVector(s.normal);
+        if (normal) {
+          const vector = typeof normal === "string" ? axisVector(normal) : new THREE.Vector3(...normal);
+          arrow(vector, new THREE.Vector3(), size * 0.8, "#f5b13d", `${s.name}: ${s.normal}`);
+        }
+        text = `Surface <b>${escapeHtml(s.name)}</b> is typed in: ${escapeHtml(qText(s.area))} facing ${escapeHtml(s.normal)} · ${properties}. It has no part in the model, so it is not drawn, and nothing shades it.`;
       }
     } else if (selection && selection.kind === "articulation") {
       const a = selection.item;

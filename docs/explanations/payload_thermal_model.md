@@ -1,8 +1,8 @@
 # The payload's thermal model
 
-**Agreed on 2026-10-24, and not yet built.** This file explains the model as it was agreed. The code does not exist yet, so the keys and the output may still change as it is built.
+**Agreed on 2026-10-24, and built on 2026-10-25.** The reference is [`payload_thermal_ref.ipynb`](../power/payload_thermal_ref.ipynb), which gives every key and formula, and the worked example is [`sample/power/payload_thermal.ipynb`](../../sample/power/payload_thermal.ipynb).
 
-This explains how quicksat will size the payload's radiators and heaters, and why the model is built the way it is. It covers the heat the payload dissipates, the heat its surfaces absorb and radiate, and how they meet over a scenario run. It is the thermal side of [the power model](power_model.md), and reads the same power folder.
+This explains how quicksat sizes the payload's radiators and heaters, and why the model is built the way it is. It covers the heat the payload dissipates, the heat its surfaces absorb and radiate, and how they meet over a scenario run. It is a sub-domain of [the power model](power_model.md), and cannot exist without it. Its code is in `quicksat.thermal`, and its files sit in the power folder.
 
 ## What it answers
 
@@ -27,7 +27,7 @@ Every term is positive when heat goes into the payload. So a surface's emission 
 
 **Heaters.** One row, marked `heater`, holds all the payload's heater lines together. Its power in each payload mode is the total of every heater line in that mode. It also dissipates inside the MLI. The file may have one heater row at most, since a mode's balancing heater power, below, is one figure. The heater powers stay in the consumption file, so power and thermal read one number.
 
-**No margins.** Power adds each row's equipment margin, and the system margin, since more power is the safe side for power. For the heaters, less dissipation is the safe side, since the payload is then colder. So the thermal model takes each row's power without any margin.
+**No margins.** Power adds each row's equipment margin, and the system margin, since more power is the safe side for power. For the heaters, less dissipation is the safe side, since the payload is then colder. So the thermal model takes each row's power without any margin. For the radiators, this is the optimistic side: with the margins, they would have more heat to give out. So the radiators need a check with the margins too, as [Sizing takes decisions](#sizing-takes-decisions) says.
 
 ## Heat flows
 
@@ -55,6 +55,19 @@ Each surface also takes three properties, and a fourth that is optional:
 - `fixed_temperature`: `true` when something else holds the surface at its temperature, such as the telescope's own heaters. Without the key, the surface floats, which matters only for the equilibrium temperature below.
 
 **Temperatures in kelvin.** Write each temperature in kelvin, such as `293 K`, as the samples do. A temperature in Celsius, such as `20 °C`, is accepted too, and turned into kelvin when the file is read. Kelvin is preferred because astropy, which reads the units, handles Celsius less reliably. It treats °C as a unit with an offset, and some ways of writing it do not read. Every computation works in kelvin, and the output gives every temperature in kelvin. A ΔT is a difference, so it is the same in K as in °C.
+
+**An aperture is the opening, not the mirror.** The model's aperture is the opening at the front of the telescope. It is the front of the telescope's baffle, or an opening in the bus's face with a vaned tube behind it, as in the sample. The opening takes in light from the whole hemisphere in front of it. Light near the axis reaches the mirror. Light at a wider angle lands on the baffle's walls or the tube's vanes, which are part of the telescope too. So that heat still enters the payload, and the opening absorbs as a flat plate does. The walls also radiate out through the opening, over the whole hemisphere. So the flat plate's cos θ for the sun, and its view factor to the Earth, suit the opening.
+
+**What to enter for an aperture.** Its area is the opening's. Its absorptance and emissivity are the baffled tube's effective values, not the mirror coating's. A blackened, baffled tube absorbs nearly everything that enters it, so both are about 0.9 to 0.98. An aluminium mirror's own emissivity is about 0.03, which would be the wrong figure here. The sample's 0.90 and 0.90 are in the right range.
+
+**An aperture's temperature.** It is the mean of the parts that show through the opening, each weighted by its share of the view. These are mostly the baffle's walls or the tube's vanes, the secondary mirror and its spider. The vanes see space, so they run colder than the telescope. The mean then lies below the telescope's own temperature. The sample takes 273 K, and fixes it, since the telescope's control holds it. The temperature matters far more than the emissivity: 273 K gives a quarter less emission than 293 K.
+
+**Where the flat plate does not suit an aperture:**
+
+- **The mirror and the focal plane** see only a narrow cone, and the sun reaches them only inside the baffle's cutoff angle. The model cannot separate this, since it keeps one account for the whole payload.
+- **A baffle outside the boundary,** outside the MLI or with a radiator of its own, puts the aperture at the mirror. The narrow view then applies, and a flat plate overstates the aperture's heat. The baffle's own heat exchange is then missing from the account.
+- **A cold baffle front** usually runs colder than the telescope. The telescope's own temperature then overstates the aperture's emission.
+- **An opening deep in the structure** sees less of the Earth than a flat plate does. The model does not shade the Earth, so it overstates the Earth's terms, as "Where it stops" says below.
 
 **A surface radiates at its design temperature.** It gives εσAT⁴ to deep space at each step, with T its design temperature, which stays constant. σ is the Stefan-Boltzmann constant.
 
@@ -119,11 +132,30 @@ At equilibrium, the heat out equals the heat in, with the mean powers over the a
 
 Σ εᵢσAᵢTᵢ⁴ = dissipation + heaters + heat flows + absorbed
 
-This is one equation, with a temperature for each surface. So the model moves all the floating surfaces by the same ΔT, with Tᵢ = Tᵢ,design + ΔT. It solves for ΔT numerically. The left side only grows as ΔT grows, so there is at most one answer.
+This is one equation, with a temperature for each surface. So the model moves all the floating surfaces by the same ΔT, with Tᵢ = Tᵢ,design + ΔT. It solves for ΔT numerically. Scaling every temperature by one factor also has a closed form, but it moves a hotter surface by more kelvins, which is harder to read. The left side only grows as ΔT grows, so there is at most one answer.
 
 - **A fixed surface** keeps its design temperature, and its emission stays as it is.
 - **Every surface fixed:** nothing can move, so there is no ΔT, and the output says so.
 - **More heat out than in:** if the heat flows take out more than everything else brings in, no temperature can balance the equation. There is no answer, and the output says so.
+
+## Sizing takes decisions
+
+The model gives the figures, but it does not size the payload by itself. Sizing takes decisions that the code cannot take. They come from the mission, from systems engineering and from safety. The power budget is the same: the code checks a design, and the user chooses it.
+
+**Which modes get a heater, and how much.** There are two common ways:
+
+- **Each mode balances.** Each mode's heater is its balancing power, from the table by mode. No cold mode loses heat, but the heaters draw the most power. A hot mode still builds up heat, since a heater cannot cool.
+- **The run balances.** The heater runs in the cold modes only, and brings the run's net energy to zero. The hot modes heat the payload up a little, and the cold modes take the heat back. The heaters draw less power, but the temperature swings over each orbit. The model has no heat capacity, so the size of the swing is the user's estimate.
+
+For the second way, take the run's net energy before the heaters. The heater power is that deficit divided by the time in the heated modes. The heater row then holds a thermostat's mean power in each mode. The sample takes the second way: the heater runs in idle only, and imaging and downlink heat the payload up a little.
+
+**The radiator's size.** A larger radiator brings the hot modes closer to balance, but the cold modes need more heater power. A smaller one does the reverse. Neither is right by itself. The sample's 0.2 m² lets imaging and downlink heat up a little, for a modest heater in idle. Another systems engineering or safety decision could design the payload colder, with a slightly larger radiator. Imaging and downlink would then come closer to balance, and idle would need more heater power.
+
+**The heater to install.** The coldest mode's balancing power covers the modes of the scenario, which are its nominal operations. It leaves out a safe mode, which may hold another attitude with less equipment on. It also leaves out the redundant heater lines, the lowest bus voltage and any margin. Each of these is a decision of its own.
+
+**The margins.** The account takes the dissipation without margins, which is the safe side for the heaters. For the radiators, it is the optimistic side. So check the radiators against the dissipation with the margins too. The payload should still balance, with the heater lower but above zero.
+
+**The cases.** A folder holds one case. A hot case, with aged coatings and the most dissipation, sizes the radiators. A cold case, with new coatings and the least dissipation, sizes the heaters. Each needs a folder of its own. The sample has one case only, as a first pass.
 
 ## The files
 
@@ -138,7 +170,7 @@ surfaces:
     part: Aperture
     absorptance: 0.90
     emissivity: 0.90
-    temperature: 288 K
+    temperature: 273 K
     fixed_temperature: true
 heat_flows:
   platform interface: -3 W
@@ -149,6 +181,12 @@ earth: {albedo: 0.30, infrared: 237 W/m2}
 The file is optional. Without it, the folder sizes power only.
 
 **`payload_consumption.csv`** gets the `thermal` column, with `inside_mli`, `outside_mli` or `heater` in every row. The column is needed only when the folder has the thermal file. The platform's file takes no such column, since the model covers the payload only.
+
+## Where to see it
+
+- **The thermal command,** `python -m quicksat.thermal`, does all that the power command does: it runs the scenario and the power budget, prints the checks and writes the viewer. Then it prints the account's tables by activity and by payload mode. Without the thermal file, it says so, and gives the power budget alone.
+- **The Scenario Editor's Thermal tab** edits the thermal file, and shows its surfaces in the 3D panel. With the editor's server, its Work out button gives the account. The table by mode edits the heater row, and Balance sets each mode's heater to its balancing power. The server keeps the run and the surfaces' heat, so a change to the heaters, the flows or the dissipation is quick to work out again.
+- **The viewer** has no Thermal tab yet.
 
 ## Where it stops
 

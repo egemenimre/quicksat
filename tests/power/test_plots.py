@@ -27,6 +27,7 @@ from quicksat.power.plots import (
     total_power_plot,
 )
 from quicksat.scenario.spacecraft import read_model
+from quicksat.thermal.plots import heat_plot
 from quicksat.utils.plot_helpers import PALETTE
 
 
@@ -121,6 +122,18 @@ def test_the_balance_plot_draws_generated_and_consumed(budget):
     )
     assert legend_labels(ax) == ["generated", "consumed", ECLIPSE]
     assert generated.get_label() == "generated"
+
+
+def test_the_heat_plot_draws_the_running_heat_over_the_modes(thermal_run):
+    ax = heat_plot(thermal_run)
+    line, zero = ax.get_lines()
+    np.testing.assert_allclose(
+        np.asarray(line.get_ydata()), thermal_run.running_energy.to_value(u.W * u.h)
+    )
+    assert np.asarray(zero.get_ydata()) == pytest.approx([0, 0])
+    assert legend_labels(ax) == ["net heat in", *thermal_run.mode_watts]
+    # one band for each piece of a payload mode
+    assert len(ax.patches) == len(thermal_run.pieces)
 
 
 def test_the_charge_plot_marks_the_lowest_allowed(budget):
