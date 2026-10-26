@@ -42,6 +42,8 @@ from quicksat.editor.server import (
 TESTS = Path(__file__).parent.parent
 POWER = TESTS / "power" / "data"
 SCENARIO = TESTS / "scenario" / "data"
+POLL = {"poll_interval": 0.01}
+"""`serve_forever` polls every 10 ms, so `shutdown` waits 10 ms, not 0.5 s."""
 
 NAMES = {
     "scenario": "scenario.yaml",
@@ -185,7 +187,7 @@ def test_inputs_refused(tmp_path, name):
 def server(tmp_path):
     """The power test folder's editor, served in a thread."""
     server = EditorServer(POWER, tmp_path / "output")
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=server.serve_forever, kwargs=POLL, daemon=True)
     thread.start()
     yield server
     server.shutdown()
@@ -505,7 +507,7 @@ def copy_server(tmp_path):
     folder = tmp_path / "data"
     shutil.copytree(POWER, folder)
     server = EditorServer(folder, tmp_path / "output")
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=server.serve_forever, kwargs=POLL, daemon=True)
     thread.start()
     yield server
     server.shutdown()
@@ -833,7 +835,7 @@ def test_a_request_with_the_key_keeps_the_server_going(server):
 def test_no_idle_stop_during_a_run(tmp_path):
     """A run that takes longer than `idle_s` does not stop the server."""
     server = EditorServer(POWER, tmp_path / "output", idle_s=0)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=server.serve_forever, kwargs=POLL, daemon=True)
     with server.run_lock:
         thread.start()
         time.sleep(1)
