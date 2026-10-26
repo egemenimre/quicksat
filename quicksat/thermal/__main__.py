@@ -4,21 +4,13 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Run the power budget and the payload's heat account in a folder, from the command
-line:
+Run the power budget and the payload's heat account in a folder, from the command line:
 
     python -m quicksat.thermal sample/power/data sample/power/output
 
-Thermal is a sub-domain of power, so this command does all that
-`python -m quicksat.power` does: it runs the scenario and the power budget,
-prints the budget's checks and writes the power viewer. With `payload_thermal.yaml`
-in the folder, it also prints the payload's heat account, by activity and by
-payload mode, after the checks. Without it, it says so, and gives the power
-budget alone. The viewer does not show the heat account yet, so no file is
-written for it.
-
-A file that quicksat cannot read stops it with the error, and nothing is
-written. A check that fails does not stop the command.
+It does all that `python -m quicksat.power` does, then prints the heat account by
+activity and by payload mode, or says the folder has no thermal file. The viewer has no
+heat account yet.
 
 """
 
@@ -34,13 +26,13 @@ from quicksat.thermal.folder import run_folder, summary
 
 def main(argv: list[str] | None = None) -> None:
     """
-    Run the budget and the heat account, print their results, write the power
-    viewer and print where it went.
+    Run the budget and the heat account, print their results, and write the power
+    viewer.
 
     Parameters
     ----------
     argv : list of str, optional
-        The arguments, the command line's by default
+        The arguments, by default the command line's
     """
     parser = argparse.ArgumentParser(
         prog="python -m quicksat.thermal",

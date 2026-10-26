@@ -4,11 +4,8 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The power budget and the payload's heat account of a folder of input files.
-
-`run_folder` runs the power budget, and the heat account when the folder has the
-thermal file. `summary` gives the results as text. `python -m quicksat.thermal`
-prints them, and the editor's server builds on them.
+The power budget and the payload's heat account of a folder, for the command and the
+editor's server.
 
 """
 
@@ -36,12 +33,8 @@ def run_folder(
     thermal_file: str = THERMAL_FILE,
 ) -> tuple[BudgetRun, ThermalRun | None]:
     """
-    The power budget of a folder, and the payload's heat account when the folder
-    has the thermal file.
-
-    The thermal file is read first, and then the power files, before the run, so
-    that a mistake in any of them stops it at once. The heat account takes the
-    power budget's run and files, so the scenario runs once.
+    The power budget of a folder, and the heat account when it has the thermal file,
+    with every file read before the one run.
 
     Parameters
     ----------
@@ -50,17 +43,16 @@ def run_folder(
     scenario_file, power_file : str, optional
         The files' names, if not the usual ones
     consumption_files : dict of str to str, optional
-        The consumption files' names by the group's name, `payload` and
-        `platform`, if not the usual ones
+        The consumption files' names by group, if not the usual ones
     thermal_file : str, optional
-        The thermal file's name, if not the usual one. The file is optional.
+        The optional thermal file's name, if not the usual one
 
     Returns
     -------
     budget : BudgetRun
         The power budget
     thermal : ThermalRun or None
-        The payload's heat account, or None without the thermal file
+        The heat account, or None without the thermal file
     """
     thermal_path = folder / thermal_file
     thermal = (
@@ -91,24 +83,22 @@ def summary(
     budget: BudgetRun, thermal: ThermalRun | None, thermal_file: str = THERMAL_FILE
 ) -> str:
     """
-    The power budget's results as the power command prints them, then the heat
-    account's.
+    The power command's text, then the heat account's tables and notes, or a note that
+    there is no thermal file.
 
     Parameters
     ----------
     budget : BudgetRun
         The power budget
     thermal : ThermalRun or None
-        The payload's heat account, or None without the thermal file
+        The heat account
     thermal_file : str, optional
-        The thermal file's name, for the note when there is no account
+        The thermal file's name, for the note
 
     Returns
     -------
     text : str
-        The power command's text. Then the heat account's tables by activity and
-        by payload mode, the powers as means in W, and its notes. Without the
-        account, a note that the folder has no thermal file.
+        The results
     """
     lines = [power_folder.summary(budget), ""]
     if thermal is None:

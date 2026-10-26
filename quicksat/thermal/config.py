@@ -4,34 +4,12 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The payload's thermal file: its surfaces, its heat flows and the Earth's constants.
+The payload's optional thermal file, `payload_thermal.yaml`: its surfaces, its heat
+flows and the Earth's values.
 
-The file is `payload_thermal.yaml`, in the power folder beside the power system
-file. It is optional: without it, the folder sizes power only.
-
-    surfaces:
-      radiator: {part: Radiator, absorptance: 0.20, emissivity: 0.85, temperature: 273 K}
-      aperture:
-        part: Aperture
-        absorptance: 0.90
-        emissivity: 0.90
-        temperature: 273 K
-        fixed_temperature: true
-    heat_flows:
-      platform interface: -3 W
-      x-band rf: {idle: 0 W, imaging: 0 W, downlink: -5 W}
-    earth: {albedo: 0.30, infrared: 237 W/m2}
-
-A surface is defined as a solar panel is: it names a flat part of the 3D model,
-or gives a normal and an area. A heat flow is positive into the payload. It is
-one power for every mode, or a power for each payload mode.
-
-Temperatures are read in kelvin, or in Celsius and turned into kelvin. Kelvin is
-preferred.
-
-This module reads and checks the file on its own. The parts are checked against
-the scenario's model, and the flows' modes against the run, when the account is
-worked out, in `quicksat.thermal.account`.
+A surface is defined as a solar panel is. A heat flow is positive into the payload, as
+one power or one per payload mode. `docs/power/payload_thermal_ref.ipynb`, under "The
+thermal file", explains the file.
 
 """
 
@@ -62,8 +40,7 @@ from quicksat.utils.parser_helpers import (
 )
 
 SignedPowerQty = signed_quantity(u.W, "power")
-"""Annotated Quantity type for a power of either sign, such as a heat flow's
-`-3 W`."""
+"""Annotated Quantity type for a power of either sign, such as `-3 W`."""
 
 FluxQty = non_negative_quantity(u.W / u.m**2, "flux")
 """Annotated Quantity type for a flux, such as the Earth's `237 W/m2`."""
@@ -73,53 +50,38 @@ HeatFlow = Annotated[
     | Annotated[dict[str, SignedPowerQty], Tag("by mode")],
     Discriminator(lambda value: "by mode" if isinstance(value, dict) else "power"),
 ]
-"""A heat flow: one power for every mode, or a power for each payload mode. A
-mapping is read as the powers by mode, and anything else as one power, so that a
-mistake gives one error."""
+"""A heat flow: a mapping is read as the powers by mode, and anything else as one power."""
 
 DEFAULT_ALBEDO = Q_(0.30, "")
-"""The Earth's albedo, if the file gives none: the share of sunlight it reflects,
-averaged over the globe."""
+"""The Earth's albedo if the file gives none, averaged over the globe."""
 
 DEFAULT_INFRARED = Q_(237, "W/m2")
-"""The Earth's infrared flux at its surface, if the file gives none, averaged
-over the globe."""
+"""The Earth's infrared flux if the file gives none, averaged over the globe."""
 
 
 class Surface(FlatItem):
     """
-    A surface of the payload that absorbs and radiates heat: a radiator, or an
-    aperture.
-
-    It is a part of the 3D model, or a normal and an area, as a solar panel is.
-    A surface from the model turns with an articulation above it, and the rest
-    of the model can shade the sun on it.
+    A surface of the payload that absorbs and radiates heat, such as a radiator or an
+    aperture, defined as a solar panel is.
 
     Parameters
     ----------
     part : str, optional
-        The name of the model's node that holds the surface. Its triangles must
-        all face one way. Give either `part`, or both `normal` and `area`.
+        The model's node that holds the surface
     normal : tuple of float, optional
-        The direction the surface faces, in body axes: a signed body axis such
-        as `+x`, or three numbers, scaled to unit length
+        The direction it faces in body axes
     area : Quantity, optional
-        The surface's area, positive
+        Its area, positive
     absorptance : Quantity
-        The share of sunlight it absorbs, α, such as 0.20 for white paint, for
-        the year being sized. Above 0 and at most 1.
+        α, the share of sunlight it absorbs, for the year being sized
     emissivity : Quantity
-        The share of a black body's infrared it emits, ε, such as 0.85. It also
-        absorbs this share of the Earth's infrared. Above 0 and at most 1.
+        ε, the share of a black body's infrared it emits and absorbs
     temperature : Quantity
-        Its design temperature, in kelvin, such as `273 K`. A temperature in
-        Celsius is turned into kelvin.
+        Its design temperature, preferably in kelvin
     fixed_temperature : bool, optional
-        True when something else holds the surface at its temperature, such as
-        a telescope's own heaters. False by default: the surface floats, which
-        matters only for the equilibrium ΔT.
+        Whether something else keeps it constant, for the equilibrium ΔT
     comments : str, optional
-        Your own notes on this block. quicksat keeps them and does not read them.
+        The user's notes, which quicksat does not read
     """
 
     kind: ClassVar[str] = "surface"
@@ -133,17 +95,16 @@ class Surface(FlatItem):
 
 class Earth(Commented):
     """
-    The Earth's two constants: the sunlight it reflects and its own infrared.
+    The Earth's two values: the sunlight it reflects and its own infrared.
 
     Parameters
     ----------
     albedo : Quantity, optional
-        The share of sunlight that the Earth reflects, from 0 to 1. 0.30 by
-        default.
+        The share of sunlight reflected, by default 0.30
     infrared : Quantity, optional
-        The Earth's infrared flux, such as `237 W/m2`, the default
+        The infrared flux, by default `237 W/m2`
     comments : str, optional
-        Your own notes on this block. quicksat keeps them and does not read them.
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -167,18 +128,14 @@ class PayloadThermal(YamlFile):
     Parameters
     ----------
     surfaces : dict of str to Surface
-        The surfaces, each under a name of your choice. At least one.
+        The surfaces, by any names, at least one
     heat_flows : dict of str to Quantity or dict, optional
-        The powers that cross the payload's boundary elsewhere than a surface,
-        each under a name of your choice, positive into the payload. Each is
-        one power, such as `-3 W`, or a power for each payload mode, such as
-        `{idle: 0 W, downlink: -5 W}`. None by default.
+        The powers into the payload elsewhere than a surface, by any names: one power,
+        or one per payload mode
     earth : Earth, optional
-        The Earth's albedo and infrared, the defaults without it
+        The Earth's albedo and infrared
     comments : str, optional
-        Your own notes on the whole file. quicksat keeps them and does not read
-        them. The sections `surfaces` and `heat_flows` may hold their own
-        `comments` too, so no surface or flow may take that name.
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -192,7 +149,7 @@ class PayloadThermal(YamlFile):
     @field_validator("surfaces")
     @classmethod
     def _name_surfaces(cls, surfaces: dict[str, Surface]) -> dict[str, Surface]:
-        """Checks that there is a surface, and that no name is empty."""
+        """Checks there is a surface, and no name is empty."""
         if not surfaces:
             raise ValueError("surfaces must define at least one surface")
         if any(not str(name).strip() for name in surfaces):
@@ -202,7 +159,7 @@ class PayloadThermal(YamlFile):
     @field_validator("heat_flows")
     @classmethod
     def _name_flows(cls, flows: dict[str, HeatFlow]) -> dict[str, HeatFlow]:
-        """Checks that no name is empty, and that a flow by mode has a mode."""
+        """Checks no name is empty, and a flow by mode has a mode."""
         for name, flow in flows.items():
             if not str(name).strip():
                 raise ValueError("a heat flow's name must not be empty")
@@ -219,12 +176,7 @@ class PayloadThermal(YamlFile):
     @property
     def flows_by_mode(self) -> dict[str, dict[str, Quantity]]:
         """
-        The heat flows given by mode.
-
-        Returns
-        -------
-        flows : dict of str to dict of str to Quantity
-            Each flow's power by the payload mode's name, by the flow's name
+        The heat flows given by mode: each flow's power by mode, by the flow's name.
         """
         return {
             name: flow
@@ -239,12 +191,12 @@ class PayloadThermal(YamlFile):
         Parameters
         ----------
         mode : str
-            The payload mode's name. Each flow given by mode must have it.
+            The payload mode, which each flow by mode must have
 
         Returns
         -------
         watts : dict of str to float
-            In W, positive into the payload, by the flow's name
+            In W, positive into the payload, by name
         """
         return {
             name: float((flow[mode] if isinstance(flow, dict) else flow).to_value(u.W))

@@ -4,16 +4,11 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The payload's heat account over a scenario run, which sizes its radiators and
-heaters.
+The payload's heat account over a scenario run, which sizes its radiators and heaters.
 
-Thermal is a sub-domain of power: it cannot exist without it. Its file sits in the
-power folder, and it reads two of power's files: the payload's consumption, for the
-dissipation and the heaters, and the power system, for the self-shadowing. Its
-command runs the power budget too.
-
-The file name is here, rather than in `config`, so that the editor and the
-commands can name the file without importing the loader.
+Thermal is a sub-domain of power: its file sits in the power folder, and it reads the
+payload's consumption and the power system. `decisions.md` 26 says why. The file name is
+here, so the editor and the commands can name it without the loader.
 """
 
 THERMAL_FILE = "payload_thermal.yaml"
