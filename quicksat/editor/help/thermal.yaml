@@ -45,6 +45,7 @@ earth:
   title: The Earth
   info: |-
     <p>The <b>albedo</b> is the share of sunlight that the Earth reflects, and the <b>infrared</b> is its own flux. Both are averaged over the globe: 0.30 and 237 W/m² if left out.</p>
+    <p>Both vary with the latitude, the clouds and the season, and more over a few minutes than over a whole orbit. So pick them for the orbit and the case: higher values for a hot case, and lower ones for a cold case.</p>
     <span class="k">Consequences</span>
     <p>A surface absorbs both as far as it sees the Earth, by its view factor. The albedo falls to zero over the night side. The infrared does not depend on the sun, so a surface facing the Earth absorbs it in eclipse too.</p>
   file: >-
