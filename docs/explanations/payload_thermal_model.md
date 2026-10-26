@@ -103,6 +103,12 @@ a is the Earth's albedo, 0.30 by default. ζ is the sun's zenith angle at the po
 
 The user asked for albedo. Earth infrared is included too, since it is often larger than albedo for a surface that faces the Earth.
 
+**The Earth's values vary.** The defaults, 0.30 and 237 W/m², are means over the whole globe and the year. The local values change with the latitude, the ground below, the clouds and the season. Clouds raise the albedo but lower the infrared, so the two rarely peak together. The shorter the time, the wider the spread. A few minutes over a cloud deck or ice can see much more albedo than the mean, while a whole orbit evens much of it out.
+
+So the right values depend on the scenario: the orbit's inclination, the length of the activities that matter, and the case being sized. NASA TM-2001-211221, *Guidelines for the Selection of Near-Earth Thermal Environment Parameters for Spacecraft Design*, gives hot and cold pairs by inclination and by averaging time. The model takes one pair for the whole run. So a hot case takes higher values throughout, and a cold case lower ones. Taking both high together is on the safe side for the hot case.
+
+The values matter. In the power sample, 0.1 more albedo, or 25 W/m² more infrared, adds about 11 W h to the net heat of the three-orbit run. It also lowers idle's balancing heater by about 2.3 W, or 6 %.
+
 ## The account
 
 At each step of the run's grid, the net power into the payload is the heat in less the heat out:
@@ -124,6 +130,8 @@ The model gives the account by activity and by payload mode, since the two answe
 
 **A mode's balancing heater power** is the heater power that brings the mode's net energy over the run to zero. It is the mode's deficit before any heater, divided by the run's time in that mode. It is never below zero, since a heater cannot cool. A mode with a surplus even with no heater shows a radiator that is too small.
 
+**The run balancing heater power** brings the run's net energy to zero instead. The heater runs only in the modes that lose heat, and each gets the same share of its own balancing power. The share is the part of their deficit that the modes that gain heat do not cover. So no mode gets more than its balancing power. With one cold mode, as in the sample, it is the run's deficit before any heater, divided by the time in that mode. If the hot modes cover the whole deficit, the share is zero: the run gains heat even with no heater, and the radiator is too small.
+
 ## The equilibrium temperature
 
 A W h figure alone does not say whether an imbalance matters. So for each activity and each mode, the model also gives an equilibrium ΔT. It is how far the surfaces would move from their design temperatures if the activity, or the mode, went on forever.
@@ -142,20 +150,20 @@ This is one equation, with a temperature for each surface. So the model moves al
 
 The model gives the figures, but it does not size the payload by itself. Sizing takes decisions that the code cannot take. They come from the mission, from systems engineering and from safety. The power budget is the same: the code checks a design, and the user chooses it.
 
-**Which modes get a heater, and how much.** There are two common ways:
+**The two balancing powers answer different questions.** The table by mode gives both, and the Thermal tab has a button for each: Balance each mode and Balance the run.
 
-- **Each mode balances.** Each mode's heater is its balancing power, from the table by mode. No cold mode loses heat, but the heaters draw the most power. A hot mode still builds up heat, since a heater cannot cool.
-- **The run balances.** The heater runs in the cold modes only, and brings the run's net energy to zero. The hot modes heat the payload up a little, and the cold modes take the heat back. The heaters draw less power, but the temperature swings over each orbit. The model has no heat capacity, so the size of the swing is the user's estimate.
+- **Each mode balances: the heater to install.** Each mode's heater is its balancing power. No mode loses heat, but a hot mode still gains heat, since a heater cannot cool. So the run warms from orbit to orbit, and the heaters give more energy than the payload needs. The figure is still the one to install. A thermostat holds the payload at its set point. Once the heat of a hot mode has left, it holds the set point at about the cold mode's balancing power. So that power must be there, for a long stay in the coldest mode too.
+- **The run balances: the heater's mean draw.** The heater runs in the modes that lose heat only, and brings the run's net energy to zero. The hot modes heat the payload up a little, and the cold modes take the heat back. This is a thermostat's mean power over the run. After a hot mode, a thermostat stays off until the extra heat has left, and then holds the set point. So its net heat comes back to zero sooner, and then stays flat. Its energy is the same, since the run's balance fixes it. The power budget reads the heater row for the heater's energy, so this is the figure for it.
 
-For the second way, take the run's net energy before the heaters. The heater power is that deficit divided by the time in the heated modes. The heater row then holds a thermostat's mean power in each mode. The sample takes the second way: the heater runs in idle only, and imaging and downlink heat the payload up a little.
+The model has no thermostat, and keeps one heater power for each mode. So the heater row holds one of the two figures. The sample's row holds the run's: 22.1 W in idle, with 37.6 W to install. The temperature then swings over each orbit. The model has no heat capacity, so the size of the swing is the user's estimate.
 
 **The radiator's size.** A larger radiator brings the hot modes closer to balance, but the cold modes need more heater power. A smaller one does the reverse. Neither is right by itself. The sample's 0.2 m² lets imaging and downlink heat up a little, for a modest heater in idle. Another systems engineering or safety decision could design the payload colder, with a slightly larger radiator. Imaging and downlink would then come closer to balance, and idle would need more heater power.
 
-**The heater to install.** The coldest mode's balancing power covers the modes of the scenario, which are its nominal operations. It leaves out a safe mode, which may hold another attitude with less equipment on. It also leaves out the redundant heater lines, the lowest bus voltage and any margin. Each of these is a decision of its own.
+**The heater to install.** The coldest mode's balancing power, from Balance each mode, covers the modes of the scenario, which are its nominal operations. It leaves out a safe mode, which may hold another attitude with less equipment on. It also leaves out the redundant heater lines, the lowest bus voltage and any margin. Each of these is a decision of its own.
 
 **The margins.** The account takes the dissipation without margins, which is the safe side for the heaters. For the radiators, it is the optimistic side. So check the radiators against the dissipation with the margins too. The payload should still balance, with the heater lower but above zero.
 
-**The cases.** A folder holds one case. A hot case, with aged coatings and the most dissipation, sizes the radiators. A cold case, with new coatings and the least dissipation, sizes the heaters. Each needs a folder of its own. The sample has one case only, as a first pass.
+**The cases.** A folder holds one case. A hot case, with aged coatings, the most dissipation and a high albedo and infrared, sizes the radiators. A cold case, with new coatings, the least dissipation and a low albedo and infrared, sizes the heaters. Each needs a folder of its own. The sample has one case only, as a first pass, with the Earth's global means.
 
 ## The files
 
@@ -185,7 +193,7 @@ The file is optional. Without it, the folder sizes power only.
 ## Where to see it
 
 - **The thermal command,** `python -m quicksat.thermal`, does all that the power command does: it runs the scenario and the power budget, prints the checks and writes the viewer. Then it prints the account's tables by activity and by payload mode. Without the thermal file, it says so, and gives the power budget alone.
-- **The Scenario Editor's Thermal tab** edits the thermal file, and shows its surfaces in the 3D panel. With the editor's server, its Work out button gives the account. The table by mode edits the heater row, and Balance sets each mode's heater to its balancing power. The server keeps the run and the surfaces' heat, so a change to the heaters, the flows or the dissipation is quick to work out again.
+- **The Scenario Editor's Thermal tab** edits the thermal file, and shows its surfaces in the 3D panel. With the editor's server, its Compute button gives the account. The table by mode edits the heater row. Balance each mode and Balance the run set the heaters to either balancing power. The server keeps the run and the surfaces' heat, so a change to the heaters, the flows or the dissipation is quick to work out again.
 - **The viewer** has no Thermal tab yet.
 
 ## Where it stops
@@ -196,6 +204,7 @@ The file is optional. Without it, the folder sizes power only.
 - **One account for the whole payload.** Two radiators at different temperatures add their emissions to one account. The model cannot say whether a cold focal plane radiator matches the focal plane's own heat.
 - **Every surface counts in every mode.** A surface that counts in some modes only, such as an aperture behind a door that opens for imaging, is not modelled.
 - **No shading of the Earth.** The model's other parts do not block a surface's view of the Earth. So the model overstates the Earth's heat, which is the safe side for the hot case, but not for the cold case.
+- **One albedo and one infrared for the run.** They do not follow the latitude, the ground below or the length of an activity. Each case takes the pair for its own scenario.
 - **One case a folder.** A hot case at the end of life and a cold case at the start of life each need a folder of their own, as power's winter and summer cases do.
 - **Figures only.** The model gives its figures with no checks at first. Warnings on imbalances may come later.
 

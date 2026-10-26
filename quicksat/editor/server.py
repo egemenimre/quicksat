@@ -39,7 +39,7 @@ that changed on disk since the page was written.
 After each change, the page sends them, and `budget_files` works out every
 budget in a temporary folder, and writes nothing.
 
-**Work out**, on the Scenario Editor's Thermal tab, sends the files in the same
+**Compute**, on the Scenario Editor's Thermal tab, sends the files in the same
 way. `thermal_files` works out the payload's heat account, and writes nothing.
 The server keeps the run and each surface's absorbed heat, with a hash of what
 they depend on: the scenario and its files, the self-shadowing and the
@@ -575,7 +575,7 @@ class _Handler(BaseHTTPRequestHandler):
             _log(f"no heat account: {result['error']}")
         else:
             how = "from the kept run" if result["reused"] else "with a new run"
-            _log(f"worked out the heat account {how} in {result['seconds']} s")
+            _log(f"computed the heat account {how} in {result['seconds']} s")
         self._json(HTTPStatus.OK, result)
 
     def _save(self, files: list) -> None:

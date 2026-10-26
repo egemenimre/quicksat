@@ -489,58 +489,27 @@ def _orbit_data(run: ScenarioRun) -> dict:
     return data
 
 
-def scenario_data(run: ScenarioRun, designer: bool = False) -> dict:
+def _tracks_data(
+    run: ScenarioRun, seconds: Callable[[TimeArray], float]
+) -> dict[str, list[dict]]:
     """
-    Everything the viewer shows of a run, as plain numbers and text.
+    The rows of the Gantt chart, as the page draws them.
 
     Parameters
     ----------
     run : ScenarioRun
         The run
-    designer : bool, optional
-        Whether the data is for the Activity Designer. It then leaves out what
-        only the 3D views and the Attitude page show: `grid.q_body`, the roll,
-        pitch and yaw, the attitude files, and the model's bytes and angles are
-        None. The run may then stop before its end, which a normal run may not.
+    seconds : callable
+        Turns a time into seconds from the start of the run, to 1 ms
 
     Returns
     -------
-    data : dict
-        The fields of `scenario.js`. `grid` holds the values at each time step.
-        `tracks` holds the rows of the Gantt chart: the illumination, the
-        attitude, and the payload's and the platform's modes as `payload_mode`
-        and `platform_mode`. `occurrences` holds the activity table, with each
-        activity's `mode` as its `payload` and `platform`. `model` holds the spacecraft's 3D model and the angles
-        of its articulations, or None. `targets`, `target_files` and `pointing`
-        come from `_targets_data`. `warnings` holds every warning of the run,
-        and `orbit_warnings` those on the orbits alone. `id` is the first 16 hex
-        digits of the SHA-256 of the JSON text of the other fields. The
-        designer's data has `designer` too: `repeat`, whether the list repeats,
-        and `pass_s`, the length of one pass of the list, from
-        `ScenarioRun.pass_length`, or None.
-
-    Raises
-    ------
-    ValueError
-        If part of a run for the normal viewer is unplanned: see
-        `ScenarioRun.unplanned`
+    tracks : dict
+        The pieces of `illumination`, `attitude`, `payload_mode` and
+        `platform_mode`, each with its `value`, `start_s` and `end_s`, in time
+        order. A slew is an attitude piece of its own, with the `target` it
+        turns to.
     """
-    if not designer:
-        run.check_planned("the viewer's data")
-    start: TimeArray = run.times[0]
-
-    def seconds(time: TimeArray) -> float:
-        return round(float((time - start).to_value(u.s)), 3)
-
-    cartesian = run.state.cartesian
-    assert isinstance(cartesian, CartesianRepresentation)
-    velocity = cartesian.differentials["s"]
-    assert isinstance(velocity, CartesianDifferential)
-    position = cartesian.xyz.to_value(u.km).T
-    rotations = body_rotations(run)
-    towards_sun = run.sun.xyz.to_value(u.km).T - position
-    towards_sun /= np.linalg.norm(towards_sun, axis=1, keepdims=True)
-
     tracks = {}
     for name, row in (
         ("illumination", run.illumination),
@@ -568,9 +537,31 @@ def scenario_data(run: ScenarioRun, designer: bool = False) -> dict:
         }
         for window, end in _slew_ends(run)
     ]
-    for name, pieces in tracks.items():
-        tracks[name] = sorted(pieces, key=lambda piece: piece["start_s"])
+    return {
+        name: sorted(pieces, key=lambda piece: piece["start_s"])
+        for name, pieces in tracks.items()
+    }
 
+
+def _occurrences_data(
+    run: ScenarioRun, seconds: Callable[[TimeArray], float]
+) -> list[dict]:
+    """
+    The activity table, as the page shows it.
+
+    Parameters
+    ----------
+    run : ScenarioRun
+        The run
+    seconds : callable
+        Turns a time into seconds from the start of the run, to 1 ms
+
+    Returns
+    -------
+    occurrences : list of dict
+        One row for each occurrence of an activity, with its activity's `mode`
+        as its `payload` and `platform`.
+    """
     occurrences = []
     for occurrence in run.occurrences:
         activity = occurrence.activity
@@ -597,6 +588,99 @@ def scenario_data(run: ScenarioRun, designer: bool = False) -> dict:
                 "statuses": occurrence.statuses,
             }
         )
+    return occurrences
+
+
+def _grid_data(
+    run: ScenarioRun,
+    position: np.ndarray,
+    velocity: np.ndarray,
+    rotations: np.ndarray,
+    designer: bool,
+) -> dict:
+    """
+    The values at each time step of the run.
+
+    Parameters
+    ----------
+    run : ScenarioRun
+        The run
+    position, velocity : ndarray
+        The states in GCRS, in km and km/s, shape (n, 3)
+    rotations : ndarray
+        The body's orientation at each time of the grid, from `body_rotations`
+    designer : bool
+        Whether the data is for the Activity Designer, which leaves out
+        `q_body`
+
+    Returns
+    -------
+    grid : dict
+        The times, the position, the velocity, the direction to the Sun, the
+        latitude, longitude and beta angle, the light, and the body's and the
+        Earth's quaternions.
+    """
+    towards_sun = run.sun.xyz.to_value(u.km).T - position
+    towards_sun /= np.linalg.norm(towards_sun, axis=1, keepdims=True)
+    return {
+        "t_s": _flat((run.times - run.times[0]).to_value(u.s), 3),
+        "r_km": _flat(position, 3),
+        "v_km_s": _flat(velocity, 6),
+        "sun": _flat(towards_sun, 6),
+        "lat_deg": _flat(run.latitude.to(u.deg).value, 4),
+        "lon_deg": _flat(run.longitude.to(u.deg).value, 4),
+        "beta_deg": _flat(run.beta.to(u.deg).value, 4),
+        "light": _flat(run.light, 6),
+        "q_body": None if designer else _flat(quaternions(rotations), 6),
+        "q_earth": _flat(quaternions(run.grid.earth_rotations), 6),
+    }
+
+
+def scenario_data(run: ScenarioRun, designer: bool = False) -> dict:
+    """
+    Everything the viewer shows of a run, as plain numbers and text.
+
+    Parameters
+    ----------
+    run : ScenarioRun
+        The run
+    designer : bool, optional
+        Whether the data is for the Activity Designer. It then leaves out what
+        only the 3D views and the Attitude page show: `grid.q_body`, the roll,
+        pitch and yaw, the attitude files, and the model's bytes and angles are
+        None. The run may then stop before its end, which a normal run may not.
+
+    Returns
+    -------
+    data : dict
+        The fields of `scenario.js`. `grid`, `tracks`, `occurrences`, `model`,
+        `targets`, `target_files` and `pointing` come from the helpers of this
+        module. `warnings` holds every warning of the run, and `orbit_warnings`
+        those on the orbits alone. `id` is the first 16 hex digits of the
+        SHA-256 of the JSON text of the other fields. The designer's data has
+        `designer` too: `repeat`, whether the list repeats, and `pass_s`, the
+        length of one pass of the list, from `ScenarioRun.pass_length`, or None.
+
+    Raises
+    ------
+    ValueError
+        If part of a run for the normal viewer is unplanned: see
+        `ScenarioRun.unplanned`
+    """
+    if not designer:
+        run.check_planned("the viewer's data")
+    start: TimeArray = run.times[0]
+
+    def seconds(time: TimeArray) -> float:
+        return round(float((time - start).to_value(u.s)), 3)
+
+    cartesian = run.state.cartesian
+    assert isinstance(cartesian, CartesianRepresentation)
+    differential = cartesian.differentials["s"]
+    assert isinstance(differential, CartesianDifferential)
+    position = cartesian.xyz.to_value(u.km).T
+    velocity = differential.d_xyz.to_value(u.km / u.s).T
+    rotations = body_rotations(run)
 
     source = run.scenario.source_file
     content = {
@@ -608,26 +692,13 @@ def scenario_data(run: ScenarioRun, designer: bool = False) -> dict:
         "orbit": _orbit_data(run),
         "colours": scenario_colours(run.scenario),
         "model": _model_data(run, designer),
-        "grid": {
-            "t_s": _flat((run.times - start).to_value(u.s), 3),
-            "r_km": _flat(position, 3),
-            "v_km_s": _flat(velocity.d_xyz.to_value(u.km / u.s).T, 6),
-            "sun": _flat(towards_sun, 6),
-            "lat_deg": _flat(run.latitude.to(u.deg).value, 4),
-            "lon_deg": _flat(run.longitude.to(u.deg).value, 4),
-            "beta_deg": _flat(run.beta.to(u.deg).value, 4),
-            "light": _flat(run.light, 6),
-            "q_body": None if designer else _flat(quaternions(rotations), 6),
-            "q_earth": _flat(quaternions(run.grid.earth_rotations), 6),
-        },
-        "tracks": tracks,
-        "occurrences": occurrences,
+        "grid": _grid_data(run, position, velocity, rotations, designer),
+        "tracks": _tracks_data(run, seconds),
+        "occurrences": _occurrences_data(run, seconds),
         **_targets_data(run, seconds),
         "warnings": run.warnings,
         "orbit_warnings": run.orbit_warnings,
-        "attitude": _attitude_data(
-            run, rotations, position, velocity.d_xyz.to_value(u.km / u.s).T, designer
-        ),
+        "attitude": _attitude_data(run, rotations, position, velocity, designer),
     }
     if designer:
         length = run.pass_length

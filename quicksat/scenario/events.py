@@ -35,7 +35,7 @@ from quicksat.utils.intervals import (
     round_time,
 )
 
-Illumination = dict[str, P.Interval]
+IlluminationIntervals = dict[str, P.Interval]
 """The illumination of a run, by the words of the constraints: `sunlit`,
 `penumbra`, `umbra`, and `eclipse` for either of the last two."""
 
@@ -211,7 +211,7 @@ def next_event(intervals: tuple[P.Interval, ...], after: TimeArray) -> TimeArray
 def find_events(
     activities: list[Activity],
     interval: P.Interval,
-    illumination: Illumination,
+    illumination: IlluminationIntervals,
     time_above: Callable[[Quantity], P.Interval],
     time_visible: Callable[[str], P.Interval] | None = None,
 ) -> Events:

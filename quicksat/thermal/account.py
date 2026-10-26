@@ -241,6 +241,36 @@ def equilibrium_dt(
     return float(cast(float, brentq(excess, -coldest, high, xtol=1e-9))), ""
 
 
+def run_balancing_heaters(modes: pd.DataFrame) -> pd.Series:
+    """
+    The heater power in each payload mode that brings the run's net energy to
+    zero, with the heaters in the modes that lose heat only.
+
+    Each mode that loses heat gets the same share of its balancing power. The
+    share is the part of these modes' deficit that the modes that gain heat do
+    not cover. So no mode gets more than its balancing power. The share is 0
+    when the gain covers the whole deficit: the run then gains heat with no
+    heater. `docs/explanations/payload_thermal_model.md` says when to use it.
+
+    Parameters
+    ----------
+    modes : pd.DataFrame
+        The table by mode, with `time [min]`, `net [Wh]`, `heaters [W]` and
+        `balancing heater [W]`
+
+    Returns
+    -------
+    heaters : pd.Series
+        In W, one for each row of the table
+    """
+    hours = modes["time [min]"] / 60
+    before = modes["net [Wh]"] - modes["heaters [W]"] * hours
+    deficit = float((modes["balancing heater [W]"] * hours).sum())
+    gain = float(before.clip(lower=0).sum())
+    share = min(1.0, max(0.0, 1 - gain / deficit)) if deficit > 0 else 0.0
+    return modes["balancing heater [W]"] * share
+
+
 @dataclass(frozen=True)
 class ThermalRun:
     """
@@ -495,18 +525,20 @@ class ThermalRun:
     @cached_property
     def mode_table(self) -> pd.DataFrame:
         """
-        The account of each payload mode, with its balancing heater power.
+        The account of each payload mode, with its two balancing heater powers.
 
         The balancing heater power brings the mode's net energy over the run to
         zero: the mode's deficit before any heater, over its time. It is never
-        below zero, since a heater cannot cool.
+        below zero, since a heater cannot cool. The run balancing heater power
+        brings the run's net energy to zero instead, from
+        `run_balancing_heaters`. Neither depends on the heaters of the files.
 
         Returns
         -------
         table : pd.DataFrame
             The mode's name, its time in minutes, the mean power of each term in
             W, the net in W and in W h, the equilibrium ΔT in K and why there is
-            none, if so, and the balancing heater power in W
+            none, if so, and the two balancing heater powers in W
         """
         rows = []
         for mode in self.mode_watts:
@@ -515,7 +547,9 @@ class ThermalRun:
             before = row["net [W]"] - row["heaters [W]"]
             row["balancing heater [W]"] = max(0.0, -before)
             rows.append(row)
-        return pd.DataFrame(rows)
+        table = pd.DataFrame(rows)
+        table["run balancing heater [W]"] = run_balancing_heaters(table)
+        return table
 
     @cached_property
     def orbit_table(self) -> pd.DataFrame:

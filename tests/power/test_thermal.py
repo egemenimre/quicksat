@@ -13,6 +13,7 @@ The account is checked by hand at one step, and its sums against each other.
 """
 
 import numpy as np
+import pandas as pd
 import pytest
 from astropy.coordinates import CartesianRepresentation
 from astropy.tests.helper import assert_quantity_allclose
@@ -31,6 +32,7 @@ from quicksat.thermal.account import (
     check_files,
     equilibrium_dt,
     payload_pieces,
+    run_balancing_heaters,
     run_thermal,
 )
 from quicksat.thermal.config import PayloadThermal
@@ -322,6 +324,49 @@ def test_a_mode_balancing_heater_power_brings_its_net_to_zero(
     ).mode_table.set_index("payload mode")
     assert again.loc["idle", "net [W]"] == pytest.approx(0, abs=1e-9)
     assert again.loc["idle", "balancing heater [W]"] == pytest.approx(balancing)
+
+
+def test_the_run_balancing_heater_power_brings_the_run_to_zero(
+    tmp_path, thermal, consumption, power_system, model_run, thermal_run
+):
+    table = thermal_run.mode_table.set_index("payload mode")
+    assert table.loc["imaging", "run balancing heater [W]"] == 0
+    run_heater = table.loc["idle", "run balancing heater [W]"]
+    # imaging's surplus covers part of idle's deficit
+    assert 0 < run_heater < table.loc["idle", "balancing heater [W]"]
+    balanced = write_payload(
+        tmp_path,
+        consumption,
+        lambda lines: [
+            line.replace("22.1 W,0 W,0 W", f"{run_heater} W,0 W,0 W") for line in lines
+        ],
+    )
+    again = run_thermal(
+        thermal, balanced, power_system, model_run, thermal_run.surfaces
+    ).mode_table.set_index("payload mode")
+    assert again["net [Wh]"].sum() == pytest.approx(0, abs=1e-9)
+    assert again.loc["idle", "run balancing heater [W]"] == pytest.approx(run_heater)
+
+
+def test_the_cold_modes_share_the_run_balancing_heaters_by_their_deficits():
+    # two cold modes, with deficits of 30 W h and 10 W h, and a hot one of 20 W h
+    modes = pd.DataFrame(
+        {
+            "time [min]": [60.0, 30.0, 30.0],
+            "net [Wh]": [-30.0, 5.0, 20.0],
+            "heaters [W]": [0.0, 30.0, 0.0],
+            "balancing heater [W]": [30.0, 20.0, 0.0],
+        }
+    )
+    # the hot mode covers half of the cold modes' 40 W h, so each gets half
+    assert list(run_balancing_heaters(modes)) == pytest.approx([15.0, 10.0, 0.0])
+    # with no hot mode, each cold mode needs its whole balancing power
+    assert list(run_balancing_heaters(modes.iloc[:2])) == pytest.approx([30.0, 20.0])
+    # a gain that covers the whole deficit needs no heater
+    hotter = modes.assign(**{"net [Wh]": [-30.0, 5.0, 50.0]})
+    assert list(run_balancing_heaters(hotter)) == [0.0, 0.0, 0.0]
+    # with no cold mode, no heater
+    assert list(run_balancing_heaters(modes.iloc[2:])) == [0.0]
 
 
 def test_the_surfaces_heat_must_come_from_the_same_run(

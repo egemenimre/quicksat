@@ -822,7 +822,7 @@ const SECTIONS = {
           el("td", {}, numberInput(item, "absorptance", { step: 0.01, min: 0, max: 1, width: 60 })),
           el("td", {}, numberInput(item, "emissivity", { step: 0.01, min: 0, max: 1, width: 60 })),
           el("td", {}, quantityInput(item, "temperature", ["K"])),
-          el("td", {}, checkbox(item, "fixed", "held there")),
+          el("td", {}, checkbox(item, "fixed", "kept constant")),
           el("td", { class: "tools" }, commentsButton(item, 8, tbody, tr), " ", itemTools(list, index)));
         tbody.append(tr);
       });

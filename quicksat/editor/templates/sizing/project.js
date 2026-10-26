@@ -24,20 +24,6 @@ function readNum(value, where, fallback = "") {
   return parsed.v;
 }
 
-/** A fraction, shown in percent: `5 %` or `0.05` both give 5 %. */
-function readPercent(value, where, fallback = "") {
-  if (value == null || value === "") return q(fallback, "%");
-  const parsed = numberUnit(value);
-  if (!parsed) { notice("changed", `${where}: "${value}" is not a number, and was left empty`); return q("", "%"); }
-  if (parsed.u === "%" || parsed.u === "percent") return q(parsed.v, "%");
-  if (!parsed.u) {
-    notice("changed", `${where}: ${value} is read as ${Number((parsed.v * 100).toPrecision(12))} %`);
-    return q(Number((parsed.v * 100).toPrecision(12)), "%");
-  }
-  notice("changed", `${where}: "${value}" is not a fraction, and was left empty`);
-  return q("", "%");
-}
-
 function readBool(value, fallback) {
   if (typeof value === "boolean") return value;
   const text = String(value ?? "").trim().toLowerCase();

@@ -23,7 +23,7 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 const THERMAL = path.resolve(__dirname, "..", "..", "..", "quicksat", "editor", "templates", "scenario", "thermal.js");
-// project.js's own rounding, which the script uses
+// base.js's rounding, which the script uses
 globalThis.tidy = (x) => Number(Number(x).toPrecision(12));
 vm.runInThisContext(fs.readFileSync(THERMAL, "utf8"), { filename: THERMAL });
 const { addFlowMode, balanceHeaters, flowModes, flowsUsing, heaterRow, heaterWatts, renameFlowMode, roundUp, setHeaterWatts } = vm.runInThisContext(
@@ -122,4 +122,17 @@ test("balancing sets each mode's heater power from the table by mode", () => {
   assert.equal(heaterWatts(row, "imaging"), 0);
   // a mode with no balancing power keeps its heater
   assert.equal(heaterWatts(row, "downlink"), 70);
+});
+
+test("balancing the run sets each mode's heater power from the run's column", () => {
+  const row = heater({ units: 1 });
+  const modes = [
+    { "payload mode": "idle", "balancing heater [W]": 37.56, "run balancing heater [W]": 22.0861 },
+    { "payload mode": "imaging", "balancing heater [W]": 0, "run balancing heater [W]": 0 },
+    { "payload mode": "downlink", "balancing heater [W]": 0, "run balancing heater [W]": 0 },
+  ];
+  assert.deepEqual(balanceHeaters(row, modes, "run balancing heater [W]"), ["idle", "imaging", "downlink"]);
+  assert.equal(heaterWatts(row, "idle"), 22.1);
+  assert.equal(heaterWatts(row, "imaging"), 0);
+  assert.equal(heaterWatts(row, "downlink"), 0);
 });
