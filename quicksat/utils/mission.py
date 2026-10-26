@@ -21,18 +21,14 @@ or drag.
 
 """
 
-import os
-from pathlib import Path
-
 import numpy as np
-import yaml
 from pydantic import ConfigDict
 
 from quicksat import MU_EARTH, Q_, R_EARTH, u
-from quicksat.utils.parser_helpers import AngleQty, Commented, LengthQty, TimeQty
+from quicksat.utils.parser_helpers import AngleQty, LengthQty, TimeQty, YamlFile
 
 
-class Mission(Commented):
+class Mission(YamlFile):
     """
     A mission: a circular Earth orbit, and how long it is flown.
 
@@ -54,48 +50,6 @@ class Mission(Commented):
     altitude: LengthQty
     inclination: AngleQty
     duration: TimeQty
-
-    @classmethod
-    def from_yaml_file(cls, file_path: str | Path) -> "Mission":
-        """
-        Initialise the mission from a YAML file.
-
-        Parameters
-        ----------
-        file_path : str | Path
-            Filepath containing the mission data (YAML)
-
-        Returns
-        -------
-        mission : Mission
-            Mission object from the input data
-        """
-        if not file_path:
-            raise ValueError("Path is None. No file to be found.")
-        elif not os.path.isfile(file_path):
-            raise FileNotFoundError(f"File does not exist: {file_path}")
-        else:
-            with open(file_path, "rt") as file:
-                return cls.from_yaml_text(file.read())
-
-    @classmethod
-    def from_yaml_text(cls, yaml_text: str) -> "Mission":
-        """
-        Initialise the mission from YAML text.
-
-        Parameters
-        ----------
-        yaml_text : str
-            Text containing the mission data (YAML)
-
-        Returns
-        -------
-        mission : Mission
-            Mission object from the input data
-        """
-        if not yaml_text:
-            raise ValueError("Text content is None.")
-        return cls(**yaml.safe_load(yaml_text))
 
     @property
     def radius(self):

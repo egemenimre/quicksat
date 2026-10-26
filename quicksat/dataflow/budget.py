@@ -13,10 +13,8 @@ to filter or group.
 
 """
 
-import os
 from pathlib import Path
 
-import yaml
 from pydantic import ConfigDict, Field, field_validator
 
 from quicksat import u
@@ -29,6 +27,7 @@ from quicksat.utils.parser_helpers import (
     DataVolumeQty,
     FractionQty,
     TimeQty,
+    YamlFile,
 )
 from quicksat.utils.requirements import Requirements
 
@@ -110,7 +109,7 @@ class Storage(Commented):
     capacity: DataVolumeQty
 
 
-class DataFlowModel(Commented):
+class DataFlowModel(YamlFile):
     """
     The payload dataflow model: generation, downlink and storage.
 
@@ -134,48 +133,6 @@ class DataFlowModel(Commented):
     generation: Generation
     downlink: Downlink
     storage: Storage
-
-    @classmethod
-    def from_yaml_file(cls, file_path: str | Path) -> "DataFlowModel":
-        """
-        Initialise the dataflow model from a YAML file.
-
-        Parameters
-        ----------
-        file_path : str | Path
-            Filepath containing the payload dataflow model (YAML)
-
-        Returns
-        -------
-        model : DataFlowModel
-            Dataflow model from the input data
-        """
-        if not file_path:
-            raise ValueError("Path is None. No file to be found.")
-        elif not os.path.isfile(file_path):
-            raise FileNotFoundError(f"File does not exist: {file_path}")
-        else:
-            with open(file_path, "rt") as file:
-                return cls.from_yaml_text(file.read())
-
-    @classmethod
-    def from_yaml_text(cls, yaml_text: str) -> "DataFlowModel":
-        """
-        Initialise the dataflow model from YAML text.
-
-        Parameters
-        ----------
-        yaml_text : str
-            Text containing the payload dataflow model (YAML)
-
-        Returns
-        -------
-        model : DataFlowModel
-            Dataflow model from the input data
-        """
-        if not yaml_text:
-            raise ValueError("Text content is None.")
-        return cls(**yaml.safe_load(yaml_text))
 
 
 class DataBudget:

@@ -9,15 +9,22 @@ Pydantic and unit parsing helpers.
 """
 
 import re
-from typing import Annotated
+from collections.abc import Callable, Iterable
+from pathlib import Path
+from typing import Annotated, ClassVar, Self
 
+import pandas as pd
+import yaml
 from astropy.units import Quantity
 from pydantic import (
     AfterValidator,
     BaseModel,
     BeforeValidator,
     PlainSerializer,
+    PrivateAttr,
     StringConstraints,
+    ValidationError,
+    ValidationInfo,
 )
 
 from quicksat import Q_, u
@@ -78,16 +85,16 @@ def _serialize_quantity(v) -> str:
     return str(v)
 
 
-def check_unit_fraction(value: Quantity, name: str) -> Quantity:
+def _check_unit_fraction(value: Quantity, info: ValidationInfo) -> Quantity:
     """
-    Checks that a fraction is above 0 and at most 1.
+    Pydantic AfterValidator that checks a fraction is above 0 and at most 1.
 
     Parameters
     ----------
     value : Quantity
         The fraction, dimensionless
-    name : str
-        The field's name, for the error message
+    info : ValidationInfo
+        The field's details, for its name in the error message
 
     Returns
     -------
@@ -100,7 +107,9 @@ def check_unit_fraction(value: Quantity, name: str) -> Quantity:
         If the fraction is 0, or above 1
     """
     if not 0 < float(value.to(u.dimensionless_unscaled).value) <= 1:
-        raise ValueError(f"{name} must be above 0 and at most 1 (100 %), got {value}")
+        raise ValueError(
+            f"{info.field_name} must be above 0 and at most 1 (100 %), got {value}"
+        )
     return value
 
 
@@ -311,6 +320,10 @@ astropy reads `5 %` as 5 percent, which converts to 0.05 of one, so a duty cycle
 can be entered either way.
 """
 
+UnitFractionQty = Annotated[FractionQty, AfterValidator(_check_unit_fraction)]
+"""Annotated Quantity type for a fraction above 0 and at most 1, such as an
+efficiency or a battery's depth of discharge."""
+
 NoSpaceStr = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\S+$")]
 """String field that must not contain whitespace, used for the grouping axes."""
 
@@ -347,6 +360,196 @@ class Commented(BaseModel):
     """
 
     comments: str | None = None
+
+
+class YamlFile(Commented):
+    """
+    An input file in YAML, read from a file or from text.
+
+    Every input file in YAML reads in the same way, through this class. The file
+    is read as UTF-8, as the editor writes it. Its text must be a mapping of keys
+    to values. The model keeps the path and the text it was read from, for the
+    viewer and the editor.
+
+    The validators of a file read from disk find its folder as `base_dir` in the
+    validation context, for the paths the file gives.
+    """
+
+    _EMPTY_ALLOWED: ClassVar[bool] = False
+    """Whether empty text reads as a file with every key left out."""
+
+    _source_file: Path | None = PrivateAttr(None)
+    _source_text: str | None = PrivateAttr(None)
+
+    @property
+    def source_file(self) -> Path | None:
+        """
+        The file this was read from.
+
+        Returns
+        -------
+        path : Path or None
+            None when it was read from text, or built in code
+        """
+        return self._source_file
+
+    @property
+    def source_text(self) -> str | None:
+        """
+        The text this was read from, as written.
+
+        Returns
+        -------
+        text : str or None
+            None when it was built in code
+        """
+        return self._source_text
+
+    @classmethod
+    def from_yaml_file(cls, file_path: str | Path) -> Self:
+        """
+        Read the file.
+
+        Parameters
+        ----------
+        file_path : str | Path
+            The YAML file
+
+        Returns
+        -------
+        model : Self
+            The file's contents
+
+        Raises
+        ------
+        FileNotFoundError
+            If there is no such file
+        ValueError
+            If the file is empty, is not a mapping of keys to values, or does
+            not pass the checks
+        """
+        return cls._from_file(file_path)
+
+    @classmethod
+    def from_yaml_text(cls, yaml_text: str) -> Self:
+        """
+        Read the file's contents from text.
+
+        Parameters
+        ----------
+        yaml_text : str
+            The YAML text
+
+        Returns
+        -------
+        model : Self
+            The contents
+
+        Raises
+        ------
+        ValueError
+            If the text is empty, is not a mapping of keys to values, or does
+            not pass the checks
+        """
+        return cls._from_text(yaml_text)
+
+    @classmethod
+    def _from_file(cls, file_path: str | Path, **context) -> Self:
+        """`from_yaml_file`, with more entries for the validation context."""
+        path = Path(file_path)
+        if not path.is_file():
+            raise FileNotFoundError(f"File does not exist: {file_path}")
+        model = cls._from_text(
+            path.read_text(encoding="utf-8"), base_dir=path.parent, **context
+        )
+        model._source_file = path
+        return model
+
+    @classmethod
+    def _from_text(cls, yaml_text: str, **context) -> Self:
+        """`from_yaml_text`, with the entries of the validation context."""
+        if not yaml_text and not cls._EMPTY_ALLOWED:
+            raise ValueError("The text is empty.")
+        data = yaml.safe_load(yaml_text)
+        if data is None and cls._EMPTY_ALLOWED:
+            data = {}
+        if not isinstance(data, dict):
+            raise ValueError("The file must be a mapping of keys to values.")
+        model = cls.model_validate(data, context=context)
+        model._source_text = yaml_text
+        return model
+
+
+def read_csv_rows(csv_path: str | Path, required: Iterable[str]) -> pd.DataFrame:
+    """
+    An input file in CSV, with every cell as text.
+
+    The spaces after each comma, and around each column's name, are taken out.
+    An empty cell stays an empty string.
+
+    Parameters
+    ----------
+    csv_path : str | Path
+        The CSV file
+    required : iterable of str
+        The columns the file must have
+
+    Returns
+    -------
+    frame : pd.DataFrame
+        One row per line after the header, every cell as text
+
+    Raises
+    ------
+    FileNotFoundError
+        If there is no such file
+    ValueError
+        If a required column is missing
+    """
+    path = Path(csv_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"File does not exist: {csv_path}")
+    raw = pd.read_csv(path, dtype=str, keep_default_na=False, skipinitialspace=True)
+    raw.columns = [str(column).strip() for column in raw.columns]
+    missing = [name for name in required if name not in raw.columns]
+    if missing:
+        raise ValueError(f"{path.name}: missing columns {missing}")
+    return raw
+
+
+def validated_rows[T](
+    model: Callable[..., T], records: Iterable[dict], file_name: str
+) -> list[T]:
+    """
+    Each row of a CSV file, read by a model.
+
+    Parameters
+    ----------
+    model : callable
+        The model of one row, called with the row's fields
+    records : iterable of dict
+        The rows' fields, in the file's order
+    file_name : str
+        The file's name, for the error message
+
+    Returns
+    -------
+    rows : list
+        One model per row
+
+    Raises
+    ------
+    ValueError
+        If a row does not pass the model's checks. The message names the file
+        and the row's line, where line 2 is the first after the header.
+    """
+    rows = []
+    for row_number, record in enumerate(records, start=2):
+        try:
+            rows.append(model(**record))
+        except ValidationError as exc:
+            raise ValueError(f"{file_name}, row {row_number}:\n{exc}") from exc
+    return rows
 
 
 def without_comments(value):

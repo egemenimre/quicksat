@@ -19,6 +19,7 @@ import pandas as pd
 from pandas.io.formats.style import Styler
 
 from quicksat.mass.equipment import MassClass
+from quicksat.utils.report_helpers import bold_rows, styled_report
 
 if TYPE_CHECKING:
     from quicksat.mass.budget import MassBudgetConfig
@@ -52,7 +53,11 @@ def tabulate(
     report : Styler
         One row per item and per subtotal, rendered for reading
     """
-    return _style(_assemble(frame, config, in_orbit, subsystem_subtotals), comments)
+    report = _assemble(frame, config, in_orbit, subsystem_subtotals)
+    # the subtotal and total rows name the location they close, so the
+    # location column would only repeat the row above it
+    hidden = ["location", "row_type"] + ([] if comments else ["comments"])
+    return styled_report(report, FORMATS, HEADERS, bold_rows(_BOLD_ROW_TYPES), hidden)
 
 
 NAN = float("nan")
@@ -73,13 +78,14 @@ _REPORT_COLUMNS = (
 )
 
 
-_REPORT_FORMATS = {
+FORMATS = {
     "units": "{:.0f}",
     "mass": "{:,.2f}",
     "total_mass": "{:,.2f}",
     "margin_pct": "{:.0f}",
     "total_mass_with_margin": "{:,.2f}",
 }
+"""The format of each column of numbers, by the column's name."""
 
 
 _BOLD_ROW_TYPES = frozenset(
@@ -94,7 +100,7 @@ _BOLD_ROW_TYPES = frozenset(
 )
 
 
-_COLUMN_HEADERS = {
+HEADERS = {
     "equipment_id": "Item",
     "name": "Name",
     "location": "Location",
@@ -106,6 +112,7 @@ _COLUMN_HEADERS = {
     "total_mass_with_margin": "Total + Margin [kg]",
     "comments": "Comments",
 }
+"""The header of each column shown, by the column's name."""
 
 
 def _row(name: str, row_type: str, **values) -> dict[str, Any]:
@@ -268,64 +275,6 @@ def _assemble(
     )
 
     return pd.DataFrame(rows, columns=list(_REPORT_COLUMNS))
-
-
-def _style(report: pd.DataFrame, comments: bool) -> Styler:
-    """
-    Renders the report for reading: blanks instead of NaN, fixed decimals, bold
-    subtotals, and readable column headers with units.
-
-    Columns are hidden rather than dropped, so `.data` stays complete. `row_type` makes
-    the report filterable, `location` is useful to group on, and the comments are useful
-    to keep. `location` is hidden, because the subtotal and total rows already name the
-    location they close. So the column only repeats the row above it.
-
-    Headers are looked up per column, rather than passed as a list by position. A list
-    would no longer match whenever a column is added or hidden, and would raise no
-    error.
-
-    Parameters
-    ----------
-    report : pd.DataFrame
-        The assembled report rows
-    comments : bool
-        Show the equipment file's comments column
-
-    Returns
-    -------
-    styled : Styler
-        The report rendered for reading
-    """
-
-    def _bold_summary(row):
-        """
-        Makes a row bold if it is a subtotal or a total.
-
-        Parameters
-        ----------
-        row : pd.Series
-            One report row
-
-        Returns
-        -------
-        styles : list[str]
-            One CSS rule per cell of the row
-        """
-        style = "font-weight: bold" if row["row_type"] in _BOLD_ROW_TYPES else ""
-        return [style] * len(row)
-
-    hidden = ["location", "row_type"]
-    if not comments:
-        hidden.append("comments")
-    headers = [_COLUMN_HEADERS[name] for name in report.columns if name not in hidden]
-
-    return (
-        report.style.format(_REPORT_FORMATS, na_rep="")  # pyright: ignore[reportArgumentType]
-        .apply(_bold_summary, axis=1)  # pyright: ignore[reportAttributeAccessIssue]
-        .hide(axis="index")
-        .hide(hidden, axis="columns")
-        .relabel_index(headers, axis="columns")
-    )
 
 
 def _with_margin(frame: pd.DataFrame) -> pd.Series:

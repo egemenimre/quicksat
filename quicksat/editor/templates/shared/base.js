@@ -57,6 +57,15 @@ function bytesToBase64(bytes) {
 /** The bytes of a base64 text. */
 const base64ToBytes = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
 
+const NUMBER_UNIT = /^([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*(.*)$/;
+
+/** A number and its unit, from a number or text such as `510 km`; null if neither. */
+function numberUnit(value) {
+  if (typeof value === "number") return { v: value, u: "" };
+  const match = String(value ?? "").trim().match(NUMBER_UNIT);
+  return match ? { v: Number(match[1]), u: match[2].trim() } : null;
+}
+
 // ---------------------------------------------------------------- constants
 
 /** The key of the user's notes in every block. No named item may take it. */

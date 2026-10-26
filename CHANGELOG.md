@@ -15,6 +15,17 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 - In the power and scenario samples, the imaging activity puts the payload in its imaging mode for the turn into it, with `payload_mode_in_slew: this_activity`. In the power sample, each orbit now has at least 7.0 W h of energy to spare, down from 10.0 W h. The battery's lowest charge stays at 83.6%.
 - A run is about three times faster. Between the grid's steps, the searches for the shadow edges, the latitude crossings, the targets' rise and set and the slews read splines through the grid. Before, each request went through SGP4 and astropy's frames. The scenario sample's run takes 1.4 s instead of 4.1 s, and a Generate in the Activity Designer takes 1.6 s instead of 4.7 s. The results are the same to the millisecond.
 - `ScenarioRun.grid` is a `RunGrid`, from the new module `quicksat.scenario.grid`. It holds the splines, and the Earth's orientation on the grid. `elevations`, `line_of_sight_clear`, `geodetic`, `directions`, `attitude_rotations` and `plan_slews` take an optional `earth_at`, which gives the Earth's orientation. `target_visibility` takes the grid in place of `positions_at` and `sat_orbits`.
+- Every YAML input file reads through one base class, `YamlFile`, in `quicksat.utils.parser_helpers`. Each has `source_file` and `source_text`, where before only the scenario, the power system and the thermal file had them. Empty text, or text that is not a mapping of keys to values, gives a `ValueError` for every file. The requirements file still reads empty text as no requirements.
+- The mass and delta-V files read through `read_csv_rows` and `validated_rows`, in `quicksat.utils.parser_helpers`, as the consumption files do. They accept spaces after a comma, and an error names the file without its folder.
+- The four sizing reports render through `styled_report`, in the new module `quicksat.utils.report_helpers`. Each report's headers and formats are public, as `HEADERS` and `FORMATS`.
+- `run_folder` and `summary` moved from `quicksat.power.__main__` and `quicksat.thermal.__main__` into the new modules `quicksat.power.folder` and `quicksat.thermal.folder`.
+- The power budget's `Check` is `PowerCheck`, so that its name differs from the sizing budgets' `Check`.
+- The fractions of the power system and the thermal file, such as an efficiency, are of the type `UnitFractionQty`, which checks that each is above 0 and at most 1. `check_unit_fraction` is gone.
+- `write_data_js`, in `quicksat.scenario.viewer`, writes both `scenario.js` and `power.js`.
+
+### Fixed
+
+- Every YAML input file is read as UTF-8, as the editor writes it. Before, only the thermal file was. On Windows, a `°` or an accented letter in another file's comments would have been read wrongly.
 
 ## [0.5.0] - 2026-10-24
 

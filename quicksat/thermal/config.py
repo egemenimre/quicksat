@@ -35,21 +35,16 @@ worked out, in `quicksat.thermal.account`.
 
 """
 
-import os
-from pathlib import Path
 from typing import Annotated, ClassVar
 
-import yaml
 from astropy.units import Quantity
 from pydantic import (
     BeforeValidator,
     ConfigDict,
     Discriminator,
     Field,
-    PrivateAttr,
     StrictBool,
     Tag,
-    ValidationInfo,
     field_validator,
 )
 
@@ -59,7 +54,8 @@ from quicksat.utils.parser_helpers import (
     Commented,
     FractionQty,
     TemperatureQty,
-    check_unit_fraction,
+    UnitFractionQty,
+    YamlFile,
     non_negative_quantity,
     signed_quantity,
     without_comments,
@@ -129,16 +125,10 @@ class Surface(FlatItem):
     kind: ClassVar[str] = "surface"
     part_hint: ClassVar[str] = "the name of its face in the 3D model"
 
-    absorptance: FractionQty
-    emissivity: FractionQty
+    absorptance: UnitFractionQty
+    emissivity: UnitFractionQty
     temperature: TemperatureQty
     fixed_temperature: StrictBool = False
-
-    @field_validator("absorptance", "emissivity")
-    @classmethod
-    def _fraction(cls, value: Quantity, info: ValidationInfo) -> Quantity:
-        """Checks that the absorptance and the emissivity are in (0, 1]."""
-        return check_unit_fraction(value, str(info.field_name))
 
 
 class Earth(Commented):
@@ -170,7 +160,7 @@ class Earth(Commented):
         return value
 
 
-class PayloadThermal(Commented):
+class PayloadThermal(YamlFile):
     """
     The payload's thermal file: the surfaces, the heat flows and the Earth.
 
@@ -198,33 +188,6 @@ class PayloadThermal(Commented):
         Field(default_factory=dict)
     )
     earth: Earth = Field(default_factory=Earth)
-
-    _source_file: Path | None = PrivateAttr(None)
-    _source_text: str | None = PrivateAttr(None)
-
-    @property
-    def source_file(self) -> Path | None:
-        """
-        The file the thermal file was read from.
-
-        Returns
-        -------
-        path : Path or None
-            None when it was read from text
-        """
-        return self._source_file
-
-    @property
-    def source_text(self) -> str | None:
-        """
-        The text the thermal file was read from, as written.
-
-        Returns
-        -------
-        text : str or None
-            None when it was built in code
-        """
-        return self._source_text
 
     @field_validator("surfaces")
     @classmethod
@@ -287,59 +250,3 @@ class PayloadThermal(Commented):
             name: float((flow[mode] if isinstance(flow, dict) else flow).to_value(u.W))
             for name, flow in self.heat_flows.items()
         }
-
-    @classmethod
-    def from_yaml_file(cls, file_path: str | Path) -> "PayloadThermal":
-        """
-        Initialise the thermal file from a YAML file.
-
-        Parameters
-        ----------
-        file_path : str | Path
-            Path to the YAML file
-
-        Returns
-        -------
-        thermal : PayloadThermal
-            The thermal file's contents
-
-        Raises
-        ------
-        FileNotFoundError
-            If there is no such file
-        """
-        if not os.path.isfile(file_path):
-            raise FileNotFoundError(f"File does not exist: {file_path}")
-        path = Path(file_path)
-        thermal = cls.from_yaml_text(path.read_text(encoding="utf-8"))
-        thermal._source_file = path
-        return thermal
-
-    @classmethod
-    def from_yaml_text(cls, yaml_text: str) -> "PayloadThermal":
-        """
-        Initialise the thermal file from YAML text.
-
-        Parameters
-        ----------
-        yaml_text : str
-            Text containing the thermal file (YAML)
-
-        Returns
-        -------
-        thermal : PayloadThermal
-            The thermal file's contents
-
-        Raises
-        ------
-        ValueError
-            If the text is empty, or is not a mapping of keys to values
-        """
-        if not yaml_text:
-            raise ValueError("Text content is None.")
-        data = yaml.safe_load(yaml_text)
-        if not isinstance(data, dict):
-            raise ValueError("A thermal file must be a mapping of keys to values.")
-        thermal = cls.model_validate(data)
-        thermal._source_text = yaml_text
-        return thermal

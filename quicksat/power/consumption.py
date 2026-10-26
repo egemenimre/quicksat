@@ -46,7 +46,6 @@ grid.
 
 """
 
-import os
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
@@ -55,14 +54,19 @@ from typing import Annotated, Literal
 import numpy as np
 import pandas as pd
 from astropy.units import Quantity
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field
 
 from quicksat import Q_, u
 from quicksat.power.orbits import interval_pieces, whole_orbits
 from quicksat.scenario.config import GROUPS, PLATFORM
 from quicksat.scenario.run import ScenarioRun
 from quicksat.utils.intervals import labels_at
-from quicksat.utils.parser_helpers import NoSpaceStr, PowerQty
+from quicksat.utils.parser_helpers import (
+    NoSpaceStr,
+    PowerQty,
+    read_csv_rows,
+    validated_rows,
+)
 
 REQUIRED_COLUMNS = (
     "equipment_id",
@@ -210,14 +214,8 @@ class PowerConsumption:
             equipment ID is used twice, a cell does not read, or more than one
             row is the heater row. The message names the row and the column.
         """
-        if not os.path.isfile(csv_path):
-            raise FileNotFoundError(f"File does not exist: {csv_path}")
         path = Path(csv_path)
-        raw = pd.read_csv(path, dtype=str, keep_default_na=False, skipinitialspace=True)
-        raw.columns = [str(column).strip() for column in raw.columns]
-        missing = [name for name in REQUIRED_COLUMNS if name not in raw.columns]
-        if missing:
-            raise ValueError(f"{path.name}: missing columns {missing}")
+        raw = read_csv_rows(path, REQUIRED_COLUMNS)
         modes = [
             column
             for column in raw.columns
@@ -231,7 +229,7 @@ class PowerConsumption:
         if raw.empty:
             raise ValueError(f"{path.name}: no equipment rows")
 
-        loads = []
+        rows = []
         for row_number, record in enumerate(raw.to_dict("records"), start=2):
             blank = [mode for mode in modes if not str(record[mode]).strip()]
             if blank:
@@ -243,10 +241,8 @@ class PowerConsumption:
             fields["comments"] = record.get("comments", "")
             fields["thermal"] = record.get(THERMAL_COLUMN, "").strip() or None
             fields["power"] = {mode: record[mode] for mode in modes}
-            try:
-                loads.append(Load(**fields))
-            except ValidationError as exc:
-                raise ValueError(f"{path.name}, row {row_number}:\n{exc}") from exc
+            rows.append(fields)
+        loads = validated_rows(Load, rows, path.name)
 
         ids = [load.equipment_id for load in loads]
         twice = sorted({name for name in ids if ids.count(name) > 1})

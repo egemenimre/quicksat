@@ -47,15 +47,6 @@ let DATA = JSON.parse($("#project").textContent);
 
 // ---------------------------------------------------------------- reading values
 
-const NUMBER_UNIT = /^([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*(.*)$/;
-
-/** A number and its unit, from a number or text such as `510 km`; null if neither. */
-function numberUnit(value) {
-  if (typeof value === "number") return { v: value, u: "" };
-  const match = String(value ?? "").trim().match(NUMBER_UNIT);
-  return match ? { v: Number(match[1]), u: match[2].trim() } : null;
-}
-
 const tidy = (x) => Number(Number(x).toPrecision(12));
 
 /** A quantity, with `unit` where the file gives none. */

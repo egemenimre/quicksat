@@ -177,7 +177,7 @@ def _mass(mass: MassBudget) -> dict:
         for subtotals in (False, True):
             frame = mass.tabulated_mass(in_orbit, subtotals, comments=True).data
             budget[f"{int(in_orbit)}{int(subtotals)}"] = _report(
-                frame, mass_report._COLUMN_HEADERS, mass_report._REPORT_FORMATS
+                frame, mass_report.HEADERS, mass_report.FORMATS
             )
 
     def grouped(view: Callable[..., pd.DataFrame], heading: str) -> dict:
@@ -265,8 +265,8 @@ def _delta_v(delta_v: DeltaVBudget) -> dict:
     tables = {
         "budget": _report(
             delta_v.tabulated_deltav(comments=True).data,
-            delta_v_report._HEADERS,
-            delta_v_report._FORMATS,
+            delta_v_report.HEADERS,
+            delta_v_report.FORMATS,
         ),
         "by_phase": grouped(delta_v.by_phase(), "Phase"),
         "by_type": grouped(delta_v.by_type(), "Type"),
@@ -377,7 +377,7 @@ def _data(data: DataBudget) -> dict:
         "figures": figures,
         "tables": {
             "budget": _report(
-                data.tabulated_data().data, data_report._HEADERS, {"value": "{:,.2f}"}
+                data.tabulated_data().data, data_report.HEADERS, data_report.FORMATS
             ),
             "storage": _rows(["Duration without image downlink", "Storage [GB]"], runs),
         },
@@ -386,7 +386,7 @@ def _data(data: DataBudget) -> dict:
 
 def _slew_tables(frame: pd.DataFrame, targets: dict) -> dict:
     """A slew table with no slew to check against, and one against each target."""
-    headers, formats = agility_report._HEADERS, agility_report._FORMATS
+    headers, formats = agility_report.HEADERS, agility_report.FORMATS
     tables = {
         name: _report(
             agility_report.tabulate(frame, slew.duration).data, headers, formats

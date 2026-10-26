@@ -23,18 +23,23 @@ import pandas as pd
 from pandas.io.formats.style import Styler
 
 from quicksat import u
+from quicksat.utils.report_helpers import bold_rows, styled_report
 
 if TYPE_CHECKING:
     from quicksat.dataflow.budget import DataBudget
 
 _COLUMNS = ("item", "value", "unit", "comment", "row_type")
 
-_HEADERS = {
+HEADERS = {
     "item": "",
     "value": "Value",
     "unit": "Unit",
     "comment": "Comment",
 }
+"""The header of each column shown, by the column's name."""
+
+FORMATS = {"value": "{:,.2f}"}
+"""The format of each column of numbers, by the column's name."""
 
 _BOLD_ROW_TYPES = frozenset({"margin", "storage"})
 
@@ -57,7 +62,9 @@ def tabulate(budget: "DataBudget") -> Styler:
     report : Styler
         The budget rendered for reading, with the frame available as `.data`
     """
-    return _style(_assemble(budget))
+    return styled_report(
+        _assemble(budget), FORMATS, HEADERS, bold_rows(_BOLD_ROW_TYPES), ["row_type"]
+    )
 
 
 def _row(item: str, value, unit: str, comment: str, row_type: str) -> dict:
@@ -205,37 +212,3 @@ def _assemble(budget: "DataBudget") -> pd.DataFrame:
             )
         )
     return pd.DataFrame(rows, columns=list(_COLUMNS))
-
-
-def _style(report: pd.DataFrame) -> Styler:
-    """
-    Renders the report for reading: fixed decimals, bold results, no index.
-
-    `row_type` is hidden rather than dropped. So the frame in `.data` can still be
-    filtered by what was typed in and what was computed.
-
-    Parameters
-    ----------
-    report : pd.DataFrame
-        The assembled report rows
-
-    Returns
-    -------
-    styled : Styler
-        The report rendered for reading
-    """
-
-    def _bold_results(row):
-        """Makes bold the rows that hold a result rather than a step."""
-        style = "font-weight: bold" if row["row_type"] in _BOLD_ROW_TYPES else ""
-        return [style] * len(row)
-
-    headers = [_HEADERS[name] for name in report.columns if name != "row_type"]
-
-    return (
-        report.style.format({"value": "{:,.2f}"}, na_rep="")
-        .apply(_bold_results, axis=1)  # pyright: ignore[reportAttributeAccessIssue]
-        .hide(axis="index")
-        .hide(["row_type"], axis="columns")
-        .relabel_index(headers, axis="columns")
-    )

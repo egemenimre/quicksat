@@ -702,6 +702,42 @@ def activity_rows(run: ScenarioRun) -> list[dict]:
     return rows
 
 
+def write_data_js(path: Path, key: str, data: dict, source: str) -> Path:
+    """
+    Write one of the viewer's data files, which the page loads as a script.
+
+    The script sets `window.quicksat[key]` to the data. The folder is made if it
+    does not exist, and an older file is replaced.
+
+    Parameters
+    ----------
+    path : Path
+        The file to write, such as `scenario.js`
+    key : str
+        The data's key on the page, such as `scenario`
+    data : dict
+        The data, which JSON must hold with no NaN
+    source : str
+        The input file the data comes from, for the file's first line
+
+    Returns
+    -------
+    path : Path
+        The file written
+    """
+    text = (
+        f"// Written by quicksat from {source}. Rerun the notebook instead of "
+        "editing this file.\n"
+        "window.quicksat = window.quicksat || {};\n"
+        f"window.quicksat.{key} = "
+        + json.dumps(data, allow_nan=False, separators=(",", ":"))
+        + ";\n"
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
 def write_scenario_js(
     run: ScenarioRun, folder: str | Path, data: dict | None = None
 ) -> Path:
@@ -728,18 +764,7 @@ def write_scenario_js(
     """
     data = data if data is not None else scenario_data(run)
     source = data["scenario_file"] or "a scenario"
-    text = (
-        f"// Written by quicksat from {source}. Rerun the notebook instead of "
-        "editing this file.\n"
-        "window.quicksat = window.quicksat || {};\n"
-        "window.quicksat.scenario = "
-        + json.dumps(data, allow_nan=False, separators=(",", ":"))
-        + ";\n"
-    )
-    path = Path(folder) / DATA_FILE
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text)
-    return path
+    return write_data_js(Path(folder) / DATA_FILE, "scenario", data, source)
 
 
 def viewer_page() -> str:

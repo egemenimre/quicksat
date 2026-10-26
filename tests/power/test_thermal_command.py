@@ -9,11 +9,12 @@ import shutil
 
 import pytest
 
-from quicksat.power.__main__ import summary as power_summary
+from quicksat.power.folder import summary as power_summary
 from quicksat.power.viewer import DATA_FILE, PAGE_FILE
 from quicksat.scenario.viewer import DATA_FILE as SCENARIO_DATA_FILE
 from quicksat.thermal import THERMAL_FILE
-from quicksat.thermal.__main__ import NO_THERMAL_FILE, main, run_folder, summary
+from quicksat.thermal.__main__ import main
+from quicksat.thermal.folder import NO_THERMAL_FILE, run_folder, summary
 
 
 def test_the_command_prints_the_budget_and_the_heat_account(

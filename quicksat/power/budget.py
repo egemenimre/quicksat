@@ -70,7 +70,7 @@ LOSSES = ("array_regulator", "battery_charge", "battery_discharge", "distributio
 
 
 @dataclass(frozen=True)
-class Check:
+class PowerCheck:
     """
     One check of the budget, as the viewer shows it.
 
@@ -311,18 +311,18 @@ class BudgetRun:
         return pd.DataFrame(rows)
 
     @cached_property
-    def checks(self) -> list[Check]:
+    def checks(self) -> list[PowerCheck]:
         """
         The three checks: the battery's charge, the energy balance, the loads met.
 
         Returns
         -------
-        checks : list of Check
+        checks : list of PowerCheck
             In that order
         """
         lowest = float(self.charge.min())
         allowed = self.lowest_allowed
-        charge = Check(
+        charge = PowerCheck(
             "Battery charge",
             "ok" if lowest >= allowed else "fail",
             f"The lowest charge is {100 * lowest:.1f}%, "
@@ -333,7 +333,7 @@ class BudgetRun:
         table = self.orbit_table
         margins = [] if table.empty else table["margin [Wh]"].tolist()
         if not margins:
-            balance = Check(
+            balance = PowerCheck(
                 "Energy balance",
                 "warn",
                 "The run is shorter than one orbit, so the balance is not checked.",
@@ -344,7 +344,7 @@ class BudgetRun:
                 for number, margin in enumerate(margins, 1)
                 if margin < -1e-6
             ]
-            balance = Check(
+            balance = PowerCheck(
                 "Energy balance",
                 "fail",
                 "The battery loses more than the array can give back in "
@@ -352,7 +352,7 @@ class BudgetRun:
                 + ". Over more orbits, it would run down.",
             )
         else:
-            balance = Check(
+            balance = PowerCheck(
                 "Energy balance",
                 "ok",
                 f"Each of the {len(margins)} whole orbits has energy to spare: "
@@ -360,7 +360,7 @@ class BudgetRun:
             )
 
         unmet = float(self.flows["unmet"].sum()) / 3600
-        met = Check(
+        met = PowerCheck(
             "Loads met",
             "ok" if unmet == 0 else "fail",
             "The battery never runs flat."
