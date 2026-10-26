@@ -59,8 +59,8 @@ def table_of(
     tle, units=None, labels=None, meta=None, drop=(), offsets=None, header=True
 ) -> Table:
     """
-    A trajectory table in GCRS from SGP4, in the file's layout. `units` converts
-    a column to another unit. `labels` only names another unit, or none.
+    A trajectory table in GCRS from SGP4, in the file's layout, with `units` to convert
+    a column and `labels` to name another unit.
     """
     offsets = np.arange(0, 600, 60.0) if offsets is None else np.asarray(offsets)
     position, velocity = vectors(tle.states(tle.epoch + Q_(offsets, "s")))

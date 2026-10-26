@@ -4,18 +4,12 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The cases for the Node test of the page's element set reader, and Python's answers.
+The cases for the Node test of the page's element set reader, with Python's answers.
 
-The Scenario Editor lists the satellites of a satellite target's file with its
-own code, in `elements.js`: their names, catalogue numbers and epochs. It must
-find what `read_tle_sets` and `read_omm_sets` find, or the page would offer a
-satellite that the run cannot pick.
-
-Node cannot call Python, so the answers are kept in `js/element_cases.json`:
-quicksat's own TLE and OMM files, and groups written here from them, each with
-Python's element sets. `js/elements.test.js` checks `elements.js` against them,
-in the CI's Node job. The test here checks that the answers are still Python's.
-After a change to the readers, write the cases again with:
+The Scenario Editor's `elements.js` must list the same satellites as `read_tle_sets` and
+`read_omm_sets`. Node cannot call Python, so the answers are kept in
+`js/element_cases.json`, which `js/elements.test.js` reads. The test here checks they
+are still Python's. After a change to the readers, write the cases again with:
 
     python -m tests.editor.test_elements_js
 """
@@ -44,7 +38,10 @@ FILES = {
 
 
 def written() -> dict[str, str]:
-    """Groups written from quicksat's files: Space-Track's form, JSON, CSV, a day of the year."""
+    """
+    Groups written from quicksat's files: Space-Track's form, JSON, CSV, and a day of
+    the year.
+    """
     relays = FILES["relays.tle"].read_text().splitlines()
     space_track = [
         f"0 {line}   " if not line.startswith(("1 ", "2 ")) else line for line in relays

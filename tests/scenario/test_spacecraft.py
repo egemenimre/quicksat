@@ -44,16 +44,8 @@ ASSET = {"asset": {"version": "2.0"}}
 
 def glb_with_mesh(corners: np.ndarray, node: dict, buffer: dict | None = None) -> bytes:
     """
-    A GLB file with one node and one mesh: triangles from three corners each.
-
-    Parameters
-    ----------
-    corners : ndarray
-        The corners, shape (m, 3, 3), stored without indices
-    node : dict
-        The node's transform, such as `{"scale": [-1, 1, 1]}`
-    buffer : dict, optional
-        The buffer's entry, to replace the one that points to the binary chunk
+    A GLB file with one node and one mesh of unindexed triangles, from their corners,
+    the node's transform, and any buffer entry to replace.
     """
     vertices = corners.astype(np.float32).reshape(-1, 3).tobytes()
     gltf = ASSET | {

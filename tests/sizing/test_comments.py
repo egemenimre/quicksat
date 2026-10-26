@@ -4,11 +4,7 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Tests for the user's notes in the sizing files, and for the keys they refuse.
-
-Every block of a sizing YAML file may hold a `comments` field, as in the
-scenario and power files. A key that the file does not know is refused, so that
-a typo in an optional key cannot leave its default in place without a word.
+Tests for the user's notes in the sizing files, and for the unknown keys they refuse.
 """
 
 import pytest

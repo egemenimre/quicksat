@@ -200,9 +200,8 @@ def gcrs(times, position: np.ndarray, velocity: np.ndarray) -> SkyCoord:
 
 def burn(state: SkyCoord, angle_deg: float = 1.0) -> SkyCoord:
     """
-    The states after a burn at `BURN_S` from `START` that turns the plane by an
-    angle: each turned about the position at the burn, which the turn leaves in
-    place. The states must include the burn.
+    The states after a burn at `BURN_S` that turns the plane by an angle, about the
+    position at the burn, which the states include.
     """
     offsets = (times_of(state) - START).to_value(u.s)
     position, velocity = vectors(state)

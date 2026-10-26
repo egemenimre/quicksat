@@ -45,8 +45,8 @@ def lines(data_dir):
 
 def variant(lines, number, day="274.00000000"):
     """
-    The reference TLE's two lines, with another catalogue number and another day
-    of 2026 for the epoch, and their checksums mended.
+    The reference TLE's lines with another catalogue number and epoch day, and their
+    checksums mended.
     """
     line1 = f"{lines[0][:2]}{number:05d}{lines[0][7:20]}{day}{lines[0][32:68]}"
     line2 = f"{lines[1][:2]}{number:05d}{lines[1][7:68]}"
@@ -56,9 +56,8 @@ def variant(lines, number, day="274.00000000"):
 @pytest.fixture
 def group(tmp_path, lines):
     """
-    A file of three TLEs, as a group from CelesTrak or Space-Track: one with
-    Space-Track's `0 ` in front of its name, one with a padded name, and one
-    with no name line.
+    A file of three TLEs, as CelesTrak or Space-Track gives a group: named with `0 `,
+    with a padded name, and with no name line.
     """
     return write(
         tmp_path / "relays.tle",

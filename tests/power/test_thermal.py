@@ -4,12 +4,12 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Tests for the payload's heat account: the view factor to the Earth, the heat the
-surfaces absorb and emit, the checks on the files, the sums by activity, mode and
-orbit, the equilibrium ΔT and the balancing heater power.
+Tests for the payload's heat account: the view factor, the surfaces' heat, the file
+checks, the sums by activity, mode and orbit, the equilibrium ΔT and the two balancing
+heater powers.
 
-The view factor is checked against a numerical integral over the Earth's disk.
-The account is checked by hand at one step, and its sums against each other.
+The view factor is checked against a numerical integral over the Earth's disk, and the
+account by hand at one step.
 """
 
 import numpy as np
@@ -47,11 +47,9 @@ from quicksat.thermal.surfaces import (
 
 
 def integrated(cosine: float, radius: Quantity, count: int = 2000) -> float:
-    """The view factor as a numerical integral of cos θ / π over the Earth's disk.
-
-    The disk is the cone of directions within the angular radius of the centre.
-    The midpoint rule covers the angle from the centre, and even steps the angle
-    around it.
+    """
+    The view factor as a numerical integral of cos θ / π over the Earth's disk, with the
+    midpoint rule from its centre and even steps around it.
     """
     rho = float(radius.to(u.rad).value)
     alpha = (np.arange(count) + 0.5) * rho / count

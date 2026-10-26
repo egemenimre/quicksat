@@ -4,11 +4,8 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Tests that the help files hold what the editor's pages ask of them.
-
-Each step's information box and each `#` help line of a saved file come from
-`quicksat/editor/help/`. A key that a page asks for, and a help file lacks, would
-show an empty box or write no help, with no error.
+Tests that the help files in `quicksat/editor/help/` hold every key the editors' pages
+ask for, since a missing one shows nothing, with no error.
 """
 
 import re

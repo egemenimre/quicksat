@@ -6,12 +6,10 @@
 """
 Tests for a scenario whose orbit comes from a trajectory file.
 
-The file is written from the fixture TLE, at 60 s, from 10 min before the run to
-10 min after it: as ECSV in ITRS, and as an OEM in ITRF2000. The run from it
-must match the run from the TLE: the same occurrences, statuses and eclipses, to
-a few milliseconds. The period measured from the file differs from SGP4's nodal
-period by under a millisecond, so three orbits end within a few milliseconds of
-each other.
+The file is written from the fixture TLE at 60 s, from 10 min before the run to 10 min
+after it, as ECSV in ITRS and as an OEM in ITRF2000. The run from it must match the run
+from the TLE to a few milliseconds, since the measured period differs from SGP4's nodal
+period by under a millisecond.
 """
 
 import numpy as np

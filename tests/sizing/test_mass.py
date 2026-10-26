@@ -166,10 +166,8 @@ def test_harness_takes_its_location_responsibility(budget):
 
 def test_harness_uses_cbe_and_excludes_propellant(budget):
     """
-    Harness is 10% of the 10 kg Platform equipment mass, before margin.
-
-    It would be 2.0 kg if the margined mass were used, and 1.5 kg if the 5 kg of
-    propellant at the same location counted towards the base.
+    Harness is 10% of the 10 kg Platform equipment mass, before margin and without
+    propellant: not 2.0 kg nor 1.5 kg.
     """
     harness = budget.eqpt_table.query("subsystem == 'Harness'")
     assert len(harness) == 1

@@ -4,19 +4,13 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The cases for the Node test of the page's comment finder, and Python's answers.
+The cases for the Node test of the page's comment finder, with Python's answers.
 
-A page that opens files in the browser finds their `#` comments with its own
-code, in `open.js`. It must give the same result as `comment_blocks`, which
-reads PyYAML's nodes, or a comment would land in a different block depending on
-how the folder was opened.
-
-Node cannot call Python, so the answers are kept in `js/open_cases.json`: some
-awkward layouts and a copy of quicksat's own YAML files, each with its keys and
-comment blocks from Python. `js/open.test.js` checks `open.js` against them, in
-the CI's Node job. The test here checks that the answers are still Python's.
-After a change to `editor.py`'s readers, or to add the newest YAML files, write
-the cases again with:
+The page's `open.js` must find the same `#` comment blocks as `comment_blocks`. Node
+cannot call Python, so the answers are kept in `js/open_cases.json`: awkward layouts and
+quicksat's own YAML files. `js/open.test.js` reads them, and the test here checks they
+are still Python's. After a change to the readers in `quicksat/editor/shared.py`, or to
+add new YAML files, write the cases again with:
 
     python -m tests.editor.test_open_js
 """
@@ -81,10 +75,8 @@ AWKWARD = {
 
 def yaml_files() -> dict[str, str]:
     """
-    quicksat's own YAML files: the samples, the docs' and the tests' data.
-
-    Many files are copies of a sample file, so a text is taken only the first
-    time it comes. A second copy would be a second case with the same answers.
+    quicksat's own YAML files, from the samples, the docs and the tests, each text taken
+    once.
     """
     texts = {}
     for folder in ("sample", "docs", "tests"):

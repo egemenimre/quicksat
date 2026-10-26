@@ -4,11 +4,8 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Tests for the sizing editor's Python side: the data it gives the page, the
-page it writes, and the command that picks the page for a folder.
-
-These tests read the sizing test folder and never change it. A test that needs
-a changed or a fuller folder works on a copy.
+Tests for the Sizing Editor's Python side: the page's data, the page, and the command
+that picks the page for a folder. They change only copies of the sizing test folder.
 """
 
 import json
@@ -43,8 +40,7 @@ MASS = """locations:
 
 @pytest.fixture(scope="module")
 def sizing_dir() -> Path:
-    """The sizing test folder: the mission, requirements, data, delta-V and agility
-    files, and no mass files."""
+    """The sizing test folder, with no mass files."""
     return TESTS / "sizing" / "data"
 
 

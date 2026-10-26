@@ -188,10 +188,7 @@ def test_an_avoidance_hop_is_two_transfers(budget):
 
 def test_propellant_from_dry_mass(tmp_path):
     """
-    80 m/s at Isp 220 s from 450 kg dry needs 17.00 kg.
-
-    The argument is the dry mass, so it is the final mass of the burn and the
-    propellant is `m_dry * (exp(dv/ve) - 1)`.
+    80 m/s at Isp 220 s from 450 kg dry needs `m_dry * (exp(dv/ve) - 1)`, 17.00 kg.
     """
     rows = ["phasing,Phasing,Operations,given,80 m/s,1,false,"]
     budget = DeltaVBudget.from_csv(
@@ -288,7 +285,7 @@ def test_report_hides_columns_without_dropping_them(budget):
 
 
 def test_report_shows_the_loss_factor_only_on_request(budget):
-    """A column of ones is not worth the width until some row carries one."""
+    """The loss factor's column shows only when asked for."""
     assert "Loss factor" not in budget.tabulated_deltav().to_html()
     shown = budget.tabulated_deltav(loss_factor=True)
     assert "Loss factor" in shown.to_html()
