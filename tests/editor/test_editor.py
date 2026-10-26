@@ -22,16 +22,14 @@ from pathlib import Path
 import pytest
 
 from quicksat.editor.__main__ import main
-from quicksat.editor.editor import (
+from quicksat.editor.scenario import (
     FORMAT,
-    PAGE_FILE,
     SCRIPTS,
-    SHARED_SCRIPTS,
-    comment_blocks,
     editor_data,
     editor_page,
     write_editor,
 )
+from quicksat.editor.shared import PAGE_FILE, SHARED_SCRIPTS, comment_blocks
 
 TESTS = Path(__file__).parent.parent
 

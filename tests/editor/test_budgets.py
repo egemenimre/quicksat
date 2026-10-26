@@ -20,8 +20,9 @@ from pathlib import Path
 import pytest
 
 from quicksat.editor.__main__ import main
+from quicksat.editor.actions import budget_files
 from quicksat.editor.budgets import budget_results
-from quicksat.editor.server import HOST, PREFIX, EditorServer, budget_files
+from quicksat.editor.server import HOST, PREFIX, EditorServer
 from quicksat.editor.sizing import NAMES, sizing_data
 
 TESTS = Path(__file__).parent.parent

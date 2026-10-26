@@ -25,17 +25,19 @@ import pytest
 import yaml
 
 from quicksat.editor.__main__ import main
+from quicksat.editor.actions import (
+    _write_inputs,
+    design_files,
+    file_hash,
+    run_files,
+    thermal_files,
+)
 from quicksat.editor.server import (
     HOST,
     PORT,
     PREFIX,
     EditorServer,
-    _write_inputs,
-    design_files,
-    file_hash,
-    run_files,
     serve,
-    thermal_files,
 )
 
 TESTS = Path(__file__).parent.parent

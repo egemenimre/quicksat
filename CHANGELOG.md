@@ -30,6 +30,7 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
   - `quicksat.scenario.sources`: `scenario_orbit`, `target_orbits` and `orbit_warnings`.
   - `quicksat.scenario.events`: `Occurrence`, the statuses, `next_event`, `find_events` and `resolve_activities`.
   - `quicksat.scenario.tables`: `activity_table`, `activity_summary`, `gantt_rows` and `pass_table`.
+- The editor's modules follow its templates. `quicksat.editor.editor` is `quicksat.editor.scenario`, for the Scenario Editor. What both editors share is in the new module `quicksat.editor.shared`: `build_page`, `help_text`, `comment_blocks`, `PAGE_FILE` and `SHARED_SCRIPTS`, with the public `loader_check`, `yaml_file`, `csv_file` and `vendor_text`, which were private. The work of the server's requests is in the new module `quicksat.editor.actions`: `run_files`, `design_files`, `thermal_files`, `budget_files`, `save_files` and `file_hash`.
 
 ### Fixed
 

@@ -19,12 +19,12 @@ orbit is a reference orbit, with no epoch and no node (`decisions.md` 9).
 
 from pathlib import Path
 
-from quicksat.editor.editor import (
+from quicksat.editor.shared import (
     PAGE_FILE,
-    _check,
-    _csv_file,
-    _yaml_file,
     build_page,
+    csv_file,
+    loader_check,
+    yaml_file,
 )
 
 FORMAT = "quicksat-sizing-editor"
@@ -99,7 +99,7 @@ def sizing_data(folder: str | Path) -> dict:
     if not found:
         raise FileNotFoundError(f"no sizing file, such as mission.yaml: {folder}")
     files = {
-        kind: (_csv_file(path) if path.suffix == ".csv" else _yaml_file(path))
+        kind: (csv_file(path) if path.suffix == ".csv" else yaml_file(path))
         if kind in found
         else None
         for kind, path in paths.items()
@@ -109,29 +109,33 @@ def sizing_data(folder: str | Path) -> dict:
     checks = []
     if "mission" in found:
         checks.append(
-            _check(name["mission"], lambda: Mission.from_yaml_file(paths["mission"]))
+            loader_check(
+                name["mission"], lambda: Mission.from_yaml_file(paths["mission"])
+            )
         )
     if "requirements" in found:
         checks.append(
-            _check(
+            loader_check(
                 name["requirements"],
                 lambda: Requirements.from_yaml_file(paths["requirements"]),
             )
         )
     if {"mass", "equipment"} <= found.keys():
         checks.append(
-            _check(
+            loader_check(
                 f"{name['equipment']} with {name['mass']}",
                 lambda: MassBudget.from_csv(paths["equipment"], paths["mass"]),
             )
         )
     if "data" in found:
         checks.append(
-            _check(name["data"], lambda: DataFlowModel.from_yaml_file(paths["data"]))
+            loader_check(
+                name["data"], lambda: DataFlowModel.from_yaml_file(paths["data"])
+            )
         )
     if {"deltav", "manoeuvres", "mission"} <= found.keys():
         checks.append(
-            _check(
+            loader_check(
                 f"{name['manoeuvres']} with {name['deltav']}",
                 lambda: DeltaVBudget.from_csv(
                     paths["manoeuvres"], paths["deltav"], paths["mission"]
@@ -140,7 +144,7 @@ def sizing_data(folder: str | Path) -> dict:
         )
     if "agility" in found:
         checks.append(
-            _check(
+            loader_check(
                 name["agility"], lambda: AgilityConfig.from_yaml_file(paths["agility"])
             )
         )

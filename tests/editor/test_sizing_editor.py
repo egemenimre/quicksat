@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 from quicksat.editor.__main__ import main
-from quicksat.editor.editor import PAGE_FILE, SHARED_SCRIPTS
+from quicksat.editor.shared import PAGE_FILE, SHARED_SCRIPTS
 from quicksat.editor.sizing import (
     FORMAT,
     SCRIPTS,
