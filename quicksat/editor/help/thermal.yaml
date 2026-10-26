@@ -25,12 +25,12 @@ surfaces:
     <span class="k">Properties</span>
     <p><b>Absorptance</b> is the share of sunlight it absorbs, such as 0.20 for white paint. Set it for the year being sized: white paint rises to 0.40 or more over a mission. <b>Emissivity</b> is the share of a black body's infrared it emits, such as 0.85. It also absorbs that share of the Earth's infrared.</p>
     <p><b>Temperature</b> is the design temperature, which the surface radiates at through the run. Give it in kelvin, such as 273 K. A temperature in Celsius in the file is turned into kelvin, but kelvin is preferred: astropy reads °C as a unit with an offset, and some ways of writing it do not read.</p>
-    <p><b>Fixed:</b> something else holds the surface at its temperature, such as a telescope's own heaters. A floating surface moves with the equilibrium ΔT.</p>
+    <p><b>Fixed:</b> something else keeps the surface's temperature constant, such as a telescope's own heaters. A floating surface moves with the equilibrium ΔT.</p>
     <span class="k">An aperture</span>
     <p>The aperture is the opening at the front of the telescope, not the mirror: the front of its baffle, or an opening in the bus's face with a vaned tube behind it. It takes in and gives out heat over the whole hemisphere in front of it, as a flat plate does. Its absorptance and emissivity are the tube's, about 0.9 or more for a blackened tube, not the mirror coating's.</p>
     <p>Its temperature is the mean of what shows through the opening, such as the vanes and the secondary mirror. The vanes see space and run cold, so the mean lies below the telescope's own temperature.</p>
   file: >-
-    The surfaces that absorb and radiate heat. Each names a flat part of the 3D model, or gives a normal and an area. absorptance is the share of sunlight it absorbs, emissivity the share of a black body's infrared it emits. temperature is its design temperature, in kelvin. fixed_temperature: true when something else holds it there.
+    The surfaces that absorb and radiate heat. Each names a flat part of the 3D model, or gives a normal and an area. absorptance is the share of sunlight it absorbs, emissivity the share of a black body's infrared it emits. temperature is its design temperature, in kelvin. fixed_temperature: true when something else keeps its temperature constant.
 
 heat_flows:
   title: Heat flows
@@ -53,7 +53,7 @@ earth:
 thermal_account:
   title: Heat account
   info: |-
-    <p>Work out runs the files on this page on the editor's server, and sums the payload's heat over the run. Every term is a mean power, positive into the payload: the dissipation, the heaters, the heat flows, the sun, the albedo and the Earth's infrared on the surfaces, and their emission.</p>
+    <p>Compute runs the files on this page on the editor's server, and sums the payload's heat over the run. Every term is a mean power, positive into the payload: the dissipation, the heaters, the heat flows, the sun, the albedo and the Earth's infrared on the surfaces, and their emission.</p>
     <span class="k">By payload mode</span>
     <p>The heaters are set per payload mode, so this table sets them. A mode's heater power goes in the heater row of the payload's consumption table. Its <b>balancing heater power</b> brings the mode's net energy over the run to zero, and is never below zero, since a heater cannot cool. <b>Balance</b> sets each mode's heater to it. A mode with a surplus even with no heater shows a radiator that is too small for it on its own.</p>
     <span class="k">Sizing decisions</span>

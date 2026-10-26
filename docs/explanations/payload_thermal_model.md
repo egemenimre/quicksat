@@ -185,7 +185,7 @@ The file is optional. Without it, the folder sizes power only.
 ## Where to see it
 
 - **The thermal command,** `python -m quicksat.thermal`, does all that the power command does: it runs the scenario and the power budget, prints the checks and writes the viewer. Then it prints the account's tables by activity and by payload mode. Without the thermal file, it says so, and gives the power budget alone.
-- **The Scenario Editor's Thermal tab** edits the thermal file, and shows its surfaces in the 3D panel. With the editor's server, its Work out button gives the account. The table by mode edits the heater row, and Balance sets each mode's heater to its balancing power. The server keeps the run and the surfaces' heat, so a change to the heaters, the flows or the dissipation is quick to work out again.
+- **The Scenario Editor's Thermal tab** edits the thermal file, and shows its surfaces in the 3D panel. With the editor's server, its Compute button gives the account. The table by mode edits the heater row, and Balance sets each mode's heater to its balancing power. The server keeps the run and the surfaces' heat, so a change to the heaters, the flows or the dissipation is quick to work out again.
 - **The viewer** has no Thermal tab yet.
 
 ## Where it stops

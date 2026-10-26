@@ -26,7 +26,7 @@ const TABS = [
   },
   {
     id: "thermal", title: "Thermal", sections: ["surfaces", "heat_flows", "earth", "thermal_account"],
-    intro: "The payload's heat account: its radiators and its aperture, the heat that crosses its boundary elsewhere, and the Earth. Work out sums the heat over the run, by payload mode and by activity, and the table by mode sets the heater powers. Select a surface to see it in the 3D panel.",
+    intro: "The payload's heat account: its radiators and its aperture, the heat that crosses its boundary elsewhere, and the Earth. Compute sums the heat over the run, by payload mode and by activity, and the table by mode sets the heater powers. Select a surface to see it in the 3D panel.",
   },
   { id: "files", title: "Files", sections: ["project"] },
 ];

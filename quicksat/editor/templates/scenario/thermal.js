@@ -252,16 +252,16 @@ function fillAccount(node) {
   const heater = heaterRow(rows);
   const parts = [];
   const status = thermal.running
-    ? "quicksat is working out the heat account."
+    ? "quicksat is computing the heat account."
     : thermal.error
       ? ""
       : results
-        ? `Worked out at ${thermal.at.toLocaleTimeString()} in ${thermal.seconds} s${thermal.reused ? ", from the kept run" : ""}${accountStale() ? ". The page has changed since." : "."}`
+        ? `Computed at ${thermal.at.toLocaleTimeString()} in ${thermal.seconds} s${thermal.reused ? ", from the kept run" : ""}${accountStale() ? ". The page has changed since." : "."}`
         : "";
   parts.push(el("div", { class: "run-row" },
     el("button", {
-      class: "btn primary", text: thermal.running ? "Working out…" : "Work out", disabled: !up || thermal.running,
-      title: up ? "Run the files on this page, and work out the payload's heat account" : "Start the editor's server to work out the account",
+      class: "btn primary", text: thermal.running ? "Computing…" : "Compute", disabled: !up || thermal.running,
+      title: up ? "Run the files on this page, and compute the payload's heat account" : "Start the editor's server to compute the account",
       onclick: workOutThermal,
     }),
     el("button", {
