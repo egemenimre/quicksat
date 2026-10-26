@@ -4,12 +4,11 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Tests for the editor's Python side: the comments it finds, the data it gives the
-page, and the page it writes.
+Tests for the editor's Python side: the comments it finds, the data it gives the page,
+and the page it writes.
 
-The page's own code runs in a browser, so it is not tested here. These tests
-read the power and scenario test folders and never change them. A test that
-needs a changed file works on a copy.
+They read the power and scenario test folders, and change only copies. The page's own
+code is tested in Node.
 """
 
 import base64

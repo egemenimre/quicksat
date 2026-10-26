@@ -4,8 +4,8 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Tests for a budget's checks: the spare, the margin and the verdict, for a limit
-the design must reach and for one it must not pass.
+Tests for a budget's checks: the spare, the margin and the verdict, for each kind of
+limit.
 """
 
 import math

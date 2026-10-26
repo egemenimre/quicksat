@@ -77,9 +77,8 @@ and going south at 40 min. No other latitude is ever reached."""
 
 def resolve(*fields, repeat=True):
     """
-    Resolve a list of activities on the made-up run, each given as its fields
-    after the title, with one mode for both the payload and the platform. Each
-    takes its number as its title. Without `repeat`, the list runs once.
+    Resolve a list of activities on the made-up run, each given by its fields after the
+    title, in one mode for both groups, titled by its number.
     """
     activities = [
         Activity.from_fields(

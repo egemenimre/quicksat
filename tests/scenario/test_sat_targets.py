@@ -37,9 +37,8 @@ from quicksat.utils.intervals import labels_at
 
 def element_set(lines, name, number, anomaly=0.0, node=None, day=None):
     """
-    The reference TLE as another satellite: a name line, a catalogue number, a
-    mean anomaly, and if given a node and a day of 2026 for the epoch. The
-    checksums are mended.
+    The reference TLE as another satellite, with its name, catalogue number, mean
+    anomaly, and any node and epoch day, its checksums mended.
     """
     line1, line2 = lines
     epoch = line1[20:32] if day is None else f"{day:012.8f}"

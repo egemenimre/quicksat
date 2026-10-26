@@ -4,11 +4,8 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Tests for the Budgets tab's results, and for the Sizing Editor's server that
-works them out after each change on the page.
-
-The results come from a copy of the sizing test folder, with a small mass
-budget added. The server runs in a thread, on a free port.
+Tests for the Budgets tab's results, and the Sizing Editor's server that works them out,
+on a copy of the sizing test folder with a small mass budget.
 """
 
 import http.client
@@ -78,8 +75,7 @@ def test_every_budget_is_worked_out(folder):
 
 def test_the_figures_and_the_tables_are_text_with_their_numbers(folder):
     """
-    The page formats no number of its own: each figure and each cell is text. Its
-    number comes too, for the export, or None for a cell of text.
+    Each figure and cell is text, with its number for the export, or None for text.
     """
     results = budget_results(folder)
     rows = [part for part in parts(results["budgets"]) if "cells" in part]

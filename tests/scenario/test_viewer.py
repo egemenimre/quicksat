@@ -6,12 +6,9 @@
 """
 Tests for the viewer: the page built from its template, and the data file.
 
-The data file is checked against the contract in the plan: the fields, their
-lengths, the tracks and the occurrences, and that the same run writes the same
-bytes. Nothing here runs the page's JavaScript.
-
-The Activity Designer's data is checked on `once_run`, a single pass of the
-list that leaves the rest of the run unplanned.
+The data file is checked for the fields the page reads, their lengths, the tracks and
+the occurrences, and that the same run writes the same bytes. Nothing here runs the
+page's JavaScript. The Activity Designer's data is checked on `once_run`.
 """
 
 import hashlib

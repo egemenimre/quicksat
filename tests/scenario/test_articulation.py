@@ -4,13 +4,11 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Tests for the articulations: the parts of the 3D model that turn to point an
-axis toward a direction, such as the sun.
+Tests for the articulations: the parts of the 3D model that turn to point an axis toward
+a direction, such as the sun.
 
-`articulated_run`, from the conftest, is `scenario.yaml` with slews, and with
-the model and two articulations. One wing tracks the sun and parks in
-`downlink`. The other turns about `-y` within a range, so the sign and the
-clamp are both tested.
+They run on `articulated_run`, from the conftest, whose two wings test the tracking, the
+park, the sign and the clamp.
 """
 
 import dataclasses

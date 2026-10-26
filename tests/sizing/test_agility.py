@@ -6,9 +6,8 @@
 """
 Tests for the attitude agility budget.
 
-The workbook targets come from the source `Agility (Roll)` tab, recomputed
-independently from the inputs. They are flown as an envelope case, with a 475 kg
-spacecraft passed in directly. So they stay fixed whatever the mass budget says.
+The targets come from the source workbook's `Agility (Roll)` tab, worked out again from
+its inputs, as an envelope case with a 475 kg spacecraft passed in:
 
     inertia, 475 kg box 1.5 x 1.5 x 2.0 m, factor 1.07     264.7 kg*m**2
     projection, cos(26.5 deg) * cos(45 deg)                0.633
@@ -78,12 +77,11 @@ fuel,Hydrazine,Platform,Platform,Propulsion,20 kg,0,1,propellant,
 """
 
 WORKBOOK_MASS = Q_(475, "kg")
-"""The source tab's spacecraft, handed in directly so the workbook figures stay
-pinned to it while the sample notebooks track our own mass budget."""
+"""The source tab's spacecraft, passed in so the workbook's figures do not follow the
+mass budget."""
 
 TARGET_DURATION = Q_(113, "s")
-"""What the source tab's operation allows. An argument, not config: how long a
-manoeuvre may take is asked of a spacecraft, not a property of one."""
+"""The time the source tab's operation allows."""
 
 REQUIREMENTS = """
 agility:
@@ -155,7 +153,7 @@ def test_axis_capability(budget):
 
 
 def test_yaw_is_the_weak_axis(budget):
-    """Reported rather than slewed, but it is what a yaw manoeuvre lives within."""
+    """Yaw is reported, though no slew uses it."""
     assert_quantity_allclose(
         budget.yaw_momentum, Q_(2.38, "N * m * s"), atol=Q_(0.01, "N * m * s")
     )
@@ -236,7 +234,7 @@ def test_achievable_angle_inverts_the_slew_time(budget):
 
 
 def test_ground_track_ties_the_slew_to_the_orbit(budget):
-    """A slew time means something because it is swath given up."""
+    """A slew time is a distance on the ground that the payload does not image."""
     assert_quantity_allclose(
         budget.ground_distance(TARGET_DURATION), Q_(797.7, "km"), atol=Q_(0.1, "km")
     )
@@ -265,7 +263,7 @@ def test_an_envelope_case_needs_a_mass_from_somewhere(config, mission):
 
 
 def test_an_envelope_case_reads_the_budget_at_its_own_propellant(config, mission, bus):
-    """Tanks empty over the mission, so the spacecraft grows more agile with age."""
+    """The tanks empty over the mission, so the spacecraft grows more agile."""
     bol = AgilityBudget(config, mission, Axis.ROLL, "workbook", mass_budget=bus)
     eol = AgilityBudget(config, mission, Axis.ROLL, "workbook_eol", mass_budget=bus)
     assert bol.mass > eol.mass

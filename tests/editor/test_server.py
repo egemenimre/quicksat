@@ -4,13 +4,12 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Tests for the editor's local server: the runs of the page's files, and what the
-server answers and refuses.
+Tests for the editor's local server: the runs of the page's files, and what the server
+answers and refuses.
 
-The runs use the power and scenario test folders, sent as the page sends them,
-and write the viewer into a temporary folder. The server runs in a thread, on a
-free port. The saves write into a copy of the power test folder. The stop, and
-the stop after a time with no request, end `serve`, in a thread of its own.
+The runs send the power and scenario test folders as the page does, and write into
+temporary folders. The server and `serve` run in threads, and the saves write into a
+copy.
 """
 
 import base64

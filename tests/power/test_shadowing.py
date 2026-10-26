@@ -41,8 +41,9 @@ def panel_points():
 
 
 def sun_towards(shift: float) -> np.ndarray:
-    """The sun above the x-z plane, so that a height of 1 moves a shadow by `shift`
-    along +x."""
+    """
+    The sun above the x-z plane, so a height of 1 moves a shadow by `shift` along +x.
+    """
     sun = np.array([-shift, 0.0, 1.0])
     return sun / np.linalg.norm(sun)
 
