@@ -6,33 +6,10 @@
 """
 The power budget: generation and consumption over a run, through the battery.
 
-The budget follows the energy step by step over the run's grid. In each step:
-
-1. The loads, with their equipment margins and the system margin, need their
-   energy at the bus: the loads' energy over the distribution efficiency.
-2. The array's energy reaches the bus through the array regulator.
-3. A surplus charges the battery, less the charge efficiency, until it is full.
-   What a full battery cannot take is unused: the array is held off its best
-   point then.
-4. A shortfall comes from the battery, which gives it at the discharge
-   efficiency. If the battery is empty, the rest is unmet.
-
-So energy that passes through the battery pays both its paths, about 10% with
-the usual efficiencies. The energy over a step is exact for the generation,
-which changes linearly between the steps, and for the loads, which change at
-exact times between them.
-
-Three checks follow:
-
-- **Battery charge:** the charge never falls below 1 less the battery's maximum
-  depth of discharge.
-- **Energy balance:** each whole orbit has a margin of zero or more. The margin
-  is the net energy into the battery, with the unused energy counted as if the
-  battery had taken it. So it does not depend on where in the orbit the window
-  starts, nor on how full the battery is. A run that starts full can pass the
-  first check for a few orbits while losing energy every orbit, so this one
-  matters as much.
-- **Loads met:** the battery never runs flat.
+At each step, a surplus charges the battery until it is full, and a shortfall comes from
+it, each through its conditioning path. Three checks follow: the battery's charge, each
+whole orbit's energy balance, and the loads met. `docs/power/power_budget_ref.ipynb` and
+`docs/explanations/power_model.md` explain the steps and the checks.
 
 """
 
@@ -61,9 +38,8 @@ FLOWS = (
     "drawn",
     "unmet",
 )
-"""The energies that the budget follows in each step: what the array gives, what
-the loads take, the loss in each conditioning path, what is unused, what goes
-into and out of the battery, and what the loads lack."""
+"""The energies the budget follows in each step: the array's, the loads', each
+conditioning loss, the unused, the battery's in and out, and the loads' lack."""
 
 LOSSES = ("array_regulator", "battery_charge", "battery_discharge", "distribution")
 """The flows that are conditioning losses."""
@@ -81,7 +57,7 @@ class PowerCheck:
     status : str
         `ok`, `warn` or `fail`
     detail : str
-        What was found, in a sentence or two
+        What was found
     """
 
     name: str
@@ -103,7 +79,7 @@ def simulate(
     generated : ndarray
         The array's energy in each step, in J, shape (n - 1,)
     consumed : ndarray
-        The loads' energy in each step, in J, all margins in, shape (n - 1,)
+        The loads' energy in each step, all margins in, in J, shape (n - 1,)
     battery : Battery
         The battery
     conditioning : Conditioning
@@ -112,8 +88,7 @@ def simulate(
     Returns
     -------
     charge : ndarray
-        The charge at each time of the grid, as a share of the usable capacity,
-        shape (n,)
+        The charge at each time, as a share of the usable capacity, shape (n,)
     flows : dict of str to ndarray
         Each of `FLOWS` in each step, in J
     """
@@ -167,15 +142,13 @@ class BudgetRun:
     generation : GenerationRun
         The generation over the run
     consumption : ConsumptionRun
-        The loads over the same run
+        The loads over the run
     load : Quantity
-        The loads at each time of the grid, with the equipment margins and the
-        system margin, in W
+        The loads on the grid, all margins in, in W
     charge : ndarray
-        The battery's charge at each time of the grid, as a share of its usable
-        capacity
+        The battery's charge on the grid, as a share of its usable capacity
     flows : dict of str to ndarray
-        Each of `FLOWS` in each step of the grid, in J
+        Each of `FLOWS` in each step, in J
     """
 
     power_system: PowerSystem
@@ -187,25 +160,14 @@ class BudgetRun:
 
     @property
     def battery(self) -> Battery:
-        """
-        The battery.
-
-        Returns
-        -------
-        battery : Battery
-        """
+        """The battery."""
         assert self.power_system.battery is not None  # run_budget checks it
         return self.power_system.battery
 
     @property
     def lowest_allowed(self) -> float:
         """
-        The lowest charge the battery may reach, 1 less its maximum depth.
-
-        Returns
-        -------
-        lowest : float
-            As a share of the usable capacity
+        The lowest charge the battery may reach, as a share: 1 less its maximum depth.
         """
         return 1 - float(
             self.battery.max_depth_of_discharge.to(u.dimensionless_unscaled).value
@@ -213,14 +175,12 @@ class BudgetRun:
 
     def flows_between(self, start: float, end: float) -> dict[str, float]:
         """
-        Each flow between two times, in W h.
-
-        A step that the times cut counts for the share of it inside them.
+        Each flow between two times, counting a cut step for its share inside them.
 
         Parameters
         ----------
         start, end : float
-            The times, in seconds from the run's start
+            The times, in s from the run's start
 
         Returns
         -------
@@ -250,19 +210,8 @@ class BudgetRun:
     @cached_property
     def orbit_table(self) -> pd.DataFrame:
         """
-        Where the energy goes in each whole orbit, and the battery's charge.
-
-        Returns
-        -------
-        table : pd.DataFrame
-            The orbit number; the energy generated at the array's output, consumed
-            by the loads, lost in the conditioning, and unused, in W h; the net
-            energy into the battery, and the margin, in W h; and the charge at the
-            orbit's start, its lowest and at its end, in percent. The margin is
-            the net energy into the battery, with the unused energy counted as if
-            the battery had taken it. So it does not depend on where in the orbit
-            the window starts, nor on how full the battery is. Empty for a run
-            shorter than one orbit.
+        Where the energy goes in each whole orbit, in W h, with the margin and the
+        battery's charge in percent.
         """
         seconds = run_seconds(self.generation.run)
         rows = []
@@ -291,16 +240,7 @@ class BudgetRun:
 
     @cached_property
     def loss_table(self) -> pd.DataFrame:
-        """
-        The conditioning losses in each whole orbit, one column for each path.
-
-        Returns
-        -------
-        table : pd.DataFrame
-            The orbit number, then the loss in the array regulator, the battery
-            charge, the battery discharge and the distribution, in W h. Empty for
-            a run shorter than one orbit.
-        """
+        """Each conditioning path's loss in each whole orbit, in W h."""
         rows = []
         for number, (start, end) in enumerate(whole_orbits(self.generation.run), 1):
             flows = self.flows_between(start, end)
@@ -313,12 +253,8 @@ class BudgetRun:
     @cached_property
     def checks(self) -> list[PowerCheck]:
         """
-        The three checks: the battery's charge, the energy balance, the loads met.
-
-        Returns
-        -------
-        checks : list of PowerCheck
-            In that order
+        The three checks, in order: the battery's charge, the energy balance, and the
+        loads met.
         """
         lowest = float(self.charge.min())
         allowed = self.lowest_allowed
@@ -371,13 +307,7 @@ class BudgetRun:
 
     @property
     def passed(self) -> bool:
-        """
-        Whether every check passed.
-
-        Returns
-        -------
-        passed : bool
-        """
+        """Whether every check passed."""
         return all(check.status == "ok" for check in self.checks)
 
 
@@ -401,14 +331,13 @@ def run_budget(
     Returns
     -------
     budget : BudgetRun
-        The loads, the battery's charge, where the energy goes, and the checks
+        The budget
 
     Raises
     ------
     ValueError
-        If the power system file lacks the battery, the conditioning or the
-        system margin, or the generation and the consumption come from
-        different runs
+        If the battery, the conditioning or the system margin is missing, or the two
+        come from different runs
     """
     missing = [
         name
@@ -447,10 +376,7 @@ def run_budget(
 
 def budget_summary(budget: BudgetRun) -> list[dict[str, str | bool]]:
     """
-    The budget's figures, as the viewer's summary lists them.
-
-    The means are over the whole orbits, or over the run if it is shorter than
-    one orbit.
+    The budget's figures for the viewer's summary, the means over the whole orbits.
 
     Parameters
     ----------
@@ -460,8 +386,7 @@ def budget_summary(budget: BudgetRun) -> list[dict[str, str | bool]]:
     Returns
     -------
     summary : list of dict
-        Each a `label`, a `value` as text, a `unit`, and whether it is a
-        `headline`, which the viewer shows as a card
+        Each with a `label`, a `value`, a `unit`, and whether it is a `headline` card
     """
     orbits = whole_orbits(budget.generation.run)
     seconds = run_seconds(budget.generation.run)

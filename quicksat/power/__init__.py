@@ -6,8 +6,8 @@
 """
 The power budget: the power system, the consumption, and the run over the scenario.
 
-The file names are here, rather than in `config` and `consumption`, so that the
-editor and the commands can name the files without importing the loaders.
+The file names are here, so the editor and the commands can name them without the
+loaders.
 """
 
 POWER_FILE = "power_system.yaml"

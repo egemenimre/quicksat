@@ -8,15 +8,9 @@ Run the power budget in a folder and write its viewer, from the command line:
 
     python -m quicksat.power sample/power/data sample/power/output
 
-The folder holds `scenario.yaml`, `power_system.yaml`, and the two consumption
-files `payload_consumption.csv` and `platform_consumption.csv`, with the 3D
-model and any orbit file they name, as for the editor. The command prints the scenario's results, the notes on the
-generation and the loads, and the budget's three checks. Then it writes the
-viewer and prints where the page went. A file that quicksat cannot read stops it
-with the error, and nothing is written.
-
-A check that fails does not stop the command: the viewer shows the failing run
-too.
+The folder holds the scenario, the power system and the two consumption files. It prints
+the results, the notes and the three checks, then writes the viewer, even when a check
+fails. A file that quicksat cannot read stops it, and nothing is written.
 
 """
 
@@ -31,12 +25,12 @@ from quicksat.scenario import SCENARIO_FILE
 
 def main(argv: list[str] | None = None) -> None:
     """
-    Run the budget, print its results, write the viewer and print where it went.
+    Run the budget, print its results, and write the viewer.
 
     Parameters
     ----------
     argv : list of str, optional
-        The arguments, the command line's by default
+        The arguments, by default the command line's
     """
     parser = argparse.ArgumentParser(
         prog="python -m quicksat.power",

@@ -4,11 +4,8 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The power budget of a folder of input files.
-
-`run_folder` reads the folder's four files and runs the budget, and `summary`
-gives the results as text. `python -m quicksat.power` prints them, and the
-thermal command and the editor's server build on them.
+The power budget of a folder of input files, for the command, the thermal command and
+the editor's server.
 
 """
 
@@ -31,10 +28,7 @@ def run_folder(
     consumption_files: dict[str, str] = CONSUMPTION_FILES,
 ) -> BudgetRun:
     """
-    The power budget of a folder's four files.
-
-    All four are read before the run, so that a mistake in any of them stops it
-    at once.
+    The power budget of a folder's four files, all read before the run.
 
     Parameters
     ----------
@@ -43,8 +37,7 @@ def run_folder(
     scenario_file, power_file : str, optional
         The files' names, if not the usual ones
     consumption_files : dict of str to str, optional
-        The consumption files' names by the group's name, `payload` and
-        `platform`, if not the usual ones
+        The consumption files' names by group, if not the usual ones
 
     Returns
     -------
@@ -74,8 +67,7 @@ def summary(budget: BudgetRun) -> str:
     Returns
     -------
     text : str
-        The scenario's report, the notes on the generation and the loads, and
-        the three checks, one a line
+        The scenario's report, the notes, and the three checks
     """
     lines = [budget.generation.run.report]
     lines += budget.generation.notes + budget.consumption.notes

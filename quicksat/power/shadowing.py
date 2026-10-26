@@ -6,36 +6,11 @@
 """
 Self-shadowing: the parts of the 3D model that shade the solar panels.
 
-Each panel from the model gets sample points on its cells, each standing for an
-equal share of its area. At each step, a ray goes from each point toward the
-sun, in body axes. A point is shaded when a triangle of another part blocks its
-ray. A panel's lit fraction is the share of its area whose points are not
-shaded.
-
-All rays at one step share the sun's direction. So the model is projected along
-that direction onto a plane, once a step. A point is shaded when its projection
-falls inside a projected triangle that lies further toward the sun. This is the
-Möller-Trumbore test, arranged for one direction.
-
-Parts under an articulation turn with it at each step, so a turning wing both
-casts its shadow and catches others' where its angle puts it.
-
-No ray is cast where it cannot change the power: while the panel faces away from
-the sun, or in the umbra. The lit fraction is 1 there. A triangle is left out of
-the test when it lies wholly behind the panel's points, or when its projection
-misses theirs.
-
-Two kinds of noise come from ray tests, and both are handled, as the prototype
-found:
-
-- A ray can hit the surface it starts on, through rounding. Each ray starts
-  `RAY_OFFSET` off the cells, along their normal.
-- A shadow first touches a panel at a corner, and its area grows slowly from
-  there, so the first point is covered late. Times of shading are counted only
-  where more than `SHADED_LIMIT` of a panel is shaded.
-
-Strings of cells are not modelled. A shaded area costs only its share of the
-panel's power, although a real string loses more.
+Sample points on each panel cast rays toward the sun, and a point is shaded when another
+part's triangle blocks its ray. Each step projects the model once along the sun's
+direction. Turning parts turn first. Cell strings are not modelled.
+`docs/power/power_generation_ref.ipynb`, under "Self-shadowing", explains the method and
+its tolerances.
 
 """
 
@@ -50,45 +25,38 @@ from quicksat.scenario.config import SpacecraftModel
 from quicksat.scenario.spacecraft import ModelGeometry, node_index, read_glb_json
 
 RAY_OFFSET = 1e-6
-"""How far off the cells each ray starts, along their normal, in metres. In the
-prototype, 1 nm or more removed every self-hit down to 0.001 deg above the
-panel's plane."""
+"""How far off the cells each ray starts, along their normal, in m, against self-hits."""
 
 EDGE = 1e-9
-"""Tolerance on the barycentric test. A ray through the shared edge of two
-triangles counts as a hit, so that no ray slips through a seam."""
+"""The barycentric test's tolerance, so no ray slips through the seam of two triangles."""
 
 SHADED_LIMIT = 0.01
-"""A panel counts as shaded while more than this share of it is shaded. Any
-shading at all would start late and end early, by up to 7 steps in the prototype
-at 512 points."""
+"""The share of a panel that must be shaded for it to count as shaded, so a shadow's
+first touch is not timed late."""
 
 _EDGE_ON = 1e-14
-"""Below this projected area, twice over, a triangle is edge-on to the sun and
-casts no area. Its neighbours cast the shadow."""
+"""The projected area, doubled, below which a triangle is edge-on to the sun and casts
+none."""
 
 
 def sample_points(triangles: np.ndarray, points: int) -> tuple[np.ndarray, np.ndarray]:
     """
-    Points on the triangles, each standing for an equal share of its triangle.
-
-    Each triangle is cut into n² equal smaller ones, with n chosen from the
-    triangle's share of the area, so that the total is close to `points`. The
-    points are the centres of the smaller triangles.
+    Points on the triangles, each for an equal share of its triangle, about `points` in
+    all.
 
     Parameters
     ----------
     triangles : ndarray
         The corners, shape (m, 3, 3)
     points : int
-        About how many points to place in all
+        About how many points to place
 
     Returns
     -------
     positions : ndarray
         The points, shape (k, 3)
     areas : ndarray
-        The area each point stands for, shape (k,)
+        The area each stands for, shape (k,)
     """
     edges = np.cross(
         triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]
@@ -133,13 +101,13 @@ def lit_fraction(
     Parameters
     ----------
     points : ndarray
-        The panel's sample points, shape (k, 3), already off its surface
+        The panel's sample points, off its surface, shape (k, 3)
     weights : ndarray
         The area each point stands for, shape (k,)
     blockers : ndarray
         The triangles that may shade it, shape (m, 3, 3)
     sun : ndarray
-        The unit vector to the sun, shape (3,), in the same axes
+        The unit vector to the sun, in the same axes, shape (3,)
 
     Returns
     -------
@@ -186,7 +154,8 @@ def lit_fraction(
 
 def rotation_matrices(axis: np.ndarray, angles: Quantity) -> np.ndarray:
     """
-    Right-handed turns about one axis, by each of a series of angles.
+    Right-handed turns about one axis, by each of a series of angles, from Rodrigues'
+    formula.
 
     Parameters
     ----------
@@ -198,7 +167,7 @@ def rotation_matrices(axis: np.ndarray, angles: Quantity) -> np.ndarray:
     Returns
     -------
     rotations : ndarray
-        Shape (n, 3, 3), from Rodrigues' formula
+        Shape (n, 3, 3)
     """
     angle = np.asarray(angles.to_value(u.rad))
     cross = np.array(
@@ -240,10 +209,8 @@ class _Turning:
 
     def place(self, triangles: np.ndarray, node: int, step: int) -> np.ndarray:
         """
-        Triangles or points of a part, turned by its articulations at a step.
-
-        The lowest articulation turns first, then each one above it, as the
-        viewer draws them.
+        A part's triangles or points, turned at a step by its articulations, the lowest
+        first.
         """
         for joint in reversed(self.joints[node]):
             origin = self.origins[joint]
@@ -267,27 +234,26 @@ def lit_fractions(
     Parameters
     ----------
     model : ModelGeometry
-        The model's triangles, as the model draws them
+        The model's triangles
     spacecraft : SpacecraftModel
         The scenario's model entry, for its articulations
     panels : iterable of tuple
-        Each panel's name, the index of its part's node, and its normal as the
-        model draws it
+        Each panel's name, its part's node and its normal
     points : int
-        About how many sample points to place on each panel
+        About how many sample points on each panel
     suns : ndarray
         The unit vector to the sun in body axes at each step, shape (n, 3)
     cosines : dict of str to ndarray
-        Each panel's cosine to the sun at each step, by its name
+        Each panel's cosine to the sun, by name
     light : ndarray
-        The fraction of the sun's disk seen at each step
+        The share of the sun's disk seen at each step
     angles : dict of str to Quantity
-        Each articulation's angle at each step
+        Each articulation's angles
 
     Returns
     -------
     lit : dict of str to ndarray
-        Each panel's lit fraction at each step, from 0 to 1, by its name
+        Each panel's lit fraction, from 0 to 1, by name
     """
     turning = _Turning(model, spacecraft, angles)
     lit = {}
