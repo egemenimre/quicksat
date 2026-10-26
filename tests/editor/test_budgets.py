@@ -24,6 +24,8 @@ from quicksat.editor.sizing import NAMES, sizing_data
 
 TESTS = Path(__file__).parent.parent
 SIZING = TESTS / "sizing" / "data"
+POLL = {"poll_interval": 0.01}
+"""`serve_forever` polls every 10 ms, so `shutdown` waits 10 ms, not 0.5 s."""
 
 EQUIPMENT = """equipment_id,equipment_name,location,responsibility,subsystem,unit_mass,eqpt_margin,number_of_units,mass_class,comments
 bus,Bus,Platform,Platform,Structure,400 kg,10,1,equipment,the whole platform
@@ -215,7 +217,7 @@ def test_budget_files_need_text():
 def server(folder):
     """The Sizing Editor for the folder, served in a thread."""
     server = EditorServer(folder)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=server.serve_forever, kwargs=POLL, daemon=True)
     thread.start()
     yield server
     server.shutdown()
@@ -268,7 +270,7 @@ def test_the_sizing_server_runs_no_scenario(server, route):
 
 def test_the_scenario_server_works_out_no_budgets(tmp_path):
     server = EditorServer(TESTS / "scenario" / "data", tmp_path / "output")
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=server.serve_forever, kwargs=POLL, daemon=True)
     thread.start()
     try:
         assert not server.sizing
