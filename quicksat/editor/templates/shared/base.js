@@ -66,6 +66,27 @@ function numberUnit(value) {
   return match ? { v: Number(match[1]), u: match[2].trim() } : null;
 }
 
+/** A number to 12 significant digits, which drops the float noise of a sum or a product. */
+const tidy = (x) => Number(Number(x).toPrecision(12));
+
+/**
+ * A fraction, shown in percent: `5 %` or `0.05` both give 5 %. A plain number
+ * gets a notice, as does a unit that is not a percent, which leaves the field
+ * empty. `notice` is in frame.js.
+ */
+function readPercent(value, where, fallback = "") {
+  if (value == null || value === "") return q(fallback, "%");
+  const parsed = numberUnit(value);
+  if (!parsed) { notice("changed", `${where}: "${value}" is not a number, and was left empty`); return q("", "%"); }
+  if (parsed.u === "%" || parsed.u === "percent") return q(parsed.v, "%");
+  if (!parsed.u) {
+    notice("changed", `${where}: ${value} is read as ${tidy(parsed.v * 100)} %`);
+    return q(tidy(parsed.v * 100), "%");
+  }
+  notice("changed", `${where}: "${value}" is not a fraction, and was left empty`);
+  return q("", "%");
+}
+
 // ---------------------------------------------------------------- constants
 
 /** The key of the user's notes in every block. No named item may take it. */

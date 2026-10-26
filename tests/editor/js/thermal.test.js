@@ -23,7 +23,7 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 const THERMAL = path.resolve(__dirname, "..", "..", "..", "quicksat", "editor", "templates", "scenario", "thermal.js");
-// project.js's own rounding, which the script uses
+// base.js's rounding, which the script uses
 globalThis.tidy = (x) => Number(Number(x).toPrecision(12));
 vm.runInThisContext(fs.readFileSync(THERMAL, "utf8"), { filename: THERMAL });
 const { addFlowMode, balanceHeaters, flowModes, flowsUsing, heaterRow, heaterWatts, renameFlowMode, roundUp, setHeaterWatts } = vm.runInThisContext(

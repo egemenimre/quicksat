@@ -47,8 +47,6 @@ let DATA = JSON.parse($("#project").textContent);
 
 // ---------------------------------------------------------------- reading values
 
-const tidy = (x) => Number(Number(x).toPrecision(12));
-
 /** A quantity, with `unit` where the file gives none. */
 function readQ(value, unit, where) {
   if (value == null || value === "") return q("", unit);
@@ -56,15 +54,6 @@ function readQ(value, unit, where) {
   if (!parsed) { notice("changed", `${where}: "${value}" is not a number, and was left empty`); return q("", unit); }
   const u = /^orbits?$/i.test(parsed.u) ? "orbits" : parsed.u || unit;
   return q(parsed.v, u);
-}
-
-/** A fraction, shown in percent: `30 %` or `0.30` both give 30 %. */
-function readPercent(value, where) {
-  if (value == null || value === "") return q("", "%");
-  const parsed = numberUnit(value);
-  if (!parsed) { notice("changed", `${where}: "${value}" is not a number, and was left empty`); return q("", "%"); }
-  if (parsed.u === "") return q(tidy(parsed.v * 100), "%");
-  return q(parsed.v, parsed.u);
 }
 
 /** A fraction, shown as a plain number: `80 %` or `0.80` both give 0.8. */
