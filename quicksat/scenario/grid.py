@@ -4,34 +4,13 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The run's grid, and the values between its steps.
+The run's grid, and the values between its steps, from splines through it.
 
-A run works out the orbits, the sun and the Earth's orientation on its time grid.
-The searches that follow, for the shadow edges, the latitude crossings, the
-targets' rise and set, and the slews, ask for them again at a few times between
-the steps, hundreds of times over. Worked out in full, each request goes through
-SGP4 and astropy's frames, and takes about 10 ms however few the times are.
-`RunGrid` answers from splines through the grid instead, in well under 1 ms.
-
-- **The satellite:** splines of degree 7 through its positions and velocities.
-  In low orbit, they are good to 5 micrometres at a step of 10 s, and to 1 cm at
-  120 s. The error then grows fast, to 10 m at 300 s. So above
-  `SPLINE_STEP_LIMIT`, each request is worked out in full. An orbit read from a
-  trajectory file is always used as it is: its own splines keep each manoeuvre
-  apart, and splines through the grid would smooth it.
-- **A satellite target:** the same, through its positions alone, since the
-  attitudes and the line of sight need no more. Working out its velocities on
-  the grid would take five times as long.
-- **The sun:** a spline of degree 7 through its positions, good to 1 cm.
-- **The Earth's orientation:** the rotations from ITRS into GCRS, interpolated
-  along the shortest turn between two steps, good to 1e-11 deg.
-
-Degree 7 is the lowest that reaches 1 cm at a step of 120 s. Hermite splines,
-through the positions and the velocities together, do worse here. SGP4's
-velocities, once astropy turns them into GCRS, differ from the slope of its
-positions by about 24 mm/s, and a Hermite spline is bent to meet both.
-
-A time outside the grid is always worked out in full.
+The searches for the shadow edges, the crossings, the passes and the slews ask for
+values between the steps hundreds of times. `RunGrid` gives them from degree-7 splines
+in well under 1 ms, where a full request takes about 10 ms. Above `SPLINE_STEP_LIMIT`,
+and for a trajectory file, each request is worked out in full. `decisions.md` 25 gives
+the accuracy and the choices.
 
 """
 
@@ -54,7 +33,7 @@ from quicksat.orbit.trajectory import Trajectory
 from quicksat.utils.intervals import TimeArray
 
 SPLINE_DEGREE = 7
-"""Degree of the splines through the grid."""
+"""The degree of the splines through the grid."""
 
 SPLINE_STEP_LIMIT = Q_(120, "s")
 """The longest step at which the orbits come from the splines through the grid."""
@@ -76,17 +55,7 @@ class _Grid:
 
     def inside(self, times: TimeArray) -> np.ndarray | None:
         """
-        The times as seconds from the grid's first, if all of them lie on it.
-
-        Parameters
-        ----------
-        times : Time
-            The times
-
-        Returns
-        -------
-        offsets : ndarray or None
-            In seconds, or None if a time lies outside the grid
+        The times as seconds from the grid's first, or None if one lies outside it.
         """
         offsets = np.atleast_1d((times - self.epoch).to_value(u.s))
         if offsets.min() < self.offsets[0] or offsets.max() > self.offsets[-1]:
@@ -96,11 +65,8 @@ class _Grid:
 
 class GridOrbit:
     """
-    An orbit read from splines through its states on the run's grid.
-
-    A time outside the grid goes to the orbit's own source, and so does every
-    time when the splines would not be good to 1 cm. Velocities come from the
-    splines only if the states on the grid have them.
+    An orbit read from splines through its states on the run's grid, or from its source
+    outside it.
 
     Parameters
     ----------
@@ -145,14 +111,13 @@ class GridOrbit:
         times : Time
             The times, as an array
         with_velocity : bool, optional
-            Whether the state carries velocities as well as positions. True by
-            default.
+            Whether to add the velocities
 
         Returns
         -------
         state : SkyCoord
-            The position relative to the centre of the Earth, and the velocity if
-            asked for, in GCRS. Its `obstime` is `times`.
+            The positions from the Earth's centre, and any velocities, in GCRS, at
+            `times`
         """
         offsets = self._grid.inside(times) if self._position is not None else None
         if offsets is None or (with_velocity and self._velocity is None):
@@ -183,7 +148,7 @@ class RunGrid:
     sat_orbits : dict of str to Tle or Trajectory
         The satellite targets' orbits, by name
     sat_states : dict of str to SkyCoord
-        The satellite targets' positions on the grid, in GCRS, by name
+        The satellite targets' positions on the grid, by name
 
     Attributes
     ----------
@@ -192,8 +157,7 @@ class RunGrid:
     targets : dict of str to GridOrbit
         Each satellite target's orbit, by name
     earth_rotations : ndarray
-        The Earth's orientation on the grid, from `earth_rotations`, shape
-        (n, 3, 3)
+        The Earth's orientation on the grid, shape (n, 3, 3)
     """
 
     def __init__(
@@ -230,7 +194,7 @@ class RunGrid:
         Returns
         -------
         sun : CartesianRepresentation
-            Relative to the centre of the Earth, in GCRS, in km
+            From the Earth's centre, in GCRS, in km
         """
         offsets = self._grid.inside(times)
         if offsets is None:
@@ -249,7 +213,7 @@ class RunGrid:
         Returns
         -------
         rotations : ndarray
-            Matrices that turn ITRS vectors into GCRS, shape (n, 3, 3)
+            From ITRS into GCRS, shape (n, 3, 3)
         """
         offsets = self._grid.inside(times)
         if offsets is None:

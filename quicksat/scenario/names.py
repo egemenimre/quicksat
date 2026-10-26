@@ -4,12 +4,8 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The names that the scenario file and the run share: the body axes, the
-directions, the events, the illumination, the two groups and their modes, and
-the names that no attitude and no mode may take.
-
-They sit apart from the scenario's loaders, so that a module can use them
-without importing the loaders.
+The names that the scenario file and the run share, apart from the loaders, so a module
+can use them without importing those.
 
 """
 
@@ -19,8 +15,8 @@ Axis = Literal["+x", "-x", "+y", "-y", "+z", "-z"]
 """A body axis, with its sign: the axis the attitude points along."""
 
 Illumination = Literal["sunlit", "penumbra", "umbra", "eclipse"]
-"""The constraints an activity may have. The illumination has three states,
-`sunlit`, `penumbra` and `umbra`, and `eclipse` means either of the last two."""
+"""The constraints an activity may have: `sunlit`, `penumbra`, `umbra`, and `eclipse`
+for either of the last two."""
 
 EventName = Literal[
     "eclipse entry",
@@ -64,23 +60,21 @@ VELOCITY = "velocity"
 """Direction: the inertial velocity, in GCRS."""
 
 GROUND_VELOCITY = "ground velocity"
-"""Direction: the velocity relative to the turning Earth, for yaw steering in
-imaging."""
+"""Direction: the velocity relative to the turning Earth, for yaw steering."""
 
 DIRECTIONS = (NADIR, SUN, ORBIT_NORMAL, VELOCITY, GROUND_VELOCITY)
-"""The built-in directions. A target named in `gnd_targets` or `sat_targets` is a
-direction too."""
+"""The built-in directions. Each target is a direction too."""
 
 FALLBACKS = (ORBIT_NORMAL, NADIR, VELOCITY)
 """The default fallback is the first of these that the attitude does not use."""
 
 SLEW = "slew"
-"""The value of the attitude row and the platform's mode row while the body turns
-or settles. No attitude and no mode may take this name."""
+"""The attitude's and the platform's mode while the body turns or settles. No attitude
+or mode may take it."""
 
 UNPLANNED = "unplanned"
-"""The value of the attitude and mode rows after the last activity, in a run of
-the list once or of an empty list. No attitude and no mode may take this name."""
+"""The attitude and the modes after the last activity, in a run of the list once. No
+attitude or mode may take it."""
 
 PAYLOAD = "payload"
 
@@ -89,22 +83,21 @@ PLATFORM = "platform"
 
 
 GROUPS = (PAYLOAD, PLATFORM)
-"""The two parts of the spacecraft that each have a mode at a time: the payload,
-and the platform that carries it."""
+"""The two parts of the spacecraft that each have a mode: the payload, and the platform
+that carries it."""
 
 MODE_KEYS = {group: f"{group}_mode" for group in GROUPS}
 """The keys of an activity's modes in the file, by group."""
 
 IN_SLEW = "payload_mode_in_slew"
-"""The key of an activity's modes that says which mode the payload is in during
-the slew into the activity."""
+"""The key of the payload's mode in the slew into an activity."""
 
 PREV_ACTIVITY = "prev_activity"
 
 
 THIS_ACTIVITY = "this_activity"
-"""The two values of `payload_mode_in_slew`. The payload keeps the mode of the
-activity before the slew, or takes this activity's mode for the whole slew."""
+"""The two values of `payload_mode_in_slew`: the mode of the activity before the slew,
+or this activity's."""
 
 RESERVED_NAMES = {
     SLEW: "the run gives the attitude and the platform's mode that name while the "

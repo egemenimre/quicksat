@@ -6,38 +6,12 @@
 """
 The viewer of a scenario run: the page, and the data it shows.
 
-The viewer is a web page that opens from a file on disk, with no server. A
-folder holds the page, `scenario_viewer.html`, and its data, `scenario.js`.
-`write_scenario_viewer` writes both.
-
-The page is the same for every run. Its source is the template
-`quicksat/scenario/templates/viewer.html`. `viewer_page` puts the libraries
-from `templates/vendor/` and the coastlines from `quicksat/data/` into it, so
-the page needs nothing else to open. It puts in `templates/viewer_logic.js` too:
-the page's checks on its data and its values between grid steps, which the
-tests in `tests/scenario/js/` run in Node.
-
-A page opened from disk cannot read a JSON file next to it, but it can load a
-script. So the data is JSON with one assignment in front:
-
-    window.quicksat = window.quicksat || {};
-    window.quicksat.scenario = {...};
-
-The JSON holds plain numbers. Units are in the field names: `_s`, `_km`,
-`_km_s` and `_deg`. Every vector is in GCRS. Every time is in seconds from
-`start`, rounded to 1 ms. A quaternion is `[x, y, z, w]`, scalar last.
-
-The spacecraft's 3D model travels inside `scenario.js` too, as the bytes of its
-GLB file in base64. The page cannot read the `.glb` file from disk, for the
-same reason it cannot read JSON.
-
-The file holds no time stamps. So the same inputs and the same code write the
-same bytes, and the `id` stays the same.
-
-The Activity Designer shows the same page, with no 3D views, and the editor's
-server sends it with the data inside: see `designer_page`. Its data leaves out
-what only the 3D views and the Attitude page show, and the run may stop before
-its end. The attitude and both mode tracks then give the rest as `unplanned`.
+The page opens from disk with no server, so `scenario.js` sets the data as a script,
+model included. The JSON holds plain numbers, with units in the field names, vectors in
+GCRS and times in s from `start`. It holds no time stamps, so the same inputs give the
+same `id`. The Activity Designer shows the same page, sent by the editor's server: see
+`designer_page`. `docs/scenario/scenario_ref.ipynb`, under "The viewer's data", explains
+the fields.
 
 """
 
@@ -74,15 +48,14 @@ FORMAT = "quicksat-scenario"
 """The `format` field of the scenario data."""
 
 VERSION = 7
-"""The `version` field of the scenario data. The page reads only this version.
-It stays the same during development, even when a field changes. It goes up
-only once older files must still be read."""
+"""The `version` field of the scenario data. The page reads only this one, and it stays
+the same in development."""
 
 DATA_FILE = "scenario.js"
-"""Name of the file the scenario data is written to."""
+"""The name of the scenario data's file."""
 
 PAGE_FILE = "scenario_viewer.html"
-"""Name the viewer page takes in a scenario's folder."""
+"""The viewer page's name in a scenario's folder."""
 
 _PACKAGE = files("quicksat")
 _TEMPLATES = _PACKAGE / "scenario" / "templates"
@@ -98,47 +71,18 @@ _PAGE_PARTS = {
     "@coastlines@": (_PACKAGE / "data" / "coastlines.json", None),
     "/*@logic@*/": (_TEMPLATES / "viewer_logic.js", None),
 }
-"""Each placeholder in the template, the file that replaces it, and the licence
-notice that goes in front of a library. `viewer_logic.js` is the page's own
-logic that needs no browser, kept apart so that Node can test it."""
+"""Each placeholder in the template, the file that replaces it, and a library's licence
+notice."""
 
 
 def _flat(values: np.ndarray, decimals: int) -> list[float]:
-    """
-    Values rounded, as one flat list: `x0, y0, z0, x1, ...` for vectors.
-
-    Parameters
-    ----------
-    values : ndarray
-        Values of any shape
-    decimals : int
-        The number of decimals to keep
-
-    Returns
-    -------
-    flat : list of float
-        The rounded values, row by row
-    """
+    """Values rounded, as one flat list, row by row."""
     # adding zero turns -0.0 into 0.0
     return (np.round(values, decimals) + 0.0).ravel().tolist()
 
 
 def _with_gaps(values: np.ndarray, decimals: int) -> list[float | None]:
-    """
-    Values rounded, as a list, with None where a value is NaN.
-
-    Parameters
-    ----------
-    values : ndarray
-        Values, shape (n,)
-    decimals : int
-        The number of decimals to keep
-
-    Returns
-    -------
-    values : list of float or None
-        The rounded values. JSON has no NaN, and the page draws None as a gap.
-    """
+    """Values rounded, as a list, with None for NaN, which the page draws as a gap."""
     rounded = np.round(values, decimals)
     return [None if np.isnan(value) else float(value) for value in rounded]
 
@@ -151,32 +95,9 @@ def _attitude_data(
     designer: bool = False,
 ) -> dict:
     """
-    The body's attitude, as the page's Attitude tab shows it.
-
-    Parameters
-    ----------
-    run : ScenarioRun
-        The run
-    rotations : ndarray
-        The body's orientation at each time of the grid, from `body_rotations`
-    position, velocity : ndarray
-        The states in GCRS, in km and km/s, shape (n, 3)
-    designer : bool, optional
-        Whether the data is for the Activity Designer, which has no Attitude
-        page. The angles and the files are then None. The rates stay, for the
-        turn rate bands on the timeline.
-
-    Returns
-    -------
-    attitude : dict
-        `roll_deg`, `pitch_deg` and `yaw_deg` against LVLH, from
-        `roll_pitch_yaw`. `rate_deg_s`, the turn rate over the step from each
-        time, None at the last. `acceleration_deg_s2`, at each time between two
-        steps, None at both ends. Both are None across an attitude change with no
-        slew, which is instant. `max_rate_deg_s` and `max_acceleration_deg_s2`,
-        the `slew` block's limits, or None. `files`, the text of each file of
-        `attitude_file_texts`, by its name. The rates are None where the body has
-        no orientation, after the last activity.
+    The Attitude tab's data: the roll, pitch and yaw against LVLH, the turn rates and
+    their limits, and the attitude files. The designer's leaves out the angles and the
+    files.
     """
     n = len(rotations)
     seconds = np.asarray((run.times - run.times[0]).to_value(u.s))
@@ -222,22 +143,7 @@ def _attitude_data(
 
 
 def _slew_ends(run: ScenarioRun) -> list[tuple[SlewWindow, TimeArray]]:
-    """
-    Each slew, and when it ends on the attitude track.
-
-    A slew ends as its activity starts, unless the next slew starts first. That
-    happens when the next activity is shorter than its slew.
-
-    Parameters
-    ----------
-    run : ScenarioRun
-        The run
-
-    Returns
-    -------
-    slews : list of tuple
-        Each slew, and the end of its piece of the track
-    """
+    """Each slew, and the end of its piece of the attitude track."""
     ends = []
     for index, window in enumerate(run.slews):
         end: TimeArray = window.end
@@ -249,18 +155,8 @@ def _slew_ends(run: ScenarioRun) -> list[tuple[SlewWindow, TimeArray]]:
 
 def _attitudes_between_slews(run: ScenarioRun) -> P.IntervalDict:
     """
-    The attitude of the activity under way, outside the slews.
-
-    Parameters
-    ----------
-    run : ScenarioRun
-        The run
-
-    Returns
-    -------
-    row : portion.IntervalDict
-        Time intervals mapped to attitude names, with the slews cut out, and
-        `unplanned` after the last activity
+    The attitude of the activity under way, with the slews cut out, and `unplanned`
+    after the last.
     """
     row = P.IntervalDict()
     for occurrence in run.occurrences:
@@ -273,25 +169,8 @@ def _attitudes_between_slews(run: ScenarioRun) -> P.IntervalDict:
 
 def _model_data(run: ScenarioRun, designer: bool = False) -> dict | None:
     """
-    The spacecraft's 3D model, as the page reads it.
-
-    Parameters
-    ----------
-    run : ScenarioRun
-        The run, whose scenario may name a model
-    designer : bool, optional
-        Whether the data is for the Activity Designer, which draws no model. The
-        file's bytes and the angles are then None. The rest stays, since the
-        page finds when a part points at a target from its park modes.
-
-    Returns
-    -------
-    model : dict or None
-        `name`, the file name, `glb_base64`, the file's bytes in base64, and
-        `articulations`. Each articulation has its `name`, its `part`, the index
-        of that `node` in the glTF, its `axis`, the `park_modes` it parks in, and
-        `angle_deg`, its angle at each time of the grid. None without a model,
-        for which the page draws a 1 m cube.
+    The 3D model as the page reads it, with its articulations, or None for a 1 m cube.
+    The designer's leaves out the bytes and the angles.
     """
     model = run.scenario.spacecraft_model
     if model is None:
@@ -321,20 +200,7 @@ def _model_data(run: ScenarioRun, designer: bool = False) -> dict | None:
 
 
 def _orbit_file(run: ScenarioRun) -> dict:
-    """
-    The file the orbit was read from, so that the viewer holds every input.
-
-    Parameters
-    ----------
-    run : ScenarioRun
-        The run
-
-    Returns
-    -------
-    file : dict
-        `orbit_file` and `orbit_text`, the file's name and text. Both are None
-        for a sun-synchronous orbit, which has no file.
-    """
+    """The orbit file's name and text, or None for a sun-synchronous orbit."""
     source = run.scenario.orbit
     path = source.tle_file or source.omm_file or source.trajectory_file
     if path is None:
@@ -350,30 +216,8 @@ def _element_set_label(tle: Tle) -> str:
 
 def _targets_data(run: ScenarioRun, seconds: Callable[[TimeArray], float]) -> dict:
     """
-    The targets, as the page draws them: where each is, when it is in view, and
-    where a satellite's orbit came from.
-
-    Parameters
-    ----------
-    run : ScenarioRun
-        The run
-    seconds : callable
-        Turns a time into seconds from the start of the run, to 1 ms
-
-    Returns
-    -------
-    data : dict
-        `targets`: each target, the ground ones first, with its `name`, its
-        `kind`, `ground` or `satellite`, and its `passes`, each with `start_s`,
-        `end_s` and `closest_km`, the closest range on the grid, or None. A
-        ground target has its `latitude_deg`, `longitude_deg`, `altitude_km` and
-        `min_elevation_deg`. A satellite has its `min_clearance_km`, its
-        positions on the grid in GCRS, `r_km`, to 0.1 km, and its `source`: the
-        `file`, then the `element_set` and its `epoch`, or the `start` and the
-        `end` of the trajectory. `target_files`: the `name` and the `text` of
-        each satellite target's file, once each. `pointing`: the targets that
-        each attitude names, under `attitudes`, and that each articulation
-        points at, under `articulations`.
+    The targets as the page draws them, the targets' files, and which attitudes and
+    articulations point at each.
     """
     scenario = run.scenario
     table = run.passes
@@ -450,20 +294,8 @@ def _targets_data(run: ScenarioRun, seconds: Callable[[TimeArray], float]) -> di
 
 def _orbit_data(run: ScenarioRun) -> dict:
     """
-    Where the run's orbit comes from, as the page shows it.
-
-    Parameters
-    ----------
-    run : ScenarioRun
-        The run
-
-    Returns
-    -------
-    orbit : dict
-        `name`, and `period_s`, the period a duration in orbits counts. Then
-        either `tle`, the two TLE lines, or `trajectory`: the file, its format
-        and frame, its samples and segments, who wrote it, its span in UTC and
-        how its period was found. The other is None.
+    Where the run's orbit comes from: its name and period, and its TLE lines or its
+    trajectory's details.
     """
     orbit = run.orbit
     data = {
@@ -492,24 +324,7 @@ def _orbit_data(run: ScenarioRun) -> dict:
 def _tracks_data(
     run: ScenarioRun, seconds: Callable[[TimeArray], float]
 ) -> dict[str, list[dict]]:
-    """
-    The rows of the Gantt chart, as the page draws them.
-
-    Parameters
-    ----------
-    run : ScenarioRun
-        The run
-    seconds : callable
-        Turns a time into seconds from the start of the run, to 1 ms
-
-    Returns
-    -------
-    tracks : dict
-        The pieces of `illumination`, `attitude`, `payload_mode` and
-        `platform_mode`, each with its `value`, `start_s` and `end_s`, in time
-        order. A slew is an attitude piece of its own, with the `target` it
-        turns to.
-    """
+    """The Gantt chart's pieces, in time order, with each slew a piece of its own."""
     tracks = {}
     for name, row in (
         ("illumination", run.illumination),
@@ -546,22 +361,7 @@ def _tracks_data(
 def _occurrences_data(
     run: ScenarioRun, seconds: Callable[[TimeArray], float]
 ) -> list[dict]:
-    """
-    The activity table, as the page shows it.
-
-    Parameters
-    ----------
-    run : ScenarioRun
-        The run
-    seconds : callable
-        Turns a time into seconds from the start of the run, to 1 ms
-
-    Returns
-    -------
-    occurrences : list of dict
-        One row for each occurrence of an activity, with its activity's `mode`
-        as its `payload` and `platform`.
-    """
+    """The activity table, one row per occurrence."""
     occurrences = []
     for occurrence in run.occurrences:
         activity = occurrence.activity
@@ -599,26 +399,8 @@ def _grid_data(
     designer: bool,
 ) -> dict:
     """
-    The values at each time step of the run.
-
-    Parameters
-    ----------
-    run : ScenarioRun
-        The run
-    position, velocity : ndarray
-        The states in GCRS, in km and km/s, shape (n, 3)
-    rotations : ndarray
-        The body's orientation at each time of the grid, from `body_rotations`
-    designer : bool
-        Whether the data is for the Activity Designer, which leaves out
-        `q_body`
-
-    Returns
-    -------
-    grid : dict
-        The times, the position, the velocity, the direction to the Sun, the
-        latitude, longitude and beta angle, the light, and the body's and the
-        Earth's quaternions.
+    The values at each time step: the times, the states, the sun, the ground track, the
+    beta angle, the light and the quaternions.
     """
     towards_sun = run.sun.xyz.to_value(u.km).T - position
     towards_sun /= np.linalg.norm(towards_sun, axis=1, keepdims=True)
@@ -645,27 +427,19 @@ def scenario_data(run: ScenarioRun, designer: bool = False) -> dict:
     run : ScenarioRun
         The run
     designer : bool, optional
-        Whether the data is for the Activity Designer. It then leaves out what
-        only the 3D views and the Attitude page show: `grid.q_body`, the roll,
-        pitch and yaw, the attitude files, and the model's bytes and angles are
-        None. The run may then stop before its end, which a normal run may not.
+        Whether the data is for the Activity Designer, without what only the 3D views
+        and the Attitude tab show
 
     Returns
     -------
     data : dict
-        The fields of `scenario.js`. `grid`, `tracks`, `occurrences`, `model`,
-        `targets`, `target_files` and `pointing` come from the helpers of this
-        module. `warnings` holds every warning of the run, and `orbit_warnings`
-        those on the orbits alone. `id` is the first 16 hex digits of the
-        SHA-256 of the JSON text of the other fields. The designer's data has
-        `designer` too: `repeat`, whether the list repeats, and `pass_s`, the
-        length of one pass of the list, from `ScenarioRun.pass_length`, or None.
+        The fields of `scenario.js`, with `id`, the first 16 hex digits of the other
+        fields' SHA-256
 
     Raises
     ------
     ValueError
-        If part of a run for the normal viewer is unplanned: see
-        `ScenarioRun.unplanned`
+        If part of a run for the normal viewer is `unplanned`
     """
     if not designer:
         run.check_planned("the viewer's data")
@@ -713,7 +487,7 @@ def scenario_data(run: ScenarioRun, designer: bool = False) -> dict:
 
 
 def _most(values: list[Quantity], unit: UnitBase, decimals: int) -> float | None:
-    """The largest of some quantities in a unit, rounded, or None if there are none."""
+    """The largest of some quantities in a unit, rounded, or None."""
     if not values:
         return None
     return round(max(float(value.to(unit).value) for value in values), decimals)
@@ -721,8 +495,8 @@ def _most(values: list[Quantity], unit: UnitBase, decimals: int) -> float | None
 
 def activity_rows(run: ScenarioRun) -> list[dict]:
     """
-    The results of each activity of the list, as the Activity Designer shows
-    them beside it.
+    The results of each activity of the list, as the Activity Designer shows them beside
+    it.
 
     Parameters
     ----------
@@ -732,17 +506,8 @@ def activity_rows(run: ScenarioRun) -> list[dict]:
     Returns
     -------
     rows : list of dict
-        One for each activity of the list, in its order, each with:
-
-        - `number`, from 1, and `count`, how many times it occurs in the run.
-        - `statuses`: how many of its occurrences have each status other than
-          `ok`, by the status.
-        - `outside_s`, the most time outside its constraint of any occurrence,
-          or None without a constraint. `slew_s`, the longest slew into it, or
-          None without one.
-        - `excesses`, how many occurrences turn faster than the slew block
-          allows, with `peak_rate_deg_s` and `peak_acceleration_deg_s2`, the
-          highest of them. Both are None without an excess.
+        One per activity, in order: its count, its statuses, its longest time outside,
+        its longest slew, and its rate excesses
     """
     rows = []
     for number in range(1, len(run.scenario.activities) + 1):
@@ -776,21 +541,18 @@ def activity_rows(run: ScenarioRun) -> list[dict]:
 
 def write_data_js(path: Path, key: str, data: dict, source: str) -> Path:
     """
-    Write one of the viewer's data files, which the page loads as a script.
-
-    The script sets `window.quicksat[key]` to the data. The folder is made if it
-    does not exist, and an older file is replaced.
+    Write one of the viewer's data files, which sets `window.quicksat[key]`.
 
     Parameters
     ----------
     path : Path
-        The file to write, such as `scenario.js`
+        The file, such as `scenario.js`, its folder made if missing
     key : str
-        The data's key on the page, such as `scenario`
+        The data's key, such as `scenario`
     data : dict
-        The data, which JSON must hold with no NaN
+        The data, with no NaN
     source : str
-        The input file the data comes from, for the file's first line
+        The input file, for the first line
 
     Returns
     -------
@@ -816,18 +578,14 @@ def write_scenario_js(
     """
     Write the viewer's data for a run, as `scenario.js` in a folder.
 
-    The folder is made if it does not exist, and an older `scenario.js` in it is
-    replaced.
-
     Parameters
     ----------
     run : ScenarioRun
         The run
-    folder : str | Path
-        The folder to write to
+    folder : str or Path
+        The folder, made if missing
     data : dict, optional
-        The run's data, from `scenario_data`, if it is already worked out. Power
-        needs its `id` before writing `power.js`.
+        The run's data, if already worked out
 
     Returns
     -------
@@ -841,23 +599,18 @@ def write_scenario_js(
 
 def viewer_page() -> str:
     """
-    The viewer page, built from its template with everything it needs inside.
-
-    Each placeholder in `templates/viewer.html` is replaced by a file: the
-    three.js and uPlot libraries, uPlot's stylesheet, the coastlines, and the
-    page's logic from `templates/viewer_logic.js`. Each library's MIT licence
-    notice goes in front of it, as a comment.
+    The viewer page, built from its template with its libraries, the coastlines and its
+    logic inside.
 
     Returns
     -------
     page : str
-        The page, as HTML text
+        The page, as HTML
 
     Raises
     ------
     ValueError
-        If a placeholder is missing from the template or appears twice, or if a
-        file holds text that would end its script tag early
+        If a placeholder is missing or doubled, or a file would end its script tag early
     """
     page = (_TEMPLATES / "viewer.html").read_text(encoding="utf-8")
     for placeholder, (source, notice) in _PAGE_PARTS.items():
@@ -874,11 +627,7 @@ def viewer_page() -> str:
 
 def designer_page(data: dict) -> str:
     """
-    The viewer page with a run's data inside it, as the Activity Designer shows
-    it.
-
-    The editor's server sends this page, so it loads no `scenario.js` and no
-    `power.js`. The data goes in a script of the page instead.
+    The viewer page with a run's data inside, as the Activity Designer shows it.
 
     Parameters
     ----------
@@ -888,7 +637,7 @@ def designer_page(data: dict) -> str:
     Returns
     -------
     page : str
-        The page, as HTML text
+        The page, as HTML
 
     Raises
     ------
@@ -910,24 +659,19 @@ def designer_page(data: dict) -> str:
 
 def write_scenario_viewer(run: ScenarioRun, folder: str | Path) -> Path:  # noqa: V103
     """
-    Write the viewer for a run: the page and `scenario.js`, in a folder.
-
-    The page is built from its template with `viewer_page`, as
-    `scenario_viewer.html`. So a change to the template reaches the folder on the
-    next run. The folder is made if it does not exist, and older files are
-    replaced.
+    Write the viewer for a run, the page and `scenario.js`, in a folder.
 
     Parameters
     ----------
     run : ScenarioRun
         The run
-    folder : str | Path
-        The folder to write to
+    folder : str or Path
+        The folder, made if missing
 
     Returns
     -------
     page : Path
-        The page written. Double-click it to open the viewer.
+        The page, which opens in a browser
     """
     write_scenario_js(run, folder)
     page = Path(folder) / PAGE_FILE

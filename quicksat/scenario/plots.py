@@ -6,11 +6,8 @@
 """
 Plots of a scenario run: the Gantt chart and the ground track maps.
 
-Each plot draws from a `ScenarioRun` and returns the matplotlib axes, without
-showing the figure. So a notebook can add to a plot before showing it. Apply
-`quicksat.utils.plot_helpers.STYLE` first for quicksat's look.
-
-Each value keeps one colour in every plot, from `scenario_colours`.
+Each returns the matplotlib axes without showing the figure, and each value keeps one
+colour from `scenario_colours`.
 
 """
 
@@ -51,21 +48,15 @@ TITLE_FILLS = ("#e9e8e2", "#d6d5cd")
 """The two greys that the activity row's bars take in turn."""
 
 LETTER_WIDTH = 0.009
-"""Width of one letter of a bar label, as a fraction of the run's span. A label
-goes in only where its bar is wide enough to hold it."""
+"""The width of one letter of a bar label, as a share of the run's span."""
 
 
 def scenario_colours(scenario: Scenario) -> dict[str, str]:
     """
     The colour of every value the plots show.
 
-    The illumination, `sunlit`, `penumbra` and `umbra`, has its own colours, one
-    hue from light to dark, from `ILLUMINATION_COLOURS`. The attitudes, then the
-    modes in the order the activities name them, the payload's before the
-    platform's, take the palette's colours in a fixed order. A name that both
-    groups use takes one colour. A `slew` between attitudes is always grey, so it takes no colour
-    from the palette either. So is the `unplanned` time after the last activity,
-    in a darker grey.
+    The illumination has its own slate hues. The attitudes, then the modes, take the
+    palette in order. `slew` and `unplanned` are greys.
 
     Parameters
     ----------
@@ -75,7 +66,7 @@ def scenario_colours(scenario: Scenario) -> dict[str, str]:
     Returns
     -------
     colours : dict
-        The colour of each value, as a hex string
+        Each value's colour, as a hex string
     """
     attitudes = list(scenario.attitudes)
     modes = [
@@ -94,23 +85,8 @@ def scenario_colours(scenario: Scenario) -> dict[str, str]:
 
 def _label(value: str, width: float, span: float, size: float) -> str | None:
     """
-    A bar's label, shortened with an ellipsis if need be, or None if it won't fit.
-
-    Parameters
-    ----------
-    value : str
-        The full label
-    width : float
-        The bar's width, in the units of `span`
-    span : float
-        The width of the whole chart
-    size : float
-        The font size, in points. `LETTER_WIDTH` is for 8 pt.
-
-    Returns
-    -------
-    label : str or None
-        The label, whole or shortened to at least `MIN_LETTERS` letters, or None
+    A bar's label, whole, shortened with an ellipsis to at least `MIN_LETTERS`, or None
+    if it does not fit.
     """
     letters = int((width / span - 0.01) / (LETTER_WIDTH * size / 8))
     if letters >= len(value):
@@ -128,13 +104,7 @@ def _draw_row(
     span: float,
     shorten: bool = False,
 ) -> None:
-    """
-    One row of the Gantt chart: its bars, and their labels where they fit.
-
-    With `shorten`, a label too long for its bar is cut short with an ellipsis,
-    in a smaller font, as long as `MIN_LETTERS` letters fit. Otherwise a label
-    that does not fit is left out.
-    """
+    """One row of the Gantt chart: its bars, and their labels where they fit."""
     ax.broken_barh(
         [(left, right - left) for left, right, _ in pieces],
         (y - BAR_HEIGHT / 2, BAR_HEIGHT),
@@ -161,24 +131,20 @@ def gantt_chart(  # noqa: V103
     run: ScenarioRun, colours: dict[str, str] | None = None, ax: Axes | None = None
 ) -> Axes:
     """
-    The illumination, the attitude, the activity, and the payload's and the
-    platform's modes against time, as a Gantt chart.
+    The illumination, the attitude, the activity, and the modes against time, as a Gantt
+    chart.
 
-    Each row is drawn in one call to `broken_barh`. A bar carries its value as a
-    label when it is wide enough. The activity row names each occurrence by its
-    title, in two greys in turn, and has no legend. A title too long for its bar
-    is shortened with an ellipsis. A red box marks every occurrence that spends
-    time outside its constraint. A dashed red line marks every occurrence with a
-    negative duration, at its start, since it takes no time.
+    A red box marks an occurrence outside its constraint, and a dashed red line one with
+    a negative duration.
 
     Parameters
     ----------
     run : ScenarioRun
-        The run to draw
+        The run
     colours : dict, optional
-        The colour of each value. `scenario_colours` by default.
+        Each value's colour, by default `scenario_colours`
     ax : Axes, optional
-        The axes to draw on. A new figure by default.
+        The axes to draw on, by default a new figure
 
     Returns
     -------
@@ -308,25 +274,21 @@ def ground_track_map(  # noqa: V103
     ax: Axes | None = None,
 ) -> Axes:
     """
-    The ground track over the coastlines, coloured by the value of a Gantt row.
-
-    The track is drawn as segments between the grid steps. Each segment takes
-    the value at its first step. The segment that jumps where the longitude wraps
-    at +-180 degrees is left out. A circle marks the start of the run, and a
-    square its end.
+    The ground track over the coastlines, coloured by a Gantt row, from a circle at the
+    start to a square at the end.
 
     Parameters
     ----------
     run : ScenarioRun
-        The run to draw
+        The run
     row : portion.IntervalDict
-        The Gantt row that colours the track, such as `run.mode["payload"]`
+        The row that colours the track, such as `run.mode["payload"]`
     title : str
-        Title of the map
+        The map's title
     colours : dict, optional
-        The colour of each value. `scenario_colours` by default.
+        Each value's colour, by default `scenario_colours`
     ax : Axes, optional
-        The axes to draw on. A new figure by default.
+        The axes to draw on, by default a new figure
 
     Returns
     -------

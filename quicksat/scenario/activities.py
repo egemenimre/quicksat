@@ -4,11 +4,7 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The activities of a scenario, and their modes.
-
-Each activity has a title, a trigger that ends it, an attitude, the payload's
-and the platform's modes, and an optional constraint on the illumination. It is
-written as a list, or as a mapping with the same fields named.
+The activities of a scenario, and their modes, written as a list or a mapping.
 
 """
 
@@ -37,27 +33,20 @@ from quicksat.utils.parser_helpers import (
 
 class Modes(BaseModel):
     """
-    An activity's two modes, the payload's and the platform's, and the payload's
-    mode in the slew into the activity.
+    An activity's two modes, the payload's and the platform's, and the payload's mode in
+    the slew into it.
 
-    Each mode names a column of its consumption file. The two are independent:
-    an imaging activity sets the payload to its imaging mode, and the platform
-    to the mode that supports it, such as one with the solar wings parked.
+    Each mode names a column of its consumption file.
 
     Parameters
     ----------
     payload : str
-        The payload's mode. Any name that is not empty, except `slew` and
-        `unplanned`.
+        The payload's mode, any name but `slew` and `unplanned`
     platform : str
-        The platform's mode. Any name that is not empty, except `slew`, which
-        the run gives the platform while the body turns, and `unplanned`.
+        The platform's mode, any name but `slew` and `unplanned`
     payload_mode_in_slew : str, optional
-        The payload's mode in the slew into this activity. `prev_activity`,
-        the default, keeps the mode of the activity before, so that a data
-        transfer can carry on through the turn. `this_activity` takes this
-        activity's mode for the whole slew, so that the payload can prepare for
-        it. Without a slew into the activity, it has no effect.
+        `prev_activity`, the default, to keep the mode of the activity before, or
+        `this_activity`
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -73,26 +62,23 @@ class Modes(BaseModel):
 
 def parse_modes(value) -> Modes:
     """
-    Read an activity's modes, written `{payload_mode: imaging, platform_mode:
-    imaging}`, with an optional `payload_mode_in_slew`.
+    Read an activity's modes, such as `{payload_mode: imaging, platform_mode: imaging}`,
+    with an optional `payload_mode_in_slew`.
 
     Parameters
     ----------
     value : dict
-        The payload's mode and the platform's, and optionally the payload's
-        mode in the slew into the activity
+        The two modes, and the optional mode in the slew
 
     Returns
     -------
     modes : Modes
-        The two modes, stripped, and the payload's mode in the slew
+        The modes, stripped
 
     Raises
     ------
     ValueError
-        If it is not a mapping of the two and the optional key, a mode is not
-        text, is empty or takes a reserved name, or `payload_mode_in_slew` is
-        neither of its two values
+        If a mode is missing, empty or reserved, or a key or value is unknown
     """
     example = "{payload_mode: imaging, platform_mode: imaging}"
     if not isinstance(value, dict):
@@ -128,27 +114,22 @@ def parse_modes(value) -> Modes:
 
 class Activity(Commented):
     """
-    One activity: what it is for, what ends it, how the satellite points, and
-    what it does.
+    One activity: what it is for, what ends it, how the satellite points, and its modes.
 
     Parameters
     ----------
     title : str
-        A short name for what the activity is for, such as `imaging 45 deg lat`.
-        Any text that is not empty. The tables, the Gantt chart, the warnings and
-        the viewer name the activity by it.
+        A short name, such as `imaging 45 deg lat`, which the tables and the viewer use
     trigger : Trigger
         What ends the activity
     attitude : str
-        The name of the attitude, which must be one of the scenario's attitudes
+        One of the scenario's attitudes
     mode : Modes
-        The payload's mode and the platform's, and the payload's mode in the
-        slew into the activity
+        The modes
     constraint : str, optional
-        The illumination the activity expects: `sunlit`, `penumbra`, `umbra`,
-        or `eclipse` for either of the last two
+        The illumination expected: `sunlit`, `penumbra`, `umbra` or `eclipse`
     comments : str, optional
-        Your own notes on this block. quicksat keeps them and does not read them.
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
@@ -162,18 +143,17 @@ class Activity(Commented):
     @classmethod
     def from_fields(cls, fields) -> "Activity":
         """
-        Build an activity from its list of strings, as written in the file.
+        Build an activity from its list form.
 
         Parameters
         ----------
         fields : list
-            The title, the trigger, the attitude, the modes as a mapping and an
-            optional constraint
+            The title, the trigger, the attitude, the modes and an optional constraint
 
         Returns
         -------
         activity : Activity
-            The checked activity
+            The activity
 
         Raises
         ------
@@ -203,18 +183,18 @@ class Activity(Commented):
     @classmethod
     def from_mapping(cls, fields: dict) -> "Activity":
         """
-        Build an activity from its map form, which names each field.
+        Build an activity from its mapping form.
 
         Parameters
         ----------
         fields : dict
-            `title`, `end` (the trigger), `attitude` and `mode`, and optionally
-            `constraint` and `comments`
+            `title`, `end`, `attitude` and `mode`, and optionally `constraint` and
+            `comments`
 
         Returns
         -------
         activity : Activity
-            The checked activity
+            The activity
 
         Raises
         ------

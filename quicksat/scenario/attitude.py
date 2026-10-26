@@ -4,36 +4,13 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The body's orientation over a run, from the attitudes the activities name.
+The body's orientation over a run, from the attitudes the activities name, and the slews
+between them.
 
-Each attitude fixes one body axis on a direction, and turns a second body axis
-as close as it can get to another direction. The directions, at each step:
-
-- `nadir`: toward the centre of the Earth.
-- `sun`: toward the sun, as seen from the satellite.
-- `orbit normal`: the position crossed with the velocity.
-- `velocity`: the inertial velocity.
-- `ground velocity`: the velocity relative to the turning Earth, v - w x r. An
-  attitude with `+z` at nadir and `+x` toward it steers in yaw, so that a
-  detector's lines stay across the motion of the ground below.
-- a ground point from the scenario's `gnd_targets`: from the satellite to the point,
-  which turns with the Earth.
-- another satellite from the scenario's `sat_targets`: from the satellite to the
-  other, whose orbit the run reads from its file.
-
-Where the second direction is parallel to the first, it no longer fixes the turn
-about the first axis. The attitude's fallback direction then takes its place. An
-example is sun pointing with the orbit normal as its second direction, at a beta
-of +-90 degrees. After that, the attitude's offset turns, if any, are applied in
-order, each about a body axis.
-
-Without a `slew` block in the scenario, attitude changes are instant. With one,
-the body turns into each new attitude before the activity that needs it starts,
-so the turn takes the end of the activity before. The turn starts from the
-orientation the body has then, and ends in the new attitude as it is when the
-turn ends. Its time follows from the angle between the two, with the scenario's
-rate and acceleration. The body then settles in the new attitude until the
-activity starts.
+The directions are `nadir`, `sun`, `orbit normal`, `velocity`, `ground velocity` for yaw
+steering, and the targets. A slew turns the body into each new attitude before its
+activity starts, from the orientation it has then. `docs/scenario/scenario_ref.ipynb`,
+under "The attitudes" and "Slews", explains them.
 
 """
 
@@ -87,8 +64,8 @@ _MAX_ROUNDS = 10
 """Most rounds of the search for a turn time."""
 
 _PATH_STEP = Q_(10, "s")
-"""The longest time between the samples of a slew's target, which fix which way it
-turns. The way stays right while the target turns less than 18 deg/s."""
+"""The longest time between the samples of a slew's target, which fix the way it turns
+while the target turns under 18 deg/s."""
 
 TargetOrbits = Mapping[str, Tle | Trajectory | GridOrbit]
 """The orbits of the satellite targets, by name, as the run reads them."""
@@ -110,28 +87,25 @@ def directions(
     scenario : Scenario
         The scenario, for its targets
     names : set of str
-        The directions to work out: built-in ones and target names
+        The directions to work out
     state : SkyCoord
         The satellite's state in GCRS, with its velocities
     sun : CartesianRepresentation
-        Positions of the sun relative to the centre of the Earth, in GCRS
+        The sun's positions from the Earth's centre, in GCRS
     sat_orbits : mapping of str to Tle, Trajectory or GridOrbit, optional
-        The satellite targets' orbits, by name. Needed only for a satellite
-        target.
+        The satellite targets' orbits, by name, for a satellite target
     earth_at : callable, optional
-        Gives the Earth's orientation for a `Time` array, as `earth_rotations`
-        does, which is the default. Needed only for a direction that turns with
-        the Earth.
+        The Earth's orientation for a `Time` array, by default `earth_rotations`
 
     Returns
     -------
     directions : dict of str to ndarray
-        Each direction asked for, shape (n, 3), not of unit length
+        Each direction, shape (n, 3), of any length
 
     Raises
     ------
     ValueError
-        If a satellite target is asked for without its orbit
+        If a satellite target's orbit is missing
     """
     cartesian = cast(CartesianRepresentation, state.cartesian)
     velocity = cast(CartesianDifferential, cartesian.differentials["s"])
@@ -179,31 +153,28 @@ def attitude_rotations(
     Parameters
     ----------
     scenario : Scenario
-        The scenario, which defines the attitude and any targets
+        The scenario, which defines the attitude and the targets
     name : str
         The attitude's name
     state : SkyCoord
         The satellite's state in GCRS, with its velocities
     sun : CartesianRepresentation
-        Positions of the sun relative to the centre of the Earth, in GCRS
+        The sun's positions from the Earth's centre, in GCRS
     sat_orbits : mapping of str to Tle, Trajectory or GridOrbit, optional
-        The satellite targets' orbits, by name. Needed only if the attitude
-        uses a satellite target.
+        The satellite targets' orbits, by name
     earth_at : callable, optional
-        Gives the Earth's orientation for a `Time` array, as `earth_rotations`
-        does, which is the default
+        The Earth's orientation for a `Time` array, by default `earth_rotations`
 
     Returns
     -------
     rotations : ndarray
-        Matrices that turn body vectors into GCRS, shape (n, 3, 3). Column i is
-        body axis i, seen in GCRS.
+        From body axes into GCRS, shape (n, 3, 3)
 
     Raises
     ------
     ValueError
-        If the scenario defines no such attitude, or if its fallback direction is
-        parallel to its pointed one where its constraint's is too
+        If there is no such attitude, or its fallback is parallel where its constraint
+        is too
     """
     attitude = scenario.attitudes.get(name)
     if attitude is None:
@@ -237,34 +208,29 @@ def attitude_rotations(
 @dataclass(frozen=True)
 class SlewWindow:
     """
-    One slew: the body turns into the attitude of the next activity.
+    One slew: the body turns into the attitude of the next activity, then settles.
 
     Parameters
     ----------
     start : Time
         When the turn starts, on the 1 ms grid
     turned : Time
-        When the turn ends and the body starts to settle
+        When the turn ends and settling starts
     end : Time
-        When settling ends. It is when the activity starts, unless the run
-        started too late for the slew to fit before it.
+        When settling ends, at the activity's start unless the run started too late
     angle : Quantity
-        The angle the body turns through
+        The angle turned through
     target : str
         The attitude turned into
     start_rotation : ndarray
         The orientation when the turn starts, shape (3, 3)
     path_seconds : ndarray
-        The times of the samples in `path`, in seconds from `start`, rising from
-        0 to the turn's end, shape (n,)
+        The times of `path`, in s from `start`, shape (n,)
     path : ndarray
-        The target attitude's quaternions at those times, `[x, y, z, w]`, shape
-        (n, 4). Their signs change smoothly, and the last one is nearer the
-        start, so the body ends with the shorter turn. They fix which way the
-        body turns while the target moves.
+        The target's quaternions at those times, with smooth signs, which fix the way of
+        the turn, shape (n, 4)
     early : bool
-        True if the turn starts before the activity before it does, because that
-        activity is shorter than the slew
+        Whether the turn starts before the activity before it
     into : int
         The place of the occurrence slewed into, in the run's list
     """
@@ -282,42 +248,17 @@ class SlewWindow:
 
     @property
     def interval(self) -> P.Interval:
-        """
-        The slew as a time interval, closed at its start and open at its end.
-
-        Returns
-        -------
-        interval : portion.Interval
-        """
+        """The slew as a closed-open interval."""
         return P.closedopen(self.start, self.end)
 
     @property
     def duration(self) -> Quantity:
-        """
-        The time from the start of the turn to the end of settling.
-
-        Returns
-        -------
-        duration : Quantity
-            In seconds
-        """
+        """The time from the turn's start to the end of settling, in s."""
         return Q_(round(float((self.end - self.start).to_value(u.s)), 3), "s")
 
 
 def _attitude_row(occurrences: "list[Occurrence]") -> P.IntervalDict:
-    """
-    The attitude of the activity under way at each time, without slews.
-
-    Parameters
-    ----------
-    occurrences : list of Occurrence
-        The occurrences of the run
-
-    Returns
-    -------
-    row : portion.IntervalDict
-        Time intervals mapped to attitude names
-    """
+    """The attitude of the activity under way at each time, without slews."""
     row = P.IntervalDict()
     for occurrence in occurrences:
         row[occurrence.interval] = occurrence.activity.attitude
@@ -335,40 +276,30 @@ def plan_slews(
     earth_at: Callable[[TimeArray], np.ndarray] = earth_rotations,
 ) -> list[SlewWindow]:
     """
-    Plan the slew into each activity whose attitude differs from the one before.
+    Plan the slew into each activity whose attitude differs from the one before, in time
+    order.
 
-    The slews are planned in time order. Each one ends, with its settling, as its
-    activity starts. Its turn starts from the orientation the body has then,
-    which can be partway through an earlier slew. The turn time depends on the
-    angle, and the angle on when the turn starts, so the two are found in turn
-    until the time settles to 1 ms. An activity with a negative duration takes no
-    time, so it is passed over.
-
-    A slew can need to start before an earlier slew does, when the activities
-    between them are shorter than the turn. It then turns from the orientation
-    the body had before the earlier slew, which the body never makes. So the
-    earlier slew is dropped, and its activity has no slew of its own. This keeps
-    the list in time order.
+    Each ends, with its settling, as its activity starts. A slew that must start before
+    an earlier one drops the earlier one.
 
     Parameters
     ----------
     occurrences : list of Occurrence
-        The occurrences of the run, in time order
+        The occurrences, in time order
     slew : Slew
         The rate, acceleration and settling time
     scenario : Scenario
         The scenario, which defines the attitudes
     interval : portion.Interval
-        The run. No slew starts before it.
+        The run, before which no slew starts
     state_at : callable
-        Gives the satellite's state in GCRS, with velocities, for a `Time` array
+        The satellite's state in GCRS, with velocities, for a `Time` array
     sun_at : callable
-        Gives the position of the sun in GCRS for a `Time` array
+        The sun's position in GCRS for a `Time` array
     sat_orbits : mapping of str to Tle, Trajectory or GridOrbit, optional
-        The satellite targets' orbits, by name, for an attitude that uses one
+        The satellite targets' orbits, by name
     earth_at : callable, optional
-        Gives the Earth's orientation for a `Time` array, as `earth_rotations`
-        does, which is the default
+        The Earth's orientation for a `Time` array, by default `earth_rotations`
 
     Returns
     -------
@@ -452,40 +383,8 @@ def _turn(
     rotation_of: Callable[[str, TimeArray], np.ndarray],
 ) -> tuple[TimeArray, TimeArray, Quantity]:
     """
-    When a turn into an attitude starts and ends, and the angle it turns through.
-
-    The turn ends a settling time before `end`, in the target attitude as it is
-    then. Its time depends on the angle, and the angle on the orientation the
-    body has when the turn starts. A few rounds of guess and correct find the
-    start when that orientation holds still. When it does not, because the turn
-    must start partway through an earlier slew, the start is found by bisection.
-    An earlier start always leaves more time than the turn needs there, so the
-    bisection cannot fail.
-
-    A turn that cannot fit starts with the run, and ends late. Otherwise it ends
-    as planned.
-
-    Parameters
-    ----------
-    target : str
-        The attitude turned into
-    end : Time
-        When the activity that needs the attitude starts
-    slew : Slew
-        The rate, acceleration and settling time
-    run_start : Time
-        The start of the run
-    orientation_at : callable
-        The body's orientation at a time, with the slews planned so far
-    rotation_of : callable
-        The orientation an attitude gives at a time
-
-    Returns
-    -------
-    start, turned : Time
-        When the turn starts and ends, on the 1 ms grid
-    angle : Quantity
-        The angle turned through, in degrees
+    When a turn into an attitude starts and ends, on the 1 ms grid, and its angle in
+    degrees, by rounds of guess and correct, or by bisection in an earlier slew.
     """
     turned = round_time(end - slew.settling_time)
     goal = rotation_of(target, turned)
@@ -533,30 +432,8 @@ def _target_path(
     rotations_of: Callable[[TimeArray], np.ndarray],
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    The target attitude's quaternions through a turn, with smooth signs.
-
-    During a turn, the body goes the way from where it started to the target as
-    it is at each time. A quaternion and its negative give the same rotation,
-    and the sign sets the way. Matched to the start alone, the sign flips where
-    the target moves past a half turn from the start, and the body would jump.
-    So the target is sampled through the turn, each sign is kept close to the
-    one before, and the last sign is the one nearer the start.
-
-    Parameters
-    ----------
-    start, turned : Time
-        When the turn starts and ends
-    start_rotation : ndarray
-        The orientation when the turn starts, shape (3, 3)
-    rotations_of : callable
-        Gives the target attitude's orientations for a `Time` array
-
-    Returns
-    -------
-    seconds : ndarray
-        The times of the samples, in seconds from `start`, shape (n,)
-    path : ndarray
-        The quaternions `[x, y, z, w]` at those times, shape (n, 4)
+    The target attitude's quaternions sampled through a turn, with signs kept smooth and
+    the last nearer the start, so the body never jumps.
     """
     length = float((turned - start).to_value(u.s))
     count = int(np.ceil(length / _PATH_STEP.to(u.s).value)) + 1
@@ -571,27 +448,8 @@ def _slew_rotations(
     window: SlewWindow, slew: Slew, times: TimeArray, targets: np.ndarray
 ) -> np.ndarray:
     """
-    The orientation during a slew, at times inside it.
-
-    During the turn, the body is partway from its starting orientation to the
-    target attitude as it is at each time. The profile sets how far. While it
-    settles, it holds the target attitude.
-
-    Parameters
-    ----------
-    window : SlewWindow
-        The slew
-    slew : Slew
-        The rate, acceleration and settling time
-    times : Time
-        Times inside the slew, one or an array
-    targets : ndarray
-        The target attitude's orientation at those times, shape (n, 3, 3)
-
-    Returns
-    -------
-    rotations : ndarray
-        Shape (n, 3, 3)
+    The orientation at times inside a slew: partway to the moving target in the turn,
+    then the target while settling.
     """
     seconds = np.atleast_1d((times - window.start).to_value(u.s))
     fractions = slew.turned(window.angle, Q_(seconds, "s"))
@@ -603,19 +461,8 @@ def _slew_rotations(
 
 def _activity_attitudes(run: "ScenarioRun") -> np.ndarray:
     """
-    The attitude of the activity under way at each time of the run's grid,
-    with no regard to the slews.
-
-    Parameters
-    ----------
-    run : ScenarioRun
-        The run
-
-    Returns
-    -------
-    names : ndarray
-        The attitude names, as an array of objects. A time after the last
-        activity gets `unplanned`.
+    The attitude of the activity under way at each time of the grid, without slews, and
+    `unplanned` after the last.
     """
     row = _attitude_row(run.occurrences)
     unplanned = run.unplanned
@@ -638,9 +485,7 @@ def body_rotations(run: "ScenarioRun") -> np.ndarray:
     Returns
     -------
     rotations : ndarray
-        Matrices that turn body vectors into GCRS, shape (n, 3, 3), one for each
-        time of the grid. Column i is body axis i, seen in GCRS. NaN at a time
-        that no activity plans: see `ScenarioRun.unplanned`.
+        From body axes into GCRS, shape (n, 3, 3), NaN where the run is `unplanned`
     """
     attitude = _activity_attitudes(run)
 
@@ -675,8 +520,8 @@ def body_rotations(run: "ScenarioRun") -> np.ndarray:
 
 def attitude_names(run: "ScenarioRun") -> np.ndarray:
     """
-    The attitude in effect at each time of the run's grid, as `body_rotations`
-    turns the body.
+    The attitude in effect at each time of the run's grid, as `body_rotations` turns the
+    body.
 
     Parameters
     ----------
@@ -686,8 +531,7 @@ def attitude_names(run: "ScenarioRun") -> np.ndarray:
     Returns
     -------
     names : ndarray
-        The attitude names, as an array of objects. A time inside a slew gets
-        `slew`, and a time after the last activity `unplanned`.
+        The attitudes, as objects, with `slew` and `unplanned`
     """
     names = _activity_attitudes(run)
     for window in run.slews:

@@ -4,8 +4,8 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The run's tables: the occurrences of the activities, their summary, the rows of
-the Gantt chart, and the targets' passes.
+The run's tables: the occurrences, their summary, the Gantt chart's rows, and the
+targets' passes.
 
 """
 
@@ -48,21 +48,14 @@ def activity_table(occurrences: list[Occurrence]) -> pd.DataFrame:
     Parameters
     ----------
     occurrences : list of Occurrence
-        The occurrences from `resolve_activities`
+        The occurrences
 
     Returns
     -------
     table : pd.DataFrame
-        The columns are the repeat and activity numbers, the title, the start and
-        end as UTC text, the duration in minutes, the trigger as written, the attitude, the
-        time of the slew into it in seconds, the payload's mode and the
-        platform's, the constraint, the time
-        outside the constraint in seconds, and the status. The duration is
-        negative for an activity that ends before it starts. The status is `ok`,
-        or any of `negative duration`, `outside constraint`, `event never came`,
-        `cut at end` and `slew starts early`, joined by commas. The slew is NaN
-        where there is none. The constraint is blank and the time outside is NaN
-        where an activity has no constraint.
+        The numbers, the title, the start and end in UTC, the duration in min, the
+        trigger, the attitude, the slew in s, the modes, the constraint, the time
+        outside it in s, and the statuses
     """
     rows = []
     for occurrence in occurrences:
@@ -99,19 +92,17 @@ def activity_table(occurrences: list[Occurrence]) -> pd.DataFrame:
 
 def activity_summary(occurrences: list[Occurrence]) -> str:
     """
-    One line that sums up the occurrences and how many have a problem.
+    One line that sums up the occurrences and how many have each problem.
 
     Parameters
     ----------
     occurrences : list of Occurrence
-        The occurrences from `resolve_activities`
+        The occurrences
 
     Returns
     -------
     summary : str
-        The number of occurrences and repeats, and how many have a negative
-        duration, are outside their constraint, saw an event that never came, were
-        cut at the end, or have a slew that starts early
+        The line
     """
     repeats = occurrences[-1].repeat if occurrences else 0
     early = sum(occurrence.negative_duration for occurrence in occurrences)
@@ -135,39 +126,29 @@ def gantt_rows(
     slews: list[SlewWindow],
 ) -> tuple[P.IntervalDict, P.IntervalDict, dict[str, P.IntervalDict]]:
     """
-    Build the rows of the Gantt chart: the illumination, the attitude, and the
-    payload's and the platform's modes.
+    The rows of the Gantt chart, each with one value at any time, and touching pieces
+    merged.
 
-    Each row has exactly one value at any time of the run. Touching pieces with
-    the same value merge into one. The attitude and mode rows give the time after
-    the last occurrence, if any, as `unplanned`.
+    A slew takes the attitude's row and the platform's mode, and the payload's too with
+    `payload_mode_in_slew: this_activity`.
 
     Parameters
     ----------
     illumination : dict
         The intervals of `sunlit`, `penumbra` and `umbra`
     occurrences : list of Occurrence
-        The occurrences from `resolve_activities`
+        The occurrences
     slews : list of SlewWindow
-        The slews, from `plan_slews`. They take the attitude row's and the
-        platform's mode row's time over from the activities. They take the
-        payload's too, where the activity after the slew asks for its own mode
-        through `payload_mode_in_slew`.
+        The slews, from `plan_slews`
 
     Returns
     -------
     illumination : portion.IntervalDict
         `sunlit`, `penumbra` and `umbra`
     attitude : portion.IntervalDict
-        The attitude names, `slew` while the body turns or settles, and
-        `unplanned` after the last occurrence
+        The attitudes, `slew`, and `unplanned` after the last occurrence
     mode : dict of str to portion.IntervalDict
-        The mode names of the payload and of the platform, by the group's name,
-        and `unplanned` after the last occurrence. The platform's mode is `slew`
-        while the body turns or settles. By default, the payload's carries on
-        through the turn, which takes the end of the activity before it. With
-        `payload_mode_in_slew: this_activity`, the payload takes the mode of the
-        activity after the slew for the whole turn.
+        The payload's and the platform's modes, with `slew` and `unplanned`
     """
     row = P.IntervalDict()
     for state in ("sunlit", "penumbra", "umbra"):
@@ -201,10 +182,7 @@ def _km(state: SkyCoord) -> np.ndarray:
 
 def pass_table(run: "ScenarioRun") -> pd.DataFrame:
     """
-    Tabulate every target's passes: each time it is in view, one row each.
-
-    A pass under way when the run starts begins at the start, and one under way
-    when it ends ends at the end. So it is cut, as the run is.
+    Tabulate every target's passes, one row each, cut at the run's ends.
 
     Parameters
     ----------
@@ -214,11 +192,8 @@ def pass_table(run: "ScenarioRun") -> pd.DataFrame:
     Returns
     -------
     table : pd.DataFrame
-        The columns are the target, the start and the end of the pass as UTC
-        text, its duration in minutes, and, for a satellite target, the closest
-        range in km at the grid's times in the pass. The range is NaN for a
-        ground target, and for a pass between two grid times. The rows are in
-        the order of their starts.
+        The target, the start and end in UTC, the duration in min, and a satellite's
+        closest range in km on the grid, in the order of the starts
     """
     columns = ["target", "from [UTC]", "to [UTC]", "duration [min]", "closest [km]"]
     here = _km(run.state)

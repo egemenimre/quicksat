@@ -8,11 +8,8 @@ Run the scenario in a folder and write its viewer, from the command line:
 
     python -m quicksat.scenario sample/scenario/data sample/scenario/output
 
-The folder holds `scenario.yaml`, with the 3D model and any orbit file it names,
-as for the editor. The command prints the run's summary, each occurrence with a
-problem and the warnings. Then it writes the viewer and prints where the page
-went. A file that quicksat cannot read stops it with the error, and nothing is
-written.
+It prints the run's summary, the occurrences with a problem and the warnings. A file
+that quicksat cannot read stops it, and nothing is written.
 
 """
 
@@ -27,12 +24,12 @@ from quicksat.scenario.viewer import write_scenario_viewer
 
 def main(argv: list[str] | None = None) -> None:
     """
-    Run the scenario, print its results, write the viewer and print where it went.
+    Run the scenario, print its results, and write the viewer.
 
     Parameters
     ----------
     argv : list of str, optional
-        The arguments, the command line's by default
+        The arguments, by default the command line's
     """
     parser = argparse.ArgumentParser(
         prog="python -m quicksat.scenario",

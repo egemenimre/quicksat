@@ -6,10 +6,8 @@
 """
 The scenario's orbit and its targets, as the scenario file gives them.
 
-The orbit comes from a TLE file, an OMM file, a sun-synchronous orbit or a
-trajectory file. A ground target is a point on the Earth. A satellite target is
-another satellite, whose orbit comes from a file. A relative path is taken from
-the folder of the scenario file.
+A relative path is taken from the scenario file's folder.
+`docs/scenario/scenario_ref.ipynb`, under "The orbit", explains each source.
 
 """
 
@@ -48,12 +46,11 @@ class GroundTarget(Commented):
     longitude : Quantity
         Longitude, east
     altitude : Quantity, optional
-        Height above the WGS84 ellipsoid, 0 m by default
+        Height above the WGS84 ellipsoid, by default 0 m
     min_elevation : Quantity, optional
-        The elevation above the point's horizon at which the satellite rises
-        and sets, for the `rise` and `set` triggers. 5 deg by default.
+        The elevation at which the satellite rises and sets, by default 5 deg
     comments : str, optional
-        Your own notes on this block. quicksat keeps them and does not read them.
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -84,27 +81,8 @@ _CLOCK_TIME = re.compile(r"(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?")
 
 def _parse_node_time(value, name: str) -> Quantity:
     """
-    The local time of a node: of the ascending node, or of the descending node.
-
-    Parameters
-    ----------
-    value : str or Quantity
-        A time of day in quotes, such as `"10:30"` or `"10:30:15"`, or a time
-        with a unit, such as `10.5 h`
-    name : str
-        The field's name, `ltan` or `ltdn`, for the error messages
-
-    Returns
-    -------
-    time : Quantity
-        The local time of the node, in hours, from 0 to 24
-
-    Raises
-    ------
-    ValueError
-        If the value is a bare number, is not a time of day, or is not from 0 to
-        24 h. YAML reads an unquoted `10:30` as the number 630, a base-60 number.
-        So the error for a bare number says to add quotes.
+    A node's local time, from 0 to 24 h, from a quoted `"10:30"` or a quantity. A bare
+    number gets an error that asks for quotes, since YAML reads `10:30` as 630.
     """
     example = 'such as "10:30" in quotes, or 10.5 h'
     if isinstance(value, bool) or isinstance(value, (int, float)):
@@ -143,25 +121,20 @@ def _parse_node_time(value, name: str) -> Quantity:
 
 class SsoOrbit(Commented):
     """
-    A circular sun-synchronous orbit. quicksat builds its TLE.
-
-    The TLE has its epoch at the start of the run. Its inclination makes SGP4's
-    node rate match the mean sun. See `quicksat.orbit.sso`.
+    A circular sun-synchronous orbit, whose TLE quicksat builds with its epoch at the
+    run's start. See `quicksat.orbit.sso`.
 
     Parameters
     ----------
     altitude : Quantity
-        Distance from the centre of the Earth minus `R_EARTH`, averaged over one
-        orbit. Positive.
+        The distance from the Earth's centre less `R_EARTH`, averaged over one orbit,
+        positive
     ltan : Quantity, optional
-        Local mean time of the ascending node, from 0 to 24 h. Written `"10:30"`,
-        in quotes, or `10.5 h`.
+        The ascending node's local mean time, `"10:30"` in quotes or `10.5 h`
     ltdn : Quantity, optional
-        Local mean time of the descending node, in place of `ltan`. The two are
-        12 h apart, so `ltdn: "10:30"` is the same orbit as `ltan: "22:30"`.
-        Exactly one of `ltan` and `ltdn` is given.
+        The descending node's, in place of `ltan`, 12 h apart
     comments : str, optional
-        Your own notes on this block. quicksat keeps them and does not read them.
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -199,25 +172,13 @@ class SsoOrbit(Commented):
 
 
 ORBIT_FILES = ("tle_file", "omm_file", "trajectory_file")
-"""The keys that name an orbit's file, in the `orbit` block and for a satellite
-target."""
+"""The keys that name an orbit's file, for the orbit and the satellite targets."""
 
 
 def _from_the_scenario_folder(path: Path | None, info: ValidationInfo) -> Path | None:
     """
-    A file's path, with a relative one taken from the folder of the scenario file.
-
-    Parameters
-    ----------
-    path : Path or None
-        The path as the file gives it
-    info : ValidationInfo
-        Pydantic's validation info, whose context may hold `base_dir`
-
-    Returns
-    -------
-    path : Path or None
-        The path, from the scenario file's folder if it was relative
+    A file's path, with a relative one taken from the scenario file's folder, the
+    context's `base_dir`.
     """
     base_dir = (info.context or {}).get("base_dir")
     if path is not None and base_dir is not None and not path.is_absolute():
@@ -227,29 +188,21 @@ def _from_the_scenario_folder(path: Path | None, info: ValidationInfo) -> Path |
 
 class Orbit(Commented):
     """
-    Where the orbit comes from: a TLE file, an OMM file, a sun-synchronous
-    orbit, or a trajectory file.
-
-    Exactly one of the four is given.
+    Where the orbit comes from: exactly one of a TLE file, an OMM file, a
+    sun-synchronous orbit, or a trajectory file.
 
     Parameters
     ----------
     tle_file : Path, optional
-        A file with exactly one TLE. A relative path is taken from the folder of
-        the scenario file.
+        A file with exactly one TLE
     omm_file : Path, optional
-        A file with exactly one OMM element set, in KVN, XML, JSON or CSV. See
-        `quicksat.orbit.omm`. A relative path is taken from the folder of the
-        scenario file.
+        A file with exactly one OMM element set, in KVN, XML, JSON or CSV
     sso : SsoOrbit, optional
-        A sun-synchronous orbit. quicksat builds its TLE, with the epoch at the
-        start of the run.
+        A sun-synchronous orbit
     trajectory_file : Path, optional
-        A file of positions and velocities, which the run interpolates: ECSV,
-        or a CCSDS OEM in KVN. See `quicksat.orbit.trajectory_files`. A
-        relative path is taken from the folder of the scenario file.
+        A file of states, in ECSV or a CCSDS OEM in KVN
     comments : str, optional
-        Your own notes on this block. quicksat keeps them and does not read them.
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -262,10 +215,7 @@ class Orbit(Commented):
     @model_validator(mode="before")
     @classmethod
     def _exactly_one_key(cls, data):
-        """
-        Checks that the orbit has exactly one source key, and that it is
-        accepted. The comments are not a source.
-        """
+        """Checks the orbit has exactly one known source key."""
         accepted = sorted(name for name in cls.model_fields if name != COMMENTS)
         if not isinstance(data, dict):
             raise ValueError(f"orbit must have exactly one key, one of: {accepted}")
@@ -281,47 +231,36 @@ class Orbit(Commented):
     def _relative_to_the_file(
         cls, path: Path | None, info: ValidationInfo
     ) -> Path | None:
-        """Takes a relative path from the folder of the scenario file."""
+        """Takes a relative path from the scenario file's folder."""
         return _from_the_scenario_folder(path, info)
 
 
 DEFAULT_CLEARANCE = Q_(100, "km")
-"""A satellite target's `min_clearance`, when it gives none: the line of sight
-then keeps above the atmosphere."""
+"""A satellite target's `min_clearance` when it gives none, which keeps the line of
+sight above the atmosphere."""
 
 
 class SatelliteTarget(Commented):
     """
-    Another satellite, which an attitude or an articulation can point at.
-
-    Its orbit comes from a file, read as the `orbit` block reads one: a TLE file,
-    an OMM file, or a trajectory file. Exactly one of the three is given.
+    Another satellite, which an attitude or an articulation can point at, with its orbit
+    from exactly one file.
 
     Parameters
     ----------
     tle_file : Path, optional
-        A file with one TLE or several, as CelesTrak gives a group of
-        satellites. A relative path is taken from the folder of the scenario
-        file.
+        A file with one TLE or several
     omm_file : Path, optional
-        A file with one OMM element set or several, in KVN, XML, JSON or CSV. A
-        relative path is taken from the folder of the scenario file.
+        A file with one OMM element set or several
     trajectory_file : Path, optional
-        A file of positions and velocities, ECSV or CCSDS OEM, which the run
-        interpolates. It must cover the whole run. A relative path is taken from
-        the folder of the scenario file.
+        A file of states, in ECSV or a CCSDS OEM, covering the whole run
     satellite : str or int, optional
-        Written `object` in the file. The element set to take from a TLE or OMM
-        file that holds several: a satellite's name, or its catalogue number.
-        Without it, the target's own name is looked for. It must match a file
-        of one element set too. Not for a trajectory file, which holds one
-        satellite.
+        Written `object`: the satellite's name or catalogue number, in a file of element
+        sets. By default, the target's name
     min_clearance : Quantity, optional
-        The least height of the line between the two satellites above the WGS84
-        ellipsoid, for the target to be in view. It sets the `rise` and `set`
-        triggers. 0 or more, and `DEFAULT_CLEARANCE` by default.
+        The line of sight's least height above the ellipsoid, by default
+        `DEFAULT_CLEARANCE`
     comments : str, optional
-        Your own notes on this block. quicksat keeps them and does not read them.
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -335,7 +274,7 @@ class SatelliteTarget(Commented):
     @model_validator(mode="before")
     @classmethod
     def _one_file(cls, data):
-        """Checks that the target names exactly one orbit file, and no `sso`."""
+        """Checks the target names exactly one orbit file, and no `sso`."""
         if not isinstance(data, dict):
             raise ValueError(
                 f"a satellite target needs exactly one of: {list(ORBIT_FILES)}"
@@ -359,7 +298,7 @@ class SatelliteTarget(Commented):
     def _relative_to_the_file(
         cls, path: Path | None, info: ValidationInfo
     ) -> Path | None:
-        """Takes a relative path from the folder of the scenario file."""
+        """Takes a relative path from the scenario file's folder."""
         return _from_the_scenario_folder(path, info)
 
     @model_validator(mode="after")
@@ -378,12 +317,5 @@ class SatelliteTarget(Commented):
 
     @property
     def file(self) -> Path:
-        """
-        The file the orbit comes from, whichever kind it is.
-
-        Returns
-        -------
-        path : Path
-            The TLE, OMM or trajectory file
-        """
+        """The TLE, OMM or trajectory file the orbit comes from."""
         return cast(Path, self.tle_file or self.omm_file or self.trajectory_file)

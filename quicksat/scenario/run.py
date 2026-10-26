@@ -4,33 +4,13 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Running a scenario: the orbit, the eclipses and the repeated activities.
+Running a scenario: the orbit, the shadow, the targets' passes and the chain of
+activities, in one `ScenarioRun`.
 
-`run_scenario` evaluates the orbit on the time grid and finds the umbra and the
-penumbra, and the latitude crossings that the triggers name. It finds when each
-target is in view: a ground target above its minimum elevation, and a satellite
-target with the line between the two above its minimum clearance. It repeats the
-list of activities until the duration ends and checks each constraint. All the
-results come back in one `ScenarioRun`.
-
-The run's parts have modules of their own: the orbits and their checks in
-`sources`, the events and the chain of activities in `events`, and the tables in
-`tables`.
-
-The Activity Designer can run the list once, with no repeats, or run an empty
-list. The time after the last activity is then unplanned. The attitude and both
-mode rows give it as `unplanned`, and the body has no orientation then. Whatever
-needs the whole run planned refuses such a run.
-
-Each orbit is checked against the run before it is used. An element set more
-than 7 days from either end of the run gets a warning, and so does a trajectory
-whose ends come close to the run's. A trajectory that does not cover the run
-stops it. The warnings come back in `ScenarioRun.warnings`, as well as through
-Python's warnings.
-
-Every time interval is closed at its start and open at its end. Every bound goes
-through `round_time`. So the pieces of a run fit together with no gaps and no
-overlaps.
+The orbits and their checks are in `sources`, the events and the chain in `events`, and
+the tables in `tables`. A run of the list once, as in the Activity Designer, leaves the
+time after its last activity `unplanned`. `docs/scenario/scenario_ref.ipynb`, under
+"What a run gives", explains the results.
 
 """
 
@@ -92,29 +72,25 @@ from quicksat.utils.intervals import (
 
 def run_length(scenario: Scenario, orbit: OrbitSource) -> Quantity:
     """
-    The length of the run, as a time.
-
-    A duration given as a time is used as it is. A number of orbits is multiplied
-    by the orbit's period: the nodal period of an element set, or the period
-    measured from a trajectory.
+    The run's length: a time as given, or a number of orbits times the orbit's period.
 
     Parameters
     ----------
     scenario : Scenario
         The scenario
     orbit : Tle or Trajectory
-        Where the scenario's states come from
+        The scenario's orbit
 
     Returns
     -------
     length : Quantity
-        The length of the run, in seconds
+        In s
 
     Raises
     ------
     ValueError
-        If the step is not shorter than the run, or if the duration is in orbits
-        and the trajectory is too short to measure one
+        If the step is not shorter than the run, or a trajectory is too short to measure
+        an orbit
     """
     duration = scenario.duration
     if isinstance(duration, OrbitCount):
@@ -142,60 +118,49 @@ class ScenarioRun:
     Parameters
     ----------
     scenario : Scenario
-        The scenario that was run
+        The scenario run
     orbit : Tle or Trajectory
-        Where the states come from: the element set, or the trajectory
+        The element set or the trajectory
     interval : portion.Interval
-        The run, closed at its start and open at its end
+        The run, closed-open
     times : Time
-        The time grid, from the start to the end of the run, in steps. The end is
-        included, and the last step is shorter if the step does not divide the
-        duration. Every time is on the 1 ms grid.
+        The grid, end included, on the 1 ms grid
     state : SkyCoord
         The satellite's position and velocity on the grid, in GCRS
     sun : CartesianRepresentation
-        The position of the sun relative to the centre of the Earth on the grid,
-        in GCRS, in km
+        The sun's position from the Earth's centre on the grid, in GCRS, in km
     latitude, longitude : Quantity
-        Geodetic latitude and longitude of the ground track on the grid, with the
-        longitude from -180 to 180 degrees
+        The ground track's geodetic latitude and longitude, from -180 to 180 degrees
     beta : Quantity
         The beta angle on the grid
     eclipses, sunlit : portion.Interval
-        The eclipse and sunlit intervals, which together fill the run
+        The eclipses and the sunlit time, which together fill the run
     umbra, penumbra : portion.Interval
-        The two parts of the eclipses: where the Earth hides the whole sun, and
-        where it hides part of it
+        The eclipses' two parts
     light : ndarray
-        The fraction of the sun's disk seen at each time of the grid, from 0 to 1
+        The share of the sun's disk seen on the grid, from 0 to 1
     illumination, attitude : portion.IntervalDict
         Two rows of the Gantt chart
     mode : dict of str to portion.IntervalDict
-        The other two: the payload's and the platform's modes, by the group's
-        name, `payload` or `platform`
+        The payload's and the platform's mode rows
     occurrences : list of Occurrence
-        Every activity as it happens in the run. In a run of the list once, or
-        of an empty list, they stop before the end: see `unplanned`.
+        Every activity as it happens
     slews : list of SlewWindow
-        Every slew between attitudes, in time order. Empty when the scenario has
-        no slews.
+        Every slew, in time order
     grid : RunGrid
-        The orbits, the sun and the Earth's orientation between the grid's
-        steps, and the Earth's orientation on the grid
+        The splines between the grid's steps, and the Earth's orientation
     activity_table : pd.DataFrame
-        The occurrences as a table, from `activity_table`
+        The occurrences, from `activity_table`
     sat_orbits : dict of str to Tle or Trajectory
-        Where each satellite target's states come from, by its name
+        The satellite targets' orbits, by name
     sat_states : dict of str to SkyCoord
-        Each satellite target's positions on the grid, in GCRS, by its name
+        The satellite targets' positions on the grid, by name
     in_view : dict of str to portion.Interval
-        When each target is in view, ground and satellite, by its name
+        When each target is in view, by name
     orbit_warnings : list of str
-        The warnings on the orbits, from `orbit_warnings`: an element set far
-        from the run, or a trajectory whose ends come close to it
+        The warnings on the orbits
     repeat : bool
-        Whether the list of activities repeats until the run ends, as it does
-        but in the Activity Designer
+        Whether the list repeats until the run ends
     """
 
     scenario: Scenario
@@ -228,28 +193,16 @@ class ScenarioRun:
     @property
     def unplanned(self) -> P.Interval:
         """
-        The time after the last activity, which no activity plans.
-
-        Returns
-        -------
-        unplanned : portion.Interval
-            Empty, unless the list ran once and ended before the run, or was
-            empty
+        The time after the last activity, which no activity plans, empty unless the list
+        ran once.
         """
         return self.attitude.find(UNPLANNED)
 
     @property
     def pass_length(self) -> Quantity | None:
         """
-        How long one pass of the list of activities takes, from the start of the
-        run, as the Activity Designer shows it.
-
-        Returns
-        -------
-        length : Quantity or None
-            In seconds. Zero for an empty list. None when the pass does not end
-            in the run: the run ends first, or an event that never comes stops
-            the list.
+        How long one pass of the list takes, in s, as the Activity Designer shows it, or
+        None when it does not end in the run.
         """
         count = len(self.scenario.activities)
         if count == 0:
@@ -270,12 +223,12 @@ class ScenarioRun:
         Parameters
         ----------
         what : str
-            What would be worked out, such as "the report", for the message
+            What would be worked out, for the message
 
         Raises
         ------
         ValueError
-            If part of the run is unplanned: see `unplanned`
+            If part of the run is `unplanned`
         """
         if self.unplanned.empty:
             return
@@ -289,78 +242,37 @@ class ScenarioRun:
     @cached_property
     def articulations(self) -> dict[str, Quantity]:
         """
-        The angle of each articulation of the 3D model, from `articulation_angles`.
-
-        Worked out on first use, because it needs the body's orientation at each
-        step.
-
-        Returns
-        -------
-        angles : dict of str to Quantity
-            For each articulation, by its name, its angles in degrees on the grid.
-            Empty without articulations.
+        Each articulation's angles on the grid, in degrees, by name, worked out on first
+        use.
         """
         return articulation_angles(self)
 
     @cached_property
     def rate_excesses(self) -> list[RateExcess]:
         """
-        The occurrences whose attitude turns faster than the slews may.
-
-        Worked out on first use, from `rate_excesses`. Empty without a `slew`
-        block.
-
-        Returns
-        -------
-        excesses : list of RateExcess
-            In time order
+        The occurrences whose attitude turns faster than the slews may, in time order,
+        worked out on first use.
         """
         return rate_excesses(self)
 
     @property
     def warnings(self) -> list[str]:
         """
-        Warnings for the reader, as text: the orbits' warnings, then each
-        occurrence past the slew capacity.
-
-        Returns
-        -------
-        warnings : list of str
-            One sentence or two for each, the occurrences in time order. Empty
-            when there are none.
+        The warnings for the reader: the orbits', then each occurrence past the slew
+        capacity.
         """
         return self.orbit_warnings + [excess.text for excess in self.rate_excesses]
 
     @cached_property
     def passes(self) -> pd.DataFrame:
-        """
-        Every target's passes, from `pass_table`.
-
-        Returns
-        -------
-        table : pd.DataFrame
-            One row for each time a target is in view
-        """
+        """Every target's passes, one row each, from `pass_table`."""
         return pass_table(self)
 
     @cached_property
     def sun_body(self) -> np.ndarray:
         """
-        The direction from the satellite to the sun in body axes, on the grid.
-
-        Worked out on first use, from `body_rotations`, so that it follows the
-        body through its slews.
-
-        Returns
-        -------
-        suns : ndarray
-            Unit vectors, shape (n, 3), one for each time of the grid
-
-        Raises
-        ------
-        ValueError
-            If part of the run is unplanned, so that the body has no orientation
-            then
+        The unit direction to the sun in body axes on the grid, worked out on first use.
+        A planned run only.
         """
         self.check_planned("the direction to the sun in body axes")
         cartesian = self.state.cartesian
@@ -372,22 +284,8 @@ class ScenarioRun:
     @cached_property
     def nadir_body(self) -> np.ndarray:
         """
-        The direction from the satellite to the centre of the Earth in body axes,
-        on the grid.
-
-        Worked out on first use, from `body_rotations`, as `sun_body` is. It is
-        the `nadir` of the attitudes.
-
-        Returns
-        -------
-        nadirs : ndarray
-            Unit vectors, shape (n, 3), one for each time of the grid
-
-        Raises
-        ------
-        ValueError
-            If part of the run is unplanned, so that the body has no orientation
-            then
+        The unit direction to the Earth's centre in body axes on the grid, worked out on
+        first use. A planned run only.
         """
         self.check_planned("the direction to nadir in body axes")
         cartesian = self.state.cartesian
@@ -400,17 +298,8 @@ class ScenarioRun:
     @cached_property
     def sun_zenith_cosine(self) -> np.ndarray:
         """
-        The cosine of the sun's zenith angle at the point below the satellite, on
-        the grid.
-
-        It is worked out from the geocentric directions of the satellite and the
-        sun, on a spherical Earth, by `sun_zenith_cosine`. It is 1 at the
-        subsolar point, 0 at the terminator, and negative over the night side.
-
-        Returns
-        -------
-        cosines : ndarray
-            One for each time of the grid, from -1 to 1
+        The cosine of the sun's zenith angle below the satellite on the grid, on a
+        spherical Earth.
         """
         return sun_zenith_cosine(self.state, self.sun)
 
@@ -421,31 +310,14 @@ class ScenarioRun:
 
     @property
     def activity_summary(self) -> str:
-        """
-        One line that sums up the occurrences, from `activity_summary`.
-
-        Returns
-        -------
-        summary : str
-        """
+        """One line that sums up the occurrences."""
         return activity_summary(self.occurrences)
 
     @property
     def report(self) -> str:
         """
-        The run's results as text, as the command line prints them.
-
-        Returns
-        -------
-        report : str
-            The summary line, a table of the occurrences whose status is not
-            `ok`, if any, a line for each target with its passes and its time in
-            view, and the warnings, one line each
-
-        Raises
-        ------
-        ValueError
-            If part of the run is unplanned
+        The run's results as text, as the command prints them: the summary, the
+        problems, the passes and the warnings. A planned run only.
         """
         self.check_planned("the report")
         table = self.activity_table
@@ -470,26 +342,7 @@ def _time_above(
     positions_at: Callable[[TimeArray], SkyCoord],
     earth_at: Callable[[TimeArray], np.ndarray],
 ) -> Callable[[Quantity], P.Interval]:
-    """
-    The latitude finder that `find_events` takes, over a run's grid.
-
-    Parameters
-    ----------
-    times : Time
-        The run's grid
-    latitude : Quantity
-        The geodetic latitude on the grid
-    positions_at : callable
-        Gives the satellite's positions for any `Time` array
-    earth_at : callable
-        Gives the Earth's orientation for any `Time` array, as `earth_rotations`
-        does
-
-    Returns
-    -------
-    time_above : callable
-        Gives the time at or above a geodetic latitude
-    """
+    """The latitude finder that `find_events` takes, over the run's grid."""
 
     def time_above(limit: Quantity) -> P.Interval:
         def above_at(at: TimeArray) -> np.ndarray:
@@ -508,17 +361,15 @@ def target_visibility(
     grid: RunGrid,
 ) -> dict[str, P.Interval]:
     """
-    When each target is in view, ground and satellite, over a run's grid.
+    When each target is in view, with the edges found to 1 ms between the steps.
 
-    A ground target is in view while it sees the satellite at or above its
-    minimum elevation. A satellite target is in view while the line between the
-    two keeps its minimum clearance above the WGS84 ellipsoid. The edges are found
-    between the grid steps, to 1 ms.
+    A ground target sees the satellite at or above its minimum elevation, and a
+    satellite target keeps the line of sight above its minimum clearance.
 
     Parameters
     ----------
     scenario : Scenario
-        The scenario, for its targets
+        The scenario
     times : Time
         The run's grid
     state : SkyCoord
@@ -526,12 +377,12 @@ def target_visibility(
     sat_states : dict of str to SkyCoord
         The satellite targets' positions on the grid, by name
     grid : RunGrid
-        The orbits and the Earth's orientation between the grid's steps
+        The splines between the grid's steps
 
     Returns
     -------
     in_view : dict of str to portion.Interval
-        For each target, by its name, the time it is in view
+        The time each target is in view, by name
     """
     found = {}
 
@@ -564,37 +415,27 @@ def run_scenario(scenario: Scenario, repeat: bool = True) -> ScenarioRun:  # noq
     """
     Run a scenario.
 
-    The orbit comes from the TLE file, from a TLE built for the sun-synchronous
-    orbit, or from the trajectory file. It is evaluated on the time grid, with
-    SGP4 or by interpolation, and so is each satellite target's orbit. The edges
-    of the umbra and the penumbra are then located between the grid steps, and
-    so are the latitude crossings that the triggers name, and the edges of each
-    target's time in view. Between the steps, the orbits, the sun and the
-    Earth's orientation come from splines through the grid: see `RunGrid`. The
-    activities are then repeated over the run and checked against the eclipses.
-    Each orbit is checked against the run first: see `orbit_warnings`.
+    The orbits are evaluated on the grid, and the shadow, the latitude crossings and the
+    targets' passes are found between the steps through splines, `RunGrid`. The
+    activities are then chained over the run and checked.
 
     Parameters
     ----------
     scenario : Scenario
-        The scenario, from `Scenario.from_yaml_file`
+        The scenario
     repeat : bool, optional
-        Whether to repeat the list of activities until the run ends, as by
-        default, or run it once, as the Activity Designer does at first. The
-        time after a single pass is unplanned.
+        Whether to repeat the list until the run ends, or run it once
 
     Returns
     -------
     result : ScenarioRun
-        The orbit, the eclipses, the activities and the checks
+        The run
 
     Raises
     ------
     ValueError
-        If no activity in the list ends after it starts, if a satellite target's
-        file does not give its orbit, if the run does not lie inside a
-        trajectory, or if SGP4 fails for a satellite target. A message about a
-        satellite target names it.
+        If no activity in the list takes any time, a satellite target's orbit fails, or
+        the run leaves a trajectory
     """
     orbit = scenario_orbit(scenario)
     sat_orbits = target_orbits(scenario)

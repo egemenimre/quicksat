@@ -4,12 +4,11 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The chain of activities over a run: the events that end them, and each
-occurrence with its status.
+The chain of activities over a run: the events that end them, and each occurrence with
+its status.
 
-`find_events` finds the events that the triggers name. `resolve_activities` then
-chains the activities, each starting where the one before it ends, and gives
-each occurrence its status.
+`docs/scenario/scenario_ref.ipynb`, under "How the events are found" and "The statuses",
+explains them.
 
 """
 
@@ -36,77 +35,61 @@ from quicksat.utils.intervals import (
 )
 
 IlluminationIntervals = dict[str, P.Interval]
-"""The illumination of a run, by the words of the constraints: `sunlit`,
-`penumbra`, `umbra`, and `eclipse` for either of the last two."""
+"""The illumination of a run, by the constraints' words: `sunlit`, `penumbra`, `umbra`,
+and `eclipse`."""
 
 Events = dict[tuple, tuple[P.Interval, ...]]
-"""The events of a run, by `Trigger.event_key`. Each event is the start of a
-piece of one of the intervals."""
+"""The events of a run, by `Trigger.event_key`, as the intervals whose starts are the
+events."""
 
 OUTSIDE_CONSTRAINT = "outside constraint"
-"""Status: the activity spends more than `CONSTRAINT_TOLERANCE` outside its
-constraint."""
+"""Status: the activity spends more than `CONSTRAINT_TOLERANCE` outside its constraint."""
 
 EVENT_NEVER_CAME = "event never came"
-"""Status: the event that ends the activity never happens in the run, such as an
-eclipse entry in a season with no eclipses. The activity runs to the end of the
-run."""
+"""Status: the event never happens in the run, so the activity runs to the end."""
 
 CUT_AT_END = "cut at end"
-"""Status: the activity would run past the end of the run, and is cut there. This
-includes an event trigger whose next event comes after the end of the run."""
+"""Status: the activity would run past the end of the run, and is cut there."""
 
 NEGATIVE_DURATION = "negative duration"
-"""Status: a negative offset takes the end of the activity back to its start, or
-before it. The activity then takes no time, and the next one starts where this one
-started. This is a fault of the trigger, where `outside constraint` is a fault of
-the constraint."""
+"""Status: a negative offset takes the activity's end back to its start, or before it,
+so it takes no time."""
 
 SLEW_STARTS_EARLY = "slew starts early"
-"""Status: the slew into the activity starts before the activity before it does,
-because that activity is shorter than the slew. It can also run on into the
-activity, if the run starts too late for it."""
+"""Status: the slew into the activity starts before the activity before it does."""
 
 STATUS_OK = "ok"
 """Status: none of the above."""
 
 CONSTRAINT_TOLERANCE = Q_(1, "s")
-"""Time outside a constraint that still counts as none. It covers numerical
-effects only. Event times sit on the 1 ms grid and are found to it, so such
-effects are a few milliseconds. A longer miss fails, with no warning step."""
+"""The time outside a constraint that still counts as none, for numerical effects only."""
 
 
 @dataclass(frozen=True)
 class Occurrence:
     """
-    One activity, as it happens in the run.
-
-    The list of activities is repeated until the duration ends, so each activity
-    in the list happens once per repeat.
+    One activity, as it happens in one pass of the list.
 
     Parameters
     ----------
     repeat : int
-        Which repeat of the list this is, counted from 1
+        The pass, from 1
     number : int
-        The number of the activity in the list, counted from 1
+        The activity's number in the list, from 1
     activity : Activity
-        The activity as written
+        The activity
     start, end : Time
-        Start and end, on the 1 ms grid. A negative offset can take the end back
-        to the start, or before it.
+        Its start and end, on the 1 ms grid
     outside : Quantity or None
-        Total time spent outside the constraint, or None if there is no constraint
+        The time outside the constraint, or None without one
     event_never_came : bool
-        True if the event that ends the activity never happens in the run
+        Whether the ending event never happens in the run
     cut_at_end : bool
-        True if the activity would have ended after the end of the run. That
-        includes an event that happens in the run, but not again before its end.
+        Whether the activity was cut at the end of the run
     slew : Quantity, optional
-        The time of the slew into the activity, settling included. None if the
-        attitude does not change, or the scenario has no slews.
+        The slew into it, settling included, or None
     slew_starts_early : bool, optional
-        True if the slew into the activity starts before the activity before it
+        Whether that slew starts before the activity before it
     """
 
     repeat: int
@@ -123,52 +106,27 @@ class Occurrence:
     @property
     def interval(self) -> P.Interval:
         """
-        The occurrence as a time interval, closed at its start and open at its end.
-
-        Returns
-        -------
-        interval : portion.Interval
-            Empty if the activity ends at or before its start
+        The occurrence as a closed-open interval, empty if it ends at or before its
+        start.
         """
         return P.closedopen(self.start, self.end)
 
     @property
     def negative_duration(self) -> bool:
-        """
-        Whether a negative offset takes the end back to the start, or before it.
-
-        Returns
-        -------
-        negative_duration : bool
-            True for a duration of zero too
-        """
+        """Whether a negative offset takes the end back to the start, or before it."""
         return bool(self.end <= self.start)
 
     @property
     def failed(self) -> bool:
         """
         Whether the activity spends more than `CONSTRAINT_TOLERANCE` outside its
-        constraint.
-
-        Returns
-        -------
-        failed : bool
-            False if there is no constraint
+        constraint, False without one.
         """
         return self.outside is not None and bool(self.outside > CONSTRAINT_TOLERANCE)
 
     @property
     def statuses(self) -> list[str]:
-        """
-        The statuses of the occurrence. It can have more than one.
-
-        Returns
-        -------
-        statuses : list of str
-            `negative duration`, `outside constraint`, `event never came`,
-            `cut at end` and `slew starts early`, as far as they apply, or `ok` if
-            none does
-        """
+        """The occurrence's statuses, as many as apply, or `ok`."""
         statuses = []
         if self.negative_duration:
             statuses.append(NEGATIVE_DURATION)
@@ -185,23 +143,20 @@ class Occurrence:
 
 def next_event(intervals: tuple[P.Interval, ...], after: TimeArray) -> TimeArray | None:
     """
-    The first event strictly after a given time.
-
-    Each event is the start of a piece of one of the intervals. A latitude
-    crossing in either direction has two intervals: the time above the latitude,
-    whose starts are the northward crossings, and the time below it.
+    The first event strictly after a time, as the first start of a piece of the
+    intervals.
 
     Parameters
     ----------
     intervals : tuple of portion.Interval
         The intervals whose starts are the events
     after : Time
-        A single time
+        One time
 
     Returns
     -------
     event : Time or None
-        The first event after `after`, or None if there is none
+        The first event after `after`, or None
     """
     starts = [next_start(piece, after) for piece in intervals]
     found = [start for start in starts if start is not None]
@@ -216,35 +171,28 @@ def find_events(
     time_visible: Callable[[str], P.Interval] | None = None,
 ) -> Events:
     """
-    The events that the activities' triggers name, as the intervals they start.
+    The events that the triggers name, as the intervals they start, such as the eclipses
+    for an eclipse entry.
 
-    An eclipse entry is the start of an eclipse, and an eclipse exit the start of
-    a sunlit piece. An umbra entry is the start of the umbra, and an umbra exit
-    the start of the time outside it. A northward crossing of a latitude is the
-    start of the time above it, and a southward crossing is the start of the time
-    below it. The time above each latitude is found once, whichever directions the
-    triggers name. A target's rise is the start of the time it is in view, and
-    its set the start of the time it is not.
+    The time above each latitude is found once, whichever directions the triggers name.
 
     Parameters
     ----------
     activities : list of Activity
-        One repeat of the list
+        One pass of the list
     interval : portion.Interval
-        The run, closed at its start and open at its end
+        The run, closed-open
     illumination : dict
         The intervals of `sunlit`, `penumbra`, `umbra` and `eclipse`
     time_above : callable
-        Gives the time at or above a geodetic latitude, as intervals over the run
+        The time at or above a latitude, as intervals
     time_visible : callable, optional
-        Gives the time a target, by name, is in view, as intervals over the run.
-        Needed only for the `rise` and `set` triggers.
+        The time a target is in view, by name, for `rise` and `set`
 
     Returns
     -------
     events : dict
-        For the `event_key` of each event trigger, the intervals whose starts are
-        its events
+        For each event trigger's `event_key`, the intervals whose starts are its events
     """
     shadow_edges = {
         "eclipse entry": illumination["eclipse"],
@@ -289,23 +237,8 @@ def _trigger_end(
     trigger: Trigger, start: TimeArray, events: Events
 ) -> TimeArray | None:
     """
-    When a trigger ends an activity that starts at a given time.
-
-    Parameters
-    ----------
-    trigger : Trigger
-        The end trigger of the activity
-    start : Time
-        When the activity starts, on the 1 ms grid
-    events : dict
-        The events of the run, from `find_events`
-
-    Returns
-    -------
-    end : Time or None
-        A duration trigger ends the activity that long after `start`. An event
-        trigger ends it at the first such event strictly after `start`, moved by
-        the offset if there is one. If there is no such event, the result is None.
+    When a trigger ends an activity that starts at a time: after its duration, or at its
+    next event with its offset, or None.
     """
     if trigger.duration is not None:
         return round_time(start + trigger.duration)
@@ -325,51 +258,34 @@ def resolve_activities(
     repeat: bool = True,
 ) -> list[Occurrence]:
     """
-    Repeat the list of activities until the run ends, and check the constraints.
+    Chain the activities over the run, and check their constraints.
 
-    The first activity starts at the start of the run. Each later one starts
-    where the one before it ends. A duration trigger ends the activity that long
-    after its start. An event trigger ends it at the first such event strictly
-    after its start, moved by its offset. An activity that would end after the end
-    of the run is cut there. So is one whose event happens in the run, but not
-    again before the end. If the event never happens in the run at all, the
-    activity runs to the end and is flagged that its event never came.
-
-    A negative offset can take an activity's end back to its start, or before it.
-    The activity is then flagged, and takes no time. The next activity starts
-    where it started.
-
-    A constraint holds when the activity spends no more than `CONSTRAINT_TOLERANCE`
-    outside the intervals that the constraint allows.
-
-    Without repeats, the list runs once. It stops after its last activity, or at
-    the end of the run if that comes first. The time after it has no occurrence.
+    Each activity starts where the one before ends, and is cut at the end of the run.
+    Without repeats, the list runs once. `docs/scenario/scenario_ref.ipynb`, under "The
+    activities", gives the rules.
 
     Parameters
     ----------
     activities : list of Activity
-        One repeat of the list. It may be empty, which gives no occurrences.
+        One pass of the list, which may be empty
     interval : portion.Interval
-        The run, closed at its start and open at its end
+        The run, closed-open
     events : dict
-        The events of the run, from `find_events`
+        The run's events, from `find_events`
     allowed : dict
-        The intervals that each constraint allows, by the name of the constraint
+        The intervals each constraint allows, by name
     repeat : bool, optional
-        Whether to repeat the list until the run ends, as by default, or run it
-        once
+        Whether to repeat the list until the run ends
 
     Returns
     -------
     occurrences : list of Occurrence
-        Every occurrence, in order, from the start of the run to its end, or to
-        the end of the single pass
+        Every occurrence, in order
 
     Raises
     ------
     ValueError
-        If the list repeats and no activity in it ends after it starts. The run
-        would then never move on.
+        If the list repeats and no activity in it takes any time
     """
     if not activities:
         return []
