@@ -108,17 +108,21 @@ def circular(inclination_deg: float, orbits: float, step_s: float = 60.0):
 @pytest.mark.parametrize(
     ("orbit", "span_s", "check_step_s", "inside_mm", "ends_mm", "velocity_mm_s"),
     [
-        ("tle", 3 * 5700.0, 7.0, 1.0, 20.0, 0.005),
-        ("geo", 3 * 86400.0, 70.0, 0.02, 0.02, 0.02),
-        ("heo", 3 * 86400.0, 70.0, 0.2, 0.2, 0.03),
+        ("tle", 5700.0, 61.0, 1.0, 20.0, 0.005),
+        ("geo", 86400.0 + 7200.0, 610.0, 0.02, 0.02, 0.02),
+        ("heo", 86400.0 + 7200.0, 610.0, 0.2, 0.2, 0.03),
     ],
 )
 def test_the_interpolation_matches_sgp4(
     request, orbit, span_s, check_step_s, inside_mm, ends_mm, velocity_mm_s
 ):
-    # at 60 s between samples, as satmad's tests have it. A check step of 7 s or
-    # 70 s reaches every second or every 10 s between two samples, in turn; a
-    # step of 60 s would fall on the samples, where the spline is exact.
+    # at 60 s between samples, as satmad's tests have it. A check step of 61 s
+    # or 610 s lands 1 s or 10 s further between two samples each time. A step
+    # of 60 s would fall on the samples, where the spline is exact. One orbit
+    # is enough, as the error at a time depends only on the samples near it.
+    # The eccentric orbit starts at perigee, inside the 180 s left out at each
+    # end. The 2 h past a day put its next perigee, where the error is
+    # largest, inside the check.
     tle = request.getfixturevalue(orbit)
     trajectory = sampled(tle, span_s)
     offsets = np.arange(0, span_s, check_step_s)
@@ -302,7 +306,9 @@ def test_the_period_of_an_inclined_orbit_is_its_nodal_period(tle):
 def test_a_geostationary_period_is_measured_against_a_fixed_direction(geo):
     # with no inclination there is no node, and SGP4's mean rate of the true
     # longitude is the nearest thing to compare with
-    trajectory = sampled(geo, 3 * 86400.0)
+    # 600 s between samples is plenty for an orbit of a day. The three days
+    # hold the full turns that the fixed direction needs.
+    trajectory = sampled(geo, 3 * 86400.0, step_s=600.0)
     satrec = geo.satrec
     rate = satrec.mdot + satrec.argpdot + satrec.nodedot  # rad/min
     assert trajectory.period_method == FIXED_DIRECTION
