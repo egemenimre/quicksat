@@ -56,15 +56,16 @@ def test_the_epoch_is_the_one_asked_for_and_the_name_is_kept(tle):
 def test_the_first_ascending_node_is_at_the_local_time_asked_for(ltan):
     tle = sso_tle(EPOCH, ALTITUDE, Q_(ltan, "h"))
     # the satellite starts at the node of the mean orbit, so it crosses the
-    # equator within seconds of the epoch
-    times: TimeArray = EPOCH + np.linspace(-60, 60, 12001) * u.s
+    # equator within seconds of the epoch. The crossing is found between two
+    # samples 1 s apart, by linear interpolation.
+    times: TimeArray = EPOCH + np.linspace(-60, 60, 121) * u.s
     latitude, longitude = geodetic(tle_states(tle, times, with_velocity=False))
-    node = np.flatnonzero(
-        (latitude[:-1] < Q_(0, "deg")) & (latitude[1:] >= Q_(0, "deg"))
-    )[0]
-    ut1_hours = (times[node].ut1.mjd % 1) * 24
-    east = np.asarray(longitude.to_value(u.deg))[node]
-    local_time = (ut1_hours + east / 15) % 24
+    north = np.asarray(latitude.to_value(u.deg))
+    east = np.asarray(longitude.to_value(u.deg))
+    local_times = ((times.ut1.mjd % 1) * 24 + east / 15) % 24
+    node = np.flatnonzero((north[:-1] < 0) & (north[1:] >= 0))[0]
+    fraction = -north[node] / (north[node + 1] - north[node])
+    local_time = local_times[node] + fraction * np.diff(local_times)[node]
     assert local_time == pytest.approx(ltan, abs=1 / 3600)
 
 
