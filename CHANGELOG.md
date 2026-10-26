@@ -4,6 +4,10 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- The README's License section says that quicksat comes with no warranty, and that its author takes no responsibility for any loss from its use. It names what is compared with Orekit, and points to sections 15 and 16 of the licence.
+
 ### Changed
 
 - The package's docstrings are shorter: 7150 lines, down from 11254. A public function or class keeps its parameters and returns, in short entries. A private helper or a property has one line, with its units. A long explanation is gone where a reference notebook or an explanation gives it, and the docstring names that doc.

@@ -164,3 +164,5 @@ Two documents cover the project as a whole:
 ## License
 
 GPL-3.0-or-later. See [`LICENSE.md`](https://github.com/egemenimre/quicksat/blob/master/LICENSE.md).
+
+quicksat comes with no warranty. It has many tests, but it is not formally verified. Only the eclipse times, the sun's direction and the panels' angles to the sun are compared with an independent tool, Orekit. Its figures are a first-pass sizing, so check them by other means before a design or a mission depends on them. The author takes no responsibility for any loss that follows from its use. That includes a satellite that fails after quicksat sized or planned it. Sections 15 and 16 of the licence set out these terms in full.
