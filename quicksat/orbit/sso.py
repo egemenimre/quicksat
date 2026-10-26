@@ -43,7 +43,8 @@ _INCLINATION_LOW = float(np.radians(90.0))
 """The lower end of the search for the inclination, 90 degrees, in rad."""
 
 _INCLINATION_HIGH = float(np.radians(179.9))
-"""The upper end of the search, 179.9 degrees, in rad, short of SGP4's division at 180."""
+"""The upper end of the search, 179.9 degrees, in rad, short of SGP4's division at
+180."""
 
 _BISECTIONS = 60
 """Halvings of the inclination range, well past the precision of a float."""

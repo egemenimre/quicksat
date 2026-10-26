@@ -50,7 +50,8 @@ HeatFlow = Annotated[
     | Annotated[dict[str, SignedPowerQty], Tag("by mode")],
     Discriminator(lambda value: "by mode" if isinstance(value, dict) else "power"),
 ]
-"""A heat flow: a mapping is read as the powers by mode, and anything else as one power."""
+"""A heat flow: a mapping is read as the powers by mode, and anything else as one
+power."""
 
 DEFAULT_ALBEDO = Q_(0.30, "")
 """The Earth's albedo if the file gives none, averaged over the globe."""

@@ -25,10 +25,12 @@ from quicksat.scenario.config import SpacecraftModel
 from quicksat.scenario.spacecraft import ModelGeometry, node_index, read_glb_json
 
 RAY_OFFSET = 1e-6
-"""How far off the cells each ray starts, along their normal, in m, against self-hits."""
+"""How far off the cells each ray starts, along their normal, in m, against
+self-hits."""
 
 EDGE = 1e-9
-"""The barycentric test's tolerance, so no ray slips through the seam of two triangles."""
+"""The barycentric test's tolerance, so no ray slips through the seam of two
+triangles."""
 
 SHADED_LIMIT = 0.01
 """The share of a panel that must be shaded for it to count as shaded, so a shadow's

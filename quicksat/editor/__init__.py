@@ -6,8 +6,7 @@
 """
 The editors: web pages that fill in and edit a folder of input files.
 
-The Scenario Editor, in `quicksat.editor.scenario`, edits a scenario or power
-folder. The Sizing Editor, in `quicksat.editor.sizing`, edits a folder of
-sizing files. Both are built from the same shared parts, in
-`quicksat.editor.shared`, as their templates are.
+The Scenario Editor, in `scenario`, edits a scenario or power folder, and the Sizing
+Editor, in `sizing`, a folder of sizing files. Both share `shared`, as their templates
+do.
 """

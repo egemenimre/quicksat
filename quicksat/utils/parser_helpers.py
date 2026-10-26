@@ -134,7 +134,8 @@ PowerQty = non_negative_quantity(u.W, "power")
 """Annotated Quantity type restricted to non-negative powers, such as `10 W`."""
 
 EnergyQty = non_negative_quantity(u.W * u.h, "energy")
-"""Annotated Quantity type for non-negative energies, such as `1024 W h`, with a space."""
+"""Annotated Quantity type for non-negative energies, such as `1024 W h`, with a
+space."""
 
 AreaQty = non_negative_quantity(u.m**2, "area")
 """Annotated Quantity type restricted to non-negative areas, such as `0.2 m2`."""
@@ -207,10 +208,12 @@ AngularAccelerationQty = non_negative_quantity(u.deg / u.s**2, "angular accelera
 deg/s2`."""
 
 FractionQty = non_negative_quantity(u.dimensionless_unscaled, "fraction")
-"""Annotated Quantity type for dimensionless fractions: `5 %` and `0.05` are the same."""
+"""Annotated Quantity type for dimensionless fractions: `5 %` and `0.05` are the
+same."""
 
 UnitFractionQty = Annotated[FractionQty, AfterValidator(_check_unit_fraction)]
-"""Annotated Quantity type for a fraction above 0 and at most 1, such as an efficiency."""
+"""Annotated Quantity type for a fraction above 0 and at most 1, such as an
+efficiency."""
 
 NoSpaceStr = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\S+$")]
 """String field that must not contain whitespace, used for the grouping axes."""

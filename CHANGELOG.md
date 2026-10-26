@@ -4,6 +4,10 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+
+- The package's docstrings are shorter: 7150 lines, down from 11254. A public function or class keeps its parameters and returns, in short entries. A private helper or a property has one line, with its units. A long explanation is gone where a reference notebook or an explanation gives it, and the docstring names that doc.
+
 ## [0.6.0] - 2026-10-26
 
 ### Added

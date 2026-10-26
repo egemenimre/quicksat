@@ -43,7 +43,8 @@ Events = dict[tuple, tuple[P.Interval, ...]]
 events."""
 
 OUTSIDE_CONSTRAINT = "outside constraint"
-"""Status: the activity spends more than `CONSTRAINT_TOLERANCE` outside its constraint."""
+"""Status: the activity spends more than `CONSTRAINT_TOLERANCE` outside its
+constraint."""
 
 EVENT_NEVER_CAME = "event never came"
 """Status: the event never happens in the run, so the activity runs to the end."""
@@ -62,7 +63,8 @@ STATUS_OK = "ok"
 """Status: none of the above."""
 
 CONSTRAINT_TOLERANCE = Q_(1, "s")
-"""The time outside a constraint that still counts as none, for numerical effects only."""
+"""The time outside a constraint that still counts as none, for numerical effects
+only."""
 
 
 @dataclass(frozen=True)

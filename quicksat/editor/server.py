@@ -7,62 +7,13 @@
 The editor's local server: an editor page, served from this computer, which runs
 quicksat on the page's files.
 
-    python -m quicksat.editor serve sample/power/data sample/power/output
-    python -m quicksat.editor serve sample/sizing/data
-
-A folder with a scenario file gets the Scenario Editor, with a button that runs
-quicksat and writes the viewer into the output folder. A folder of sizing files
-gets the Sizing Editor, whose Budgets tab shows every budget worked out by
-quicksat, and needs no output folder.
-
-`serve` starts a server that only this computer can reach, and opens the editor
-in the browser. The page is written from the folder at each load, as
-`write_editor` writes it, so a reload shows the files as they are on disk, with
-quicksat's full check.
-
-**Create the viewer**, on the page, sends the page's files to the server.
-`run_files` writes them into a temporary folder, reads them with quicksat's
-loaders, runs them, and writes the viewer into the output folder, as
-`python -m quicksat.scenario` and `python -m quicksat.power` do. The run uses
-the files as they are on the page, saved or not. It does not change the files
-in the input folder. The server also serves the output folder, so the page can
-open the viewer it wrote.
-
-**Generate scenario**, in the Activity Designer, sends the files in the same way.
-`design_files` runs the scenario alone, once or with repeats, and writes
-nothing. The server keeps the viewer page with the run's data inside, and sends
-it to the designer's frame. **Save into the folder** sends the files that
-changed, and `save_files` writes them into the input folder. It refuses a file
-that changed on disk since the page was written.
-
-**The budgets**, on the Sizing Editor's Budgets tab, follow the page's files.
-After each change, the page sends them, and `budget_files` works out every
-budget in a temporary folder, and writes nothing.
-
-**Compute**, on the Scenario Editor's Thermal tab, sends the files in the same
-way. `thermal_files` works out the payload's heat account, and writes nothing.
-The server keeps the run and each surface's absorbed heat, with a hash of what
-they depend on: the scenario and its files, the self-shadowing and the
-surfaces. A change to the heaters, the flows or the dissipation then reuses
-them, and only the sums are done again.
-
-The work of each of these requests is in `quicksat.editor.actions`. This module
-answers the requests.
-
-**Stop the server**, in the page's header, stops the server, as Ctrl+C does in
-its window. A server started from a shortcut has no window to press Ctrl+C in.
-The server also stops by itself after 48 h with no editor page open, as
-`IDLE_S` says.
-
-The server is for one user, on one computer:
-
-- It listens on 127.0.0.1, which other computers cannot reach.
-- Each start makes a random key, which every address must end with, as in
-  `http://localhost:8780/quicksat/editor?key=k3Xq9vTzR2mA`. A page from another
-  site does not know it, so it can neither read the folder's files nor ask for a
-  run.
-- It refuses a request whose `Host` is not its own address. This stops a site
-  that points its own name at 127.0.0.1 from reaching it.
+The page is written from the folder at each load. Its requests send the page's files,
+saved or not, and `quicksat.editor.actions` does the work: Create the viewer, the
+Activity Designer's runs and saves, the Budgets tab and the Thermal tab's Compute. This
+module answers the requests. The server is for one user: it listens on 127.0.0.1, every
+address needs the random key of its start, it refuses a foreign `Host`, and it stops by
+itself after `IDLE_S` with no page open. `decisions.md` 18 explains it, and
+`docs/guides/scenario/edit_and_view_a_scenario.md` how to use it.
 
 """
 
@@ -101,25 +52,20 @@ HOST = "127.0.0.1"
 """The address the server listens on: this computer only."""
 
 PORT = 8780
-"""The port the server tries first. If another program has it, the server tries
-the next ones, then any free port."""
+"""The port the server tries first, before the next ones, then any free port."""
 
 PORTS_TRIED = 20
 """How many ports from `PORT` on the server tries, before any free one."""
 
 PREFIX = "/quicksat/"
-"""The start of every address the server answers: `editor`, `status`, `run`,
-`design`, `designer`, `save`, `budgets`, `thermal`, `stop` and `viewer/` follow
-it."""
+"""The start of every address the server answers, before `editor`, `status`, `run` and
+the others."""
 
 IDLE_S = 48 * 3600
-"""How long the server runs with no request from a page before it stops by
-itself, in seconds: 48 h. An editor page asks every few seconds while it is in
-view, and every 10 min while it is not."""
+"""How long the server runs with no request from a page before it stops, in s: 48 h."""
 
 MAX_BODY = 200 * 1024 * 1024
-"""The largest run request the server reads, in bytes. The 3D model is the
-largest file, in base64."""
+"""The largest run request the server reads, in bytes, for the 3D model in base64."""
 
 VIEWER_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -146,21 +92,8 @@ def _log(text: str) -> None:
 
 def _guarded(work: Callable[[], dict], **fields) -> dict:
     """
-    The result of a request's work, with a fault in quicksat as an error, so that
-    the server keeps serving.
-
-    Parameters
-    ----------
-    work : callable
-        Does the work, and gives the result
-    **fields
-        The fields that an error result also needs, such as `checks`
-
-    Returns
-    -------
-    result : dict
-        The work's result. After a fault, `ok` is false and `error` names the
-        fault, and the traceback goes to the server's window.
+    A request's result, with a fault in quicksat as an error result, its traceback in
+    the server's window, so the server keeps serving.
     """
     try:
         return work()
@@ -176,26 +109,21 @@ def _guarded(work: Callable[[], dict], **fields) -> dict:
 
 class EditorServer(ThreadingHTTPServer):
     """
-    An editor for one folder, served on this computer, with its runs: the
-    Scenario Editor for a folder with a scenario file, and the Sizing Editor for
-    a folder of sizing files.
+    An editor for one folder, served on this computer: the Scenario Editor for a
+    scenario folder, or the Sizing Editor.
 
     Parameters
     ----------
-    folder : str | Path
-        The folder that holds the input files: the scenario file, or at least
-        one sizing file
-    output : str | Path, optional
-        The folder to write the viewer in. The Scenario Editor needs it, and the
-        Sizing Editor does not use it.
+    folder : str or Path
+        The folder of input files
+    output : str or Path, optional
+        The folder for the viewer, which only the Scenario Editor needs
     port : int, optional
-        The port to listen on, and 0 for any free one. By default, `PORT` or the
-        next free one after it.
+        The port, 0 for any free one, by default `PORT` or the next free one
     scenario_file, power_file, consumption_files, thermal_file : optional
-        The files' names, if not the usual ones. See `editor_data`.
+        The files' names, if not the usual ones
     idle_s : float, optional
-        The time with no request from a page after which the server stops by
-        itself, in seconds: `IDLE_S` by default
+        The time with no request before the server stops, in s, by default `IDLE_S`
     """
 
     daemon_threads = True
@@ -255,8 +183,7 @@ class EditorServer(ThreadingHTTPServer):
 
     def stop(self, why: str) -> None:
         """
-        Stop serving, so that `serve` ends. Call it from any thread but the one
-        that serves.
+        Stop serving, so that `serve` ends, from any thread but the serving one.
 
         Parameters
         ----------
@@ -272,8 +199,8 @@ class EditorServer(ThreadingHTTPServer):
 
     def service_actions(self) -> None:
         """
-        Stop, once no page has asked anything for `idle_s`. `serve_forever` calls
-        this about twice a second.
+        Stop once no page has asked anything for `idle_s`. `serve_forever` calls this
+        twice a second.
         """
         super().service_actions()
         busy = self.run_lock.locked() or self.save_lock.locked()
@@ -297,10 +224,8 @@ class EditorServer(ThreadingHTTPServer):
 
     def page(self) -> str:
         """
-        The editor's page, written from the folder as it is now.
-
-        The page holds the SHA-256 of each file it was written from, so that a
-        save can tell whether the file changed on disk since.
+        The editor's page, written from the folder as it is now, with each file's
+        SHA-256 for the saves.
         """
         if self.sizing:
             data = sizing_data(self.folder)
@@ -369,8 +294,8 @@ _SIZING_REQUESTS = ("budgets", "stop")
 
 class _Handler(BaseHTTPRequestHandler):
     """
-    Answers the page: the editor, its status, its runs, the Activity Designer's
-    runs and saves, the viewer's files, and the stop.
+    Answers the page: the editor, its status, its runs and saves, the viewer's files,
+    and the stop.
     """
 
     server: EditorServer
@@ -400,8 +325,8 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _route(self) -> str | None:
         """
-        The address after `PREFIX`, or None if the key is wrong or missing. A
-        request with the key keeps the server from stopping by itself.
+        The address after `PREFIX`, or None if the key is wrong. A request with the key
+        keeps the server going.
         """
         address = urlsplit(self.path)
         path = unquote(address.path)
@@ -476,7 +401,9 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(HTTPStatus.OK, body, kind)
 
     def do_POST(self):  # noqa: N802
-        """A run, a run of the Activity Designer, a save of the page's files, or a stop."""
+        """
+        A run, a run of the Activity Designer, a save of the page's files, or a stop.
+        """
         if not self._own("Host") or (
             "Origin" in self.headers and not self._own("Origin", "http://")
         ):
