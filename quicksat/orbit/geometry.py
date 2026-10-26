@@ -4,44 +4,13 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The sun, the Earth's shadow, where the satellite is over the Earth, and whether
-two satellites can see each other.
+The sun, the Earth's shadow, where the satellite is over the Earth, and whether two
+satellites can see each other.
 
-Everything here takes the satellite's state as one astropy `SkyCoord` in GCRS,
-as `tle_states` gives it. The state carries the positions, the velocities when
-they are needed, and the times. Everything works on the whole array at once.
-
-The sun's position comes from astropy's `get_sun`: the apparent sun seen from the
-centre of the Earth, with its distance. The beta angle takes the direction from
-the centre of the Earth, because that is how beta is defined. The satellite's own
-velocity shifts where it sees the sun, by about 5 arcsec in low orbit. That
-changes where it would point, not whether the Earth blocks the light, so it is
-left out.
-
-The shadow is cast by the sun's disk on the WGS84 ellipsoid. It is two cones on
-the line from the centre of the Earth to the sun, after Ortiz Longo and Rickman,
-NASA Technical Paper 3547 (1995). Inside the umbra cone, the Earth hides the
-whole sun. Between the umbra and the penumbra cones, it hides part of the sun.
-The eclipse is the penumbra cone, so it holds the umbra too. The flattening is
-applied by stretching the satellite's offset from the axis along z, which turns
-the ellipsoid's shadow into a circle. Against Orekit's shadow on the WGS84
-ellipsoid, the eclipse edges agree to 0.07 s over a day of a 510 km orbit.
-
-The cones hold up to the tip of the umbra cone, about 1.38 million km behind the
-Earth. Beyond it lies the antumbra, where the sun shows as a ring around the
-Earth. There, the satellite counts as in penumbra, and `light_fraction` gives
-the light of the ring. The atmosphere is left out, and so is the Moon's shadow.
-
-Two satellites see each other when the line between them passes some height
-above the WGS84 ellipsoid, such as 100 km, so that a link does not cross the
-atmosphere. The ellipsoid raised by that height, with both of its semi-axes
-longer by it, lies within 1 m of the true height for heights up to 500 km.
-Stretching along the Earth's pole then turns it into a sphere, and the line's
-closest point to the centre is found in closed form. The ellipsoid turns about
-its pole, so the pole, ITRS's z axis seen in GCRS, is all the test needs of the
-Earth's orientation. It is taken once, at the first time: precession and
-nutation move it by about 1e-5 rad in a month, which changes the heights by less
-than 1 m.
+Everything takes the satellite's state as one `SkyCoord` in GCRS, and works on the whole
+array at once. The shadow is two cones cast by the sun's disk on the WGS84 ellipsoid,
+after Ortiz Longo and Rickman (1995). `docs/scenario/scenario_ref.ipynb` explains the
+shadow, its check against Orekit, and the line of sight.
 
 """
 
@@ -66,11 +35,8 @@ from quicksat import Q_, u
 from quicksat.utils.intervals import TimeArray, intervals_where
 
 EARTH_EQUATORIAL_RADIUS = Q_(6378.137, "km")
-"""Equatorial radius of the WGS84 ellipsoid, the shape that casts the shadow.
-
-astropy.constants has no WGS84 values. Its `R_earth` is the IAU 2015 nominal
-6378.1 km, which is `R_EARTH`.
-"""
+"""Equatorial radius of the WGS84 ellipsoid, which casts the shadow. It is not
+`R_EARTH`."""
 
 EARTH_FLATTENING = 1 / 298.257223563
 """Flattening of the WGS84 ellipsoid."""
@@ -102,19 +68,7 @@ def sun_positions(times: TimeArray) -> CartesianRepresentation:
 
 
 def _positions(state: SkyCoord) -> CartesianRepresentation:
-    """
-    The positions of a state, without its velocities.
-
-    Parameters
-    ----------
-    state : SkyCoord
-        The satellite's state in GCRS
-
-    Returns
-    -------
-    position : CartesianRepresentation
-        Positions relative to the centre of the Earth
-    """
+    """A state's positions from the Earth's centre, without its velocities."""
     return cast(CartesianRepresentation, state.cartesian).without_differentials()
 
 
@@ -138,43 +92,14 @@ class _Cones(NamedTuple):
 
 
 def _km(vectors: CartesianRepresentation) -> np.ndarray:
-    """
-    Cartesian vectors as a plain array in km, one row each.
-
-    Parameters
-    ----------
-    vectors : CartesianRepresentation
-        One vector or an array of them
-
-    Returns
-    -------
-    km : ndarray
-        Shape (n, 3)
-    """
+    """Cartesian vectors as a plain array in km, of shape (n, 3)."""
     return np.atleast_2d(vectors.xyz.to_value(u.km).T)
 
 
 def _cones(position: np.ndarray, sun: np.ndarray, flattening: float) -> _Cones:
     """
-    Where each position sits against the umbra and penumbra cones.
-
-    The umbra cone narrows behind the Earth to a tip, where the Earth and the sun
-    look the same size. The penumbra cone widens behind the Earth from a tip
-    between the Earth and the sun. Both touch the Earth's equator.
-
-    Parameters
-    ----------
-    position : ndarray
-        Positions relative to the centre of the Earth in GCRS, shape (n, 3) [km]
-    sun : ndarray
-        Positions of the sun relative to the centre of the Earth, shape (n, 3) [km]
-    flattening : float
-        Flattening of the Earth. 0 for a sphere.
-
-    Returns
-    -------
-    cones : _Cones
-        The distances along and across the axis, and the radii of the cones there
+    Where each position sits against the umbra and the penumbra cones, both touching the
+    Earth's equator.
     """
     earth = EARTH_EQUATORIAL_RADIUS.to(u.km).value
     sun_radius = SUN_RADIUS.to(u.km).value
@@ -203,28 +128,24 @@ def shadow_cones(
     flattening: float = EARTH_FLATTENING,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Whether each position is in the umbra, and whether it is in eclipse.
-
-    A position on the sun's side of the Earth is sunlit. Behind the Earth, it is
-    in the umbra inside the umbra cone, and in eclipse inside the penumbra cone.
-    A position exactly on the edge of a cone counts as outside it.
+    Whether each position is in the umbra, and whether it is in eclipse. A position on a
+    cone's edge is outside it.
 
     Parameters
     ----------
     state : SkyCoord
-        The satellite's state in GCRS. Only its positions are used.
+        The satellite's state in GCRS
     sun : CartesianRepresentation
-        Positions of the sun relative to the centre of the Earth, as from
-        `sun_positions`
+        The sun's positions from the Earth's centre, from `sun_positions`
     flattening : float, optional
-        Flattening of the Earth. WGS84 by default, and 0 for a sphere.
+        The Earth's flattening, WGS84's by default, 0 for a sphere
 
     Returns
     -------
     umbra : ndarray
-        True where the Earth hides the whole sun, as an array of bools
+        True where the Earth hides the whole sun
     eclipse : ndarray
-        True where the Earth hides some or all of the sun
+        True where the Earth hides some or all of it
     """
     cones = _cones(_km(_positions(state)), _km(sun), flattening)
     behind = cones.along < 0
@@ -240,31 +161,25 @@ def light_fraction(
     flattening: float = EARTH_FLATTENING,
 ) -> np.ndarray:
     """
-    The fraction of the sun's disk that the satellite sees.
+    The share of the sun's disk that the satellite sees, after Montenbruck and Gill,
+    section 3.4.2.
 
-    The overlap of the sun's disk and the Earth's disk, as seen from the
-    satellite, follows Montenbruck and Gill, *Satellite Orbits*, section 3.4.2.
-    The Earth's apparent radius is taken along the satellite's direction on the
-    ellipsoid, so that the fraction agrees with the cones of `shadow_cones`. It
-    is exactly 1 outside the eclipse and 0 in the umbra.
-
-    Beyond the tip of the umbra cone, the Earth's disk lies inside the sun's, and
-    the light left is the ring around it.
+    It is exactly 1 outside the eclipse and 0 in the umbra, and agrees with
+    `shadow_cones`.
 
     Parameters
     ----------
     state : SkyCoord
-        The satellite's state in GCRS. Only its positions are used.
+        The satellite's state in GCRS
     sun : CartesianRepresentation
-        Positions of the sun relative to the centre of the Earth, as from
-        `sun_positions`
+        The sun's positions from the Earth's centre, from `sun_positions`
     flattening : float, optional
-        Flattening of the Earth. WGS84 by default, and 0 for a sphere.
+        The Earth's flattening, WGS84's by default, 0 for a sphere
 
     Returns
     -------
     light : ndarray
-        The fraction of the sun seen, from 0 to 1
+        From 0 to 1
     """
     position, sun_km = _km(_positions(state)), _km(sun)
     cones = _cones(position, sun_km, flattening)
@@ -309,40 +224,31 @@ def shadow_intervals(
     flattening: float = EARTH_FLATTENING,
 ) -> tuple[P.Interval, P.Interval]:
     """
-    The umbra and the eclipses over the span of a time grid, as portion intervals.
+    The umbra and the eclipses over a time grid, with each edge found to 1 ms between
+    the steps.
 
-    `intervals_where` locates each shadow edge between the grid steps, to 1 ms.
-    Each midpoint of its search evaluates the orbit and the sun again, so the
-    result does not depend on the step. A shadow shorter than one step can be
-    missed.
-
-    Each piece is closed at its entry and open at its exit. A piece already under
-    way at the first time begins there, and one still under way at the last time
-    ends there. These cut ends are not entries or exits. `next_start` never takes
-    them for one.
+    Each piece is closed at its entry and open at its exit. A shadow shorter than one
+    step can be missed.
 
     Parameters
     ----------
     times : Time
-        The grid times, in order, rounded with `round_time`
+        The grid's times, in order, rounded with `round_time`
     flags : tuple of ndarray
-        The umbra and eclipse flags at each grid time, from `shadow_cones` with
-        the same flattening
+        The umbra and eclipse flags at each time, from `shadow_cones`
     state_at : callable
-        Gives the satellite's state in GCRS for a `Time` array. Positions alone
-        are enough.
+        The satellite's state in GCRS for a `Time` array
     sun_at : callable, optional
-        Gives the position of the sun in GCRS for a `Time` array.
-        `sun_positions` by default.
+        The sun's position for a `Time` array, by default `sun_positions`
     flattening : float, optional
-        Flattening of the Earth. WGS84 by default, and 0 for a sphere.
+        The Earth's flattening, WGS84's by default, 0 for a sphere
 
     Returns
     -------
     umbra : portion.Interval
         Where the Earth hides the whole sun
     eclipses : portion.Interval
-        Where the Earth hides some or all of the sun. It holds the umbra.
+        Where it hides some or all of it, umbra included
     """
     umbra_flags, eclipse_flags = flags
 
@@ -362,29 +268,23 @@ def geodetic(
     state: SkyCoord, earth_at: Callable[[TimeArray], np.ndarray] | None = None
 ):
     """
-    Geodetic latitude and longitude of the point below the satellite.
-
-    The positions go through ITRS, the Earth-fixed frame. The velocities are left
-    behind, because astropy transforms them about five times slower and the
-    latitude does not need them. astropy's `EarthLocation` then gives latitude
-    and longitude on the WGS84 ellipsoid. The latitude is geodetic, as on a map.
-    It differs from the geocentric latitude by up to 0.19 degrees.
+    Geodetic latitude and longitude of the point below the satellite, on the WGS84
+    ellipsoid.
 
     Parameters
     ----------
     state : SkyCoord
         The satellite's state in GCRS
     earth_at : callable, optional
-        Gives the Earth's orientation for a `Time` array, as `earth_rotations`
-        does, to turn the positions into ITRS with. By default, astropy turns
-        them itself, which is faster than `earth_rotations` for one call.
+        The Earth's orientation for a `Time` array, as `earth_rotations` gives it. By
+        default, astropy turns the positions itself
 
     Returns
     -------
     latitude : Quantity
-        Geodetic latitude, in degrees from -90 to 90
+        In degrees, from -90 to 90
     longitude : Quantity
-        East longitude, in degrees from -180 to 180
+        East, in degrees, from -180 to 180
     """
     if earth_at is None:
         positions = state.frame.realize_frame(_positions(state))
@@ -404,23 +304,20 @@ def geodetic(
 
 def beta_angle(state: SkyCoord, sun: CartesianRepresentation):
     """
-    Angle between the sun direction and the orbit plane.
-
-    It is positive when the sun is on the same side of the orbit plane as the
-    orbit normal. The orbit normal is the position crossed with the velocity.
+    Angle between the sun's direction and the orbit plane, positive on the orbit
+    normal's side.
 
     Parameters
     ----------
     state : SkyCoord
         The satellite's state in GCRS, with its velocities
     sun : CartesianRepresentation
-        Positions of the sun relative to the centre of the Earth, as from
-        `sun_positions`. Beta takes the direction from the centre of the Earth.
+        The sun's positions from the Earth's centre, from `sun_positions`
 
     Returns
     -------
     beta : Quantity
-        The beta angle at each time, in degrees from -90 to 90
+        In degrees, from -90 to 90
     """
     cartesian = cast(CartesianRepresentation, state.cartesian)
     velocity = cast(CartesianDifferential, cartesian.differentials["s"])
@@ -432,24 +329,20 @@ def beta_angle(state: SkyCoord, sun: CartesianRepresentation):
 
 def sun_zenith_cosine(state: SkyCoord, sun: CartesianRepresentation) -> np.ndarray:
     """
-    The cosine of the sun's zenith angle at the point below the satellite.
-
-    The Earth is taken as a sphere, so the point below lies along the satellite's
-    direction from the centre of the Earth.
+    The cosine of the sun's zenith angle at the point below the satellite, on a
+    spherical Earth.
 
     Parameters
     ----------
     state : SkyCoord
         The satellite's state in GCRS
     sun : CartesianRepresentation
-        Positions of the sun relative to the centre of the Earth, as from
-        `sun_positions`
+        The sun's positions from the Earth's centre, from `sun_positions`
 
     Returns
     -------
     cosine : ndarray
-        At each time: 1 at the subsolar point, 0 on the terminator, and negative
-        over the night side
+        1 at the subsolar point, 0 on the terminator, negative at night
     """
     position = cast(CartesianRepresentation, state.cartesian).without_differentials()
     return np.clip(
@@ -459,12 +352,8 @@ def sun_zenith_cosine(state: SkyCoord, sun: CartesianRepresentation) -> np.ndarr
 
 def earth_rotations(times: TimeArray) -> np.ndarray:
     """
-    The orientation of the Earth: rotations from ITRS, fixed to the Earth, into
-    GCRS.
-
-    The three axes of ITRS are each transformed into GCRS by astropy. That
-    includes the Earth's turn, precession, nutation and polar motion. Both frames
-    are centred on the Earth, so the transform is a pure rotation.
+    The Earth's orientation: the rotations from ITRS into GCRS, as astropy transforms
+    the axes.
 
     Parameters
     ----------
@@ -474,8 +363,7 @@ def earth_rotations(times: TimeArray) -> np.ndarray:
     Returns
     -------
     rotations : ndarray
-        Matrices that turn ITRS vectors into GCRS, shape (n, 3, 3). Column i is
-        ITRS axis i, seen in GCRS.
+        Shape (n, 3, 3), where column i is ITRS axis i in GCRS
     """
     count = len(times)
     # the three axes at every time, shape (3, n)
@@ -520,10 +408,8 @@ def elevations(
     earth_at: Callable[[TimeArray], np.ndarray] = earth_rotations,
 ) -> np.ndarray:
     """
-    The satellite's elevation above a ground point's horizon, at each time of a
-    state.
-
-    The horizon is the plane across the WGS84 ellipsoid's normal at the point.
+    The satellite's elevation above a ground point's horizon, across the ellipsoid's
+    normal.
 
     Parameters
     ----------
@@ -534,8 +420,7 @@ def elevations(
     altitude : Quantity
         The point's height above the ellipsoid
     earth_at : callable, optional
-        Gives the Earth's orientation for a `Time` array, as `earth_rotations`
-        does, which is the default
+        The Earth's orientation for a `Time` array, by default `earth_rotations`
 
     Returns
     -------
@@ -561,25 +446,22 @@ def line_of_sight_clear(
     earth_at: Callable[[TimeArray], np.ndarray] = earth_rotations,
 ) -> np.ndarray:
     """
-    Whether the line between two satellites passes a height above the Earth, at
-    each time. See the module notes.
+    Whether the line between two satellites keeps a height above the WGS84 ellipsoid, at
+    each time.
 
     Parameters
     ----------
     first, second : SkyCoord
-        The two satellites' positions in GCRS, at the same times. The times come
-        from `first`.
+        The two satellites' positions in GCRS, at `first`'s times
     clearance : Quantity
-        The least height of the line above the WGS84 ellipsoid, 0 or more
+        The line's least height above the ellipsoid
     earth_at : callable, optional
-        Gives the Earth's orientation for a `Time` array, as `earth_rotations`
-        does, which is the default
+        The Earth's orientation for a `Time` array, by default `earth_rotations`
 
     Returns
     -------
     clear : ndarray of bool
-        True where the line keeps at least that height, so that each satellite
-        sees the other
+        True where each satellite sees the other
     """
     times = cast(TimeArray, first.obstime)
     pole = earth_at(times.ravel()[:1])[0, :, 2]

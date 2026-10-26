@@ -6,24 +6,10 @@
 """
 Sun-synchronous orbits, built as a TLE that SGP4 reads as asked.
 
-A TLE holds SGP4's own mean elements. So each element is set against SGP4
-itself, not against a textbook formula:
-
-- The inclination makes SGP4's secular node rate match the mean sun, 360 degrees
-  in 365.2421897 days. SGP4 works this rate out from J2, J2 squared and J4, with
-  WGS72 constants. A formula from another theory reads the elements differently.
-  At 510 km it misses by about 0.01 degrees, which lets the local time of the
-  node drift by minutes a year.
-- The mean motion makes the altitude, averaged over one orbit, match the one asked
-  for. The altitude is the distance from the centre of the Earth minus `R_EARTH`,
-  as in the sizing domain's `Mission`.
-- The right ascension of the node puts it at the asked local mean time at the
-  epoch.
-
-The inclination and the mean motion depend on each other a little, so they are
-found in turn until the altitude settles. The orbit is circular. At the epoch,
-the satellite is at the ascending node of the mean orbit. SGP4's short-period
-terms move its actual position a little, about 0.1 degrees of latitude at 510 km.
+Each element is set against SGP4 itself: the inclination makes its node rate match the
+mean sun, the mean motion makes its altitude, averaged over an orbit, the one asked for,
+and the node sits at the asked local time. `docs/scenario/scenario_ref.ipynb`, under "A
+sun-synchronous orbit", explains why.
 
 """
 
@@ -54,15 +40,10 @@ _MAX_ITERATIONS = 20
 """Most rounds of inclination and mean motion before the search gives up."""
 
 _INCLINATION_LOW = float(np.radians(90.0))
-"""Lower end of the search for the sun-synchronous inclination, 90 degrees [rad].
-
-The node rate is zero at 90 degrees, and grows towards 180 degrees. sgp4 takes
-plain radians, so the two ends are plain numbers.
-"""
+"""The lower end of the search for the inclination, 90 degrees, in rad."""
 
 _INCLINATION_HIGH = float(np.radians(179.9))
-"""Upper end of the search, 179.9 degrees [rad]. It stops short of 180 degrees,
-where SGP4 divides by one plus the cosine of the inclination."""
+"""The upper end of the search, 179.9 degrees, in rad, short of SGP4's division at 180."""
 
 _BISECTIONS = 60
 """Halvings of the inclination range, well past the precision of a float."""
@@ -72,41 +53,31 @@ def sso_tle(
     epoch: TimeArray, altitude: Quantity, ltan: Quantity, name: str | None = None
 ) -> Tle:
     """
-    A TLE for a circular sun-synchronous orbit.
-
-    SGP4 reads the TLE as the orbit asked for. Its secular node rate matches the
-    mean sun, and its altitude, averaged over one orbit, is `altitude`. The
-    ascending node is at the local mean time `ltan` at the epoch. The satellite
-    is at the node of the mean orbit then.
-
-    The element set keeps its full precision. Written out as TLE lines, with
-    `Tle.lines`, the inclination and the right ascension round to 0.0001 degrees.
-    Read back, those lines drift the local time of the node by under 0.02 min a
-    year, and move it by under 0.03 s.
+    A TLE for a circular sun-synchronous orbit, with the satellite at the ascending node
+    at the epoch.
 
     Parameters
     ----------
     epoch : Time
-        Epoch of the TLE, a single time
+        The TLE's epoch, a single time
     altitude : Quantity
-        Distance from the centre of the Earth minus `R_EARTH`, averaged over one
-        orbit. Positive.
+        The distance from the Earth's centre less `R_EARTH`, averaged over one orbit,
+        positive
     ltan : Quantity
-        Local mean time of the ascending node, as a time of day, such as 10.5 h
+        The local mean time of the ascending node, such as 10.5 h
     name : str, optional
-        Name of the satellite, kept with the TLE
+        The satellite's name
 
     Returns
     -------
     tle : Tle
-        The element set
+        The element set, at full precision
 
     Raises
     ------
     ValueError
-        If the altitude is not positive, if no inclination makes the orbit
-        sun-synchronous, or if SGP4 rejects the elements. SGP4 treats an orbit of
-        225 min or longer as deep space, and this builder rejects it.
+        If the altitude is not positive, no inclination is sun-synchronous, or SGP4
+        refuses the elements, such as a deep-space orbit of 225 min or more
     """
     if altitude <= Q_(0, "km"):
         raise ValueError(f"The altitude must be positive, got {altitude}")
@@ -139,28 +110,9 @@ def _satrec(
     epoch_days: float, inclination: float, mean_motion: float, node: float
 ) -> Satrec:
     """
-    An SGP4 object for a circular orbit with no drag, at the ascending node.
-
-    Parameters
-    ----------
-    epoch_days : float
-        Epoch, in days from 1949-12-31 00:00 UTC
-    inclination : float
-        Inclination [rad]
-    mean_motion : float
-        Kozai mean motion, as a TLE holds it [rad/min]
-    node : float
-        Right ascension of the ascending node in TEME [rad]
-
-    Returns
-    -------
-    satrec : Satrec
-        The initialised SGP4 object
-
-    Raises
-    ------
-    ValueError
-        If SGP4 reports an error, or treats the orbit as deep space
+    An SGP4 object for a circular orbit with no drag, at the ascending node, from the
+    epoch in days since 1949-12-31, the inclination and the node in rad, and the mean
+    motion in rad/min.
     """
     satrec = Satrec()
     satrec.sgp4init(
@@ -185,27 +137,8 @@ def _sun_synchronous_inclination(
     epoch_days: float, mean_motion: float, node: float
 ) -> float:
     """
-    The inclination at which SGP4's secular node rate matches the mean sun.
-
-    Parameters
-    ----------
-    epoch_days : float
-        Epoch, in days from 1949-12-31 00:00 UTC
-    mean_motion : float
-        Kozai mean motion [rad/min]
-    node : float
-        Right ascension of the ascending node in TEME [rad]
-
-    Returns
-    -------
-    inclination : float
-        The sun-synchronous inclination [rad]
-
-    Raises
-    ------
-    ValueError
-        If even the highest inclination searched turns the node slower than the
-        sun. The orbit is then too high to be sun-synchronous.
+    The inclination, in rad, at which SGP4's node rate matches the mean sun, or an error
+    for an orbit too high.
     """
     target = MEAN_SUN_RATE.to_value("rad / min")
     low, high = _INCLINATION_LOW, _INCLINATION_HIGH
@@ -224,28 +157,7 @@ def _sun_synchronous_inclination(
 
 
 def _mean_radius(satrec: Satrec) -> float:
-    """
-    Distance from the centre of the Earth, averaged over one orbit.
-
-    One orbit here is one nodal period: one turn of the argument of latitude, at
-    SGP4's secular rate. SGP4's short-period terms repeat with it, so they average
-    out.
-
-    Parameters
-    ----------
-    satrec : Satrec
-        The initialised SGP4 object
-
-    Returns
-    -------
-    radius : float
-        The averaged distance [km]
-
-    Raises
-    ------
-    ValueError
-        If SGP4 fails at any of the points
-    """
+    """The distance from the Earth's centre, in km, averaged over one nodal period."""
     period: float = nodal_period(satrec).to(u.min).value
     minutes = np.arange(_SAMPLES_PER_ORBIT) * period / _SAMPLES_PER_ORBIT
     error, position, _ = satrec.sgp4_array(
@@ -259,24 +171,8 @@ def _mean_radius(satrec: Satrec) -> float:
 
 def _node_right_ascension(epoch: TimeArray, ltan: Quantity) -> float:
     """
-    Right ascension in TEME of an ascending node at a local mean time.
-
-    The local mean time at a longitude is UT1 plus the longitude, as a time of
-    day. In TEME, a longitude is the right ascension minus the Greenwich mean
-    sidereal time of IAU 1982, which is what astropy's TEME frame turns with. So
-    the node sits at that sidereal time plus the local mean time minus UT1.
-
-    Parameters
-    ----------
-    epoch : Time
-        The epoch, a single time
-    ltan : Quantity
-        Local mean time of the ascending node, as a time of day
-
-    Returns
-    -------
-    node : float
-        Right ascension of the ascending node in TEME, from 0 to 2 pi [rad]
+    The right ascension in TEME of an ascending node at a local mean time, from 0 to 2
+    pi, in rad.
     """
     sidereal = epoch.sidereal_time("mean", "greenwich", model="IAU1982")
     ut1_hours = (epoch.ut1.mjd % 1) * 24

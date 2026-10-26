@@ -6,12 +6,9 @@
 """
 What the CCSDS messages that quicksat reads share: KVN lines and epochs.
 
-KVN is the plain-text form of a CCSDS message: `KEY = value` lines, with
-`COMMENT` lines and blank lines between them. A value may end with its unit in
-brackets, such as `15.28 [rev/day]`. An epoch is a date, `2026-10-01T00:00:00`,
-or a day of the year, `2026-274T00:00:00`, with an optional `Z`.
-
-`quicksat.orbit.oem_trajectory` and `quicksat.orbit.omm` use these.
+KVN is the text form: `KEY = value` lines, with `COMMENT` and blank lines, and an
+optional unit in brackets. An epoch is a date or a day of the year, with an optional
+`Z`.
 
 """
 
@@ -32,7 +29,7 @@ def key_value(line: str, number: int, path: Path) -> tuple[str, str]:
     Parameters
     ----------
     line : str
-        The line, without the spaces at its ends
+        The line, stripped
     number : int
         Its line number, for the message
     path : Path
@@ -41,8 +38,7 @@ def key_value(line: str, number: int, path: Path) -> tuple[str, str]:
     Returns
     -------
     key, value : str
-        The key in upper case, and the value without the spaces at its ends or
-        a unit in brackets
+        The key in upper case, and the value stripped
 
     Raises
     ------
@@ -57,17 +53,17 @@ def key_value(line: str, number: int, path: Path) -> tuple[str, str]:
 
 def normalised_epoch(epoch: str) -> str:
     """
-    A CCSDS epoch as astropy reads it: a date in ISO form, or a day of the year
-    in astropy's `yday` form.
+    A CCSDS epoch as astropy reads it: an ISO date, or astropy's `yday` form.
 
     Parameters
     ----------
     epoch : str
-        The epoch as written, with an optional `Z`
+        The epoch as written
 
     Returns
     -------
     epoch : str
+        The epoch without its `Z`
     """
     epoch = epoch.strip().removesuffix("Z")
     match = _DAY_OF_YEAR.match(epoch)

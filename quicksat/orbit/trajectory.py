@@ -6,31 +6,10 @@
 """
 Trajectories: an orbit given as positions and velocities at times.
 
-A `Trajectory` holds states in GCRS and interpolates between them. It does not
-know where they came from. `quicksat.orbit.ecsv_trajectory` reads them from an
-ECSV file, and `quicksat.orbit.oem_trajectory` from a CCSDS OEM.
-`quicksat.orbit.trajectory_files` tells the two apart.
-
-The states come in segments, each with splines of its own, so that none is
-smoothed across a manoeuvre. An ECSV file is one segment. An OEM may hold
-several.
-
-The states may be given in a frame centred on the Earth: GCRS, ITRS, TEME,
-CIRS, TETE, or EME2000, which astropy calls `PrecessedGeocentric` at J2000.
-astropy centres ICRS and FK5 on the solar system's barycentre, so a satellite's
-position read in them would land 150 million km away. They are refused.
-
-Between the states, the position and the velocity each come from an
-interpolating spline of degree 5, as in satmad. At 60 s between samples in low
-orbit, the position is good to a millimetre, except within about three samples
-of either end, where it is good to a centimetre. A segment of under six samples
-gets a lower degree, and a warning. Nothing is extrapolated.
-
-One orbit is measured from the states. It is the mean time between ascending
-node crossings, as SGP4's nodal period is for a TLE. Below 1 degree of
-inclination the node is not well defined. There, one orbit is the mean time
-between crossings of a half-plane fixed in GCRS, which holds the orbit normal
-and a GCRS axis in the orbit plane.
+A `Trajectory` holds states in GCRS in segments, each with its own degree-5 splines, so
+none is smoothed across a manoeuvre. Nothing is extrapolated. One orbit is measured from
+the states, between ascending nodes. `docs/scenario/scenario_ref.ipynb`, under "A
+trajectory file", explains the frames, the splines and their accuracy.
 
 """
 
@@ -65,23 +44,22 @@ FRAMES = {
     "TETE": (TETE, {}),
     "EME2000": (PrecessedGeocentric, {"equinox": Time("J2000", scale="tt")}),
 }
-"""The frames a trajectory file may use, each with the astropy frame and its
-fixed attributes. All are centred on the Earth."""
+"""The frames a trajectory file may use, each with its astropy frame and fixed
+attributes, all centred on the Earth."""
 
 BARYCENTRIC_FRAMES = ("ICRS", "FK5", "FK4")
-"""Frames that are refused with a reason: astropy centres them on the solar
-system's barycentre."""
+"""Frames refused because astropy centres them on the solar system's barycentre."""
 
 SPLINE_DEGREE = 5
 """Degree of the interpolating splines, as in satmad."""
 
 END_SAMPLES = 3
-"""Within this many samples of either end, the interpolation is less accurate,
-and a run that comes this close gets a warning."""
+"""Within this many samples of either end, the interpolation is less accurate, and a run
+gets a warning."""
 
 NODE_MIN_INCLINATION = Q_(1, "deg")
-"""Below this inclination, one orbit is measured against a fixed direction
-instead of the ascending node."""
+"""Below this inclination, one orbit is measured against a fixed direction, not the
+node."""
 
 ASCENDING_NODES = "ascending nodes"
 FIXED_DIRECTION = "a fixed direction"
@@ -90,23 +68,7 @@ TWO_BODY = "two-body estimate"
 
 def _crossings(offsets: np.ndarray, values: np.ndarray, value_at, keep) -> list:
     """
-    The times a value rises through zero, located between the samples.
-
-    Parameters
-    ----------
-    offsets : ndarray
-        The sample times [s]
-    values : ndarray
-        The value at each sample
-    value_at : callable
-        The value at any time [s]
-    keep : ndarray
-        Whether a crossing between a sample and the next one counts
-
-    Returns
-    -------
-    crossings : list of float
-        The times of the crossings [s], in order
+    The times, in s, at which a value rises through zero, located between the samples.
     """
     rising = (values[:-1] < 0) & (values[1:] >= 0) & keep
     return [
@@ -118,18 +80,8 @@ def _crossings(offsets: np.ndarray, values: np.ndarray, value_at, keep) -> list:
 @dataclass(frozen=True)
 class _Segment:
     """
-    One stretch of samples with no manoeuvre in it, and its splines.
-
-    Parameters
-    ----------
-    offsets : ndarray
-        The time of each sample since the trajectory's epoch [s], rising
-    positions, velocities : ndarray
-        In GCRS [km] and [km/s], shape (n, 3)
-    first, last : float
-        The span the segment serves [s]: its useable span, or its samples
-    position, velocity : BSpline
-        The interpolating splines
+    One stretch of samples with no manoeuvre in it: its times in s, its states in km and
+    km/s, the span it serves, and its splines.
     """
 
     offsets: np.ndarray
@@ -150,29 +102,8 @@ def _segment(
     count: int,
 ) -> _Segment:
     """
-    A segment through samples, with splines of degree 5 where there are enough.
-
-    Parameters
-    ----------
-    offsets : ndarray
-        The sample times [s]
-    positions, velocities : ndarray
-        In GCRS [km] and [km/s], shape (n, 3)
-    span : tuple of float, optional
-        The span the segment serves [s], inside its samples. All of them by
-        default.
-    number, count : int
-        The segment's number, from 1, and how many there are, for the messages
-
-    Returns
-    -------
-    segment : _Segment
-
-    Raises
-    ------
-    ValueError
-        If there are fewer than two samples, the times do not rise, or the span
-        reaches past the samples
+    A segment through samples, with degree-5 splines where there are enough, or an error
+    for too few samples, falling times, or a span past them.
     """
     offsets = np.asarray(offsets, dtype=float)
     where = f"segment {number}" if count > 1 else "the trajectory"
@@ -208,42 +139,34 @@ def _segment(
 
 class Trajectory:
     """
-    An orbit given as states at times, interpolated in between.
+    An orbit given as states at times, in segments, interpolated in between.
 
-    The states come in segments. A new segment usually follows a manoeuvre, so
-    each has splines of its own, and none is smoothed across a change of
-    velocity. Where one segment ends at the time the next one starts, the later
-    one applies from that time on. Segments may leave gaps, but a run may not
-    cross one.
-
-    Build one with `from_states` or `from_segments`, or read one from a file
-    with `quicksat.orbit.ecsv_trajectory` or `quicksat.orbit.oem_trajectory`.
+    Where one segment ends as the next starts, the later applies. A run may not cross a
+    gap. Build one with `from_states` or `from_segments`, or read one from a file.
 
     Parameters
     ----------
     epoch : Time
-        The time the offsets are counted from
+        The time the offsets count from
     segments : list of tuple
-        Each segment's sample times since the epoch [s], positions in GCRS [km]
-        and velocities in GCRS [km/s], in time order
+        Each segment's times since the epoch in s, and positions and velocities in GCRS
+        in km and km/s
     spans : list, optional
-        The span each segment serves [s], or None for all its samples
+        The span each segment serves, in s, or None for all its samples
     name : str, optional
-        The name of the satellite
+        The satellite's name
     frame : str, optional
-        The frame the states were given in, before they were turned into GCRS
+        The frame the states were given in
 
     Attributes
     ----------
     file, format, originator : str or None
-        Where the states came from, which a reader fills in: the file's name,
-        `ECSV` or `OEM`, and who wrote an OEM
+        The file's name, `ECSV` or `OEM`, and an OEM's writer, which a reader fills in
 
     Raises
     ------
     ValueError
-        If a segment has fewer than two samples, its times do not rise, or the
-        segments overlap
+        If a segment has under two samples or falling times, or the segments overlap
     """
 
     def __init__(
@@ -290,12 +213,12 @@ class Trajectory:
         Parameters
         ----------
         state : SkyCoord
-            Positions with velocities, in any frame that astropy can turn into
-            GCRS, with an `obstime` for each, such as from `tle_states`
+            Positions with velocities and their times, in any frame astropy turns into
+            GCRS
         name : str, optional
-            The name of the satellite
+            The satellite's name
         frame : str, optional
-            The frame to report the states as given in. GCRS by default.
+            The frame to report, by default GCRS
 
         Returns
         -------
@@ -318,15 +241,13 @@ class Trajectory:
         Parameters
         ----------
         states : list of SkyCoord
-            Each segment's positions with velocities, in time order, in any frame
-            that astropy can turn into GCRS, with an `obstime` for each
+            Each segment's positions with velocities and their times, in time order
         spans : list, optional
-            The start and the end of the span each segment serves, or None for
-            all its samples
+            Each segment's start and end, or None for all its samples
         name : str, optional
-            The name of the satellite
+            The satellite's name
         frame : str, optional
-            The frame to report the states as given in. GCRS by default.
+            The frame to report, by default GCRS
 
         Returns
         -------
@@ -362,75 +283,36 @@ class Trajectory:
 
     @property
     def start(self) -> TimeArray:
-        """
-        The start of the span the first segment serves.
-
-        Returns
-        -------
-        start : Time
-        """
+        """The start of the first segment's span."""
         return self.epoch + Q_(self._segments[0].first, "s")
 
     @property
     def end(self) -> TimeArray:
-        """
-        The end of the span the last segment serves.
-
-        Returns
-        -------
-        end : Time
-        """
+        """The end of the last segment's span."""
         return self.epoch + Q_(self._segments[-1].last, "s")
 
     @property
     def sample_count(self) -> int:
-        """
-        The number of samples, over all the segments.
-
-        Returns
-        -------
-        count : int
-        """
+        """The samples, over all the segments."""
         return sum(len(segment.offsets) for segment in self._segments)
 
     @property
     def segment_count(self) -> int:
-        """
-        The number of segments.
-
-        Returns
-        -------
-        count : int
-        """
+        """The number of segments."""
         return len(self._segments)
 
     @property
     def period_measured(self) -> bool:
         """
-        Whether one orbit was measured from the samples, rather than estimated.
-
-        Returns
-        -------
-        measured : bool
-            False for a trajectory shorter than one orbit, where the period is
-            the two-body estimate from the first state
+        Whether one orbit was measured, rather than the two-body estimate of a
+        trajectory under one orbit long.
         """
         return self.period_method != TWO_BODY
 
     def _measure_period(self) -> tuple[Quantity, str]:
         """
-        One orbit, measured from the samples. See the module notes.
-
-        The crossings of every segment count, each inside the span its segment
-        serves.
-
-        Returns
-        -------
-        period : Quantity
-            The mean time between crossings, in seconds, or the two-body period
-            from the first state where there are fewer than two crossings
-        method : str
-            `ascending nodes`, `a fixed direction` or `two-body estimate`
+        One orbit, in s, as the mean time between crossings inside the segments' spans,
+        with how it was found.
         """
         positions = np.concatenate([segment.positions for segment in self._segments])
         velocities = np.concatenate([s.velocities for s in self._segments])
@@ -477,19 +359,7 @@ class Trajectory:
         return Q_(2 * np.pi * np.sqrt(semi_major_axis**3 / mu), "s"), TWO_BODY
 
     def _segment_indices(self, offsets: np.ndarray) -> np.ndarray:
-        """
-        The segment that serves each time, or -1 where none does.
-
-        Parameters
-        ----------
-        offsets : ndarray
-            Times since the epoch [s]
-
-        Returns
-        -------
-        indices : ndarray
-            An index into the segments for each time
-        """
+        """The index of the segment that serves each time, or -1."""
         firsts = np.array([segment.first for segment in self._segments])
         lasts = np.array([segment.last for segment in self._segments])
         # a microsecond of slack for the rounding of the times; a time where two
@@ -507,14 +377,13 @@ class Trajectory:
         times : Time
             The times, as an array
         with_velocity : bool, optional
-            Whether the state carries velocities as well as positions. True by
-            default.
+            Whether to add the velocities
 
         Returns
         -------
         state : SkyCoord
-            The position relative to the centre of the Earth, and the velocity if
-            asked for, in GCRS. Its `obstime` is `times`.
+            The positions from the Earth's centre, and any velocities, in GCRS, at
+            `times`
 
         Raises
         ------
@@ -548,27 +417,25 @@ class Trajectory:
         self, start: TimeArray, end: TimeArray, label: str = "the trajectory"
     ) -> str | None:
         """
-        Check that a run lies inside the trajectory and crosses no gap, and warn
-        if it comes close to either end of its segments' samples.
+        Check that a run lies inside the trajectory and crosses no gap, with a warning
+        if it nears the ends of the samples.
 
         Parameters
         ----------
         start, end : Time
-            The start and the end of the run
+            The run's start and end
         label : str, optional
-            What the trajectory is, for the messages, such as `the trajectory`
+            What the trajectory is, for the messages
 
         Returns
         -------
         text : str or None
-            The warning's text, so that a run can show it too, or None if the run
-            keeps away from the ends
+            The warning, or None
 
         Raises
         ------
         ValueError
-            If the run starts before the trajectory or ends after it, or crosses
-            a gap between two segments
+            If the run reaches past the trajectory or crosses a gap
         """
         first = float((start - self.epoch).to_value(u.s))
         last = float((end - self.epoch).to_value(u.s))
@@ -606,12 +473,12 @@ class Trajectory:
 
 def frame_of(name: str) -> tuple[type, dict]:
     """
-    The astropy frame class and attributes for a frame name in a file.
+    The astropy frame class and attributes for a frame's name in a file.
 
     Parameters
     ----------
     name : str
-        The frame, as a file gives it, in any case
+        The frame's name, in any case
 
     Returns
     -------

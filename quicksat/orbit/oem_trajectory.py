@@ -6,39 +6,11 @@
 """
 Trajectory files in CCSDS OEM, the Orbit Ephemeris Message, in its KVN form.
 
-An OEM is plain text: a header, then one or more segments. Each segment is a
-block of metadata between `META_START` and `META_STOP`, its data lines, and an
-optional covariance block:
-
-    CCSDS_OEM_VERS = 2.0
-    CREATION_DATE = 2026-10-01T00:00:00
-    ORIGINATOR = SOMEONE
-
-    META_START
-    OBJECT_NAME = MY SATELLITE
-    OBJECT_ID = 2026-001A
-    CENTER_NAME = EARTH
-    REF_FRAME = EME2000
-    TIME_SYSTEM = UTC
-    START_TIME = 2026-10-01T00:00:00.000
-    STOP_TIME = 2026-10-02T00:00:00.000
-    META_STOP
-    2026-10-01T00:00:00.000 -5288.590862 1338.957773 -4213.430985 ...
-
-Each data line holds an epoch, the position in km and the velocity in km/s.
-Three accelerations may follow, and are not read. Covariance blocks and comments
-are skipped. Versions 1.0, 2.0 and 3.0 share this layout. An epoch is a date,
-`2026-10-01T00:00:00`, or a day of the year, `2026-274T00:00:00`.
-
-The centre must be the Earth. OEM names the axes apart from the origin, so ICRF
-centred on the Earth is GCRS. The frames read are in `OEM_FRAMES`, with every
-ITRF realisation read as ITRS, and the time systems in `TIME_SYSTEMS`. The
-interpolation the file suggests is not followed: quicksat uses its own splines,
-as for ECSV.
-
-Each segment becomes a segment of the `Trajectory`, so that a manoeuvre between
-two segments is not smoothed over. A segment serves its useable span where it
-gives one, and all its data otherwise.
+An OEM holds a header, then segments of metadata, data lines and an optional covariance.
+The data lines give an epoch, the position in km and the velocity in km/s. The centre
+must be the Earth, and quicksat's own splines replace the file's interpolation. Each
+segment becomes a segment of the `Trajectory`, so a manoeuvre between two is kept.
+`docs/scenario/scenario_ref.ipynb`, under "A CCSDS OEM", explains what is read.
 
 """
 
@@ -70,13 +42,12 @@ OEM_FRAMES = {
     "TOD": "TETE",
     "CIRF": "CIRS",
 }
-"""OEM frames, each with the name in `quicksat.orbit.trajectory.FRAMES` that it
-is read as. Every ITRF realisation, such as `ITRF2000` or `ITRF-97`, is read as
-ITRS."""
+"""OEM frames, each with the name in `quicksat.orbit.trajectory.FRAMES` it is read as.
+Every ITRF realisation is read as ITRS."""
 
 WITHOUT_POLAR_MOTION = ("GRC", "TDR")
-"""OEM frames that turn with the Earth but leave out polar motion. astropy has
-no such frame, so they are refused."""
+"""OEM frames that turn with the Earth without polar motion, which astropy lacks, so
+they are refused."""
 
 TIME_SYSTEMS = {
     "UTC": "utc",
@@ -88,8 +59,8 @@ TIME_SYSTEMS = {
     "UT1": "ut1",
     "GPS": "tai",
 }
-"""OEM time systems, each with the astropy scale it is read in. GPS time is read
-as TAI, less `GPS_BEHIND_TAI`."""
+"""OEM time systems, each with the astropy scale it is read in. GPS is read as TAI less
+`GPS_BEHIND_TAI`."""
 
 GPS_BEHIND_TAI = Q_(19, "s")
 """GPS time runs this far behind TAI."""
@@ -98,20 +69,8 @@ GPS_BEHIND_TAI = Q_(19, "s")
 @dataclass
 class _OemSegment:
     """
-    One segment as the parser found it, before any of it is understood.
-
-    Parameters
-    ----------
-    line : int
-        The line of its `META_START`
-    meta : dict
-        Each metadata key, with its value and its line
-    epochs : list of str
-        The epoch of each data line, as written
-    lines : list of int
-        The line of each data line
-    values : list of list of float
-        The position and the velocity on each data line
+    One segment as the parser found it: the line of its `META_START`, its metadata with
+    their lines, and its data lines' epochs, lines and values.
     """
 
     line: int
@@ -123,24 +82,7 @@ class _OemSegment:
 
 def _data_line(line: str, number: int, path: Path, segment: _OemSegment) -> None:
     """
-    Add a data line to its segment.
-
-    Parameters
-    ----------
-    line : str
-        The line, without the spaces at its ends
-    number : int
-        Its line number
-    path : Path
-        The file, for the messages
-    segment : _OemSegment
-        The segment the line belongs to
-
-    Raises
-    ------
-    ValueError
-        If the line does not hold an epoch and 6 numbers, or 9 with the
-        accelerations
+    Adds a data line to its segment, refusing one without an epoch and 6 or 9 numbers.
     """
     tokens = line.split()
     if len(tokens) not in (7, 10):
@@ -159,12 +101,8 @@ def _data_line(line: str, number: int, path: Path, segment: _OemSegment) -> None
 
 class _Parser:
     """
-    Reads an OEM line by line, and keeps track of where it is.
-
-    It is in one of six places: before the version, in the header, in a
-    segment's metadata, data or covariance, or after the covariance. Each has a
-    method that takes the next line. The parser checks the layout only. What
-    the values mean is checked later, segment by segment.
+    Reads an OEM line by line, checking the layout only, with one method for each place
+    in the file.
 
     Parameters
     ----------
@@ -197,7 +135,7 @@ class _Parser:
         Parameters
         ----------
         line : str
-            The line, without the spaces at its ends
+            The line, stripped
         number : int
             Its line number
 
@@ -271,12 +209,12 @@ class _Parser:
         header : dict
             Each header key, with its value and its line
         segments : list of _OemSegment
-            The segments, in the order of the file
+            The segments, in the file's order
 
         Raises
         ------
         ValueError
-            If the file ends inside a block, or has a segment with no data
+            If the file ends inside a block, or a segment has no data
         """
         ends = {"start": "CCSDS_OEM_VERS", "meta": "META_STOP"}
         if self.place in ("start", "meta", "covariance"):
@@ -294,26 +232,8 @@ def _parse(
     text: str, path: Path
 ) -> tuple[dict[str, tuple[str, int]], list[_OemSegment]]:
     """
-    The header and the segments of an OEM, read line by line. See `_Parser`.
-
-    Parameters
-    ----------
-    text : str
-        The file's text
-    path : Path
-        The file, for the messages
-
-    Returns
-    -------
-    header : dict
-        Each header key, with its value and its line
-    segments : list of _OemSegment
-        The segments, in the order of the file
-
-    Raises
-    ------
-    ValueError
-        If the layout is broken, naming the line
+    The header and the segments of an OEM, with an error naming the line where the
+    layout breaks.
     """
     parser = _Parser(path)
     for number, raw in enumerate(text.splitlines(), start=1):
@@ -325,28 +245,8 @@ def _parse(
 
 def _epochs(texts: list[str], lines: list[int], system: str, path: Path) -> TimeArray:
     """
-    OEM epochs as times, in the segment's time system.
-
-    Parameters
-    ----------
-    texts : list of str
-        The epochs as written
-    lines : list of int
-        The line of each, for the message
-    system : str
-        The time system, one of `TIME_SYSTEMS`
-    path : Path
-        The file, for the message
-
-    Returns
-    -------
-    times : Time
-        The epochs, as an array
-
-    Raises
-    ------
-    ValueError
-        If an epoch is not a time, naming its line
+    OEM epochs as times in the segment's time system, with an error naming the line of
+    one that is not a time.
     """
     scale = TIME_SYSTEMS[system]
     try:
@@ -369,25 +269,8 @@ def _epochs(texts: list[str], lines: list[int], system: str, path: Path) -> Time
 
 def _frame(name: str, line: int, path: Path) -> str:
     """
-    The name in `quicksat.orbit.trajectory.FRAMES` that an OEM frame is read as.
-
-    Parameters
-    ----------
-    name : str
-        The OEM's `REF_FRAME`
-    line : int
-        Its line, for the message
-    path : Path
-        The file, for the message
-
-    Returns
-    -------
-    frame : str
-
-    Raises
-    ------
-    ValueError
-        If the frame is not read, with a way out for GRC and TDR
+    The name in `quicksat.orbit.trajectory.FRAMES` that an OEM frame is read as, or an
+    error, with a way out for GRC and TDR.
     """
     key = name.strip().upper()
     if key in OEM_FRAMES:
@@ -408,27 +291,7 @@ def _frame(name: str, line: int, path: Path) -> str:
 
 
 def _check_metadata(segment: _OemSegment, path: Path) -> str:
-    """
-    Check what a segment's metadata says, and give its time system.
-
-    Parameters
-    ----------
-    segment : _OemSegment
-        The segment
-    path : Path
-        The file, for the messages
-
-    Returns
-    -------
-    system : str
-        The time system, one of `TIME_SYSTEMS`
-
-    Raises
-    ------
-    ValueError
-        If a key is missing, the centre is not the Earth, the frame has a
-        `REF_FRAME_EPOCH`, or the time system is not read
-    """
+    """Checks a segment's metadata, and gives its time system."""
     meta = segment.meta
     needed = ("CENTER_NAME", "REF_FRAME", "TIME_SYSTEM", "START_TIME", "STOP_TIME")
     missing = [key for key in needed if key not in meta]
@@ -461,28 +324,8 @@ def _segment_states(
     segment: _OemSegment, path: Path
 ) -> tuple[SkyCoord, tuple[TimeArray, TimeArray] | None]:
     """
-    A segment's states, and the span it serves.
-
-    Parameters
-    ----------
-    segment : _OemSegment
-        The segment, as parsed
-    path : Path
-        The file, for the messages
-
-    Returns
-    -------
-    state : SkyCoord
-        The positions and velocities, in the segment's frame
-    span : tuple of Time, or None
-        The useable start and stop, where the segment gives either. A missing
-        one is taken from the data. None where the segment gives neither.
-
-    Raises
-    ------
-    ValueError
-        If the metadata is not read, the epochs do not rise, or an epoch or the
-        useable span lies outside the segment's start and stop, naming the line
+    A segment's states, in its frame, and the useable span it serves, or None where it
+    gives none.
     """
     system = _check_metadata(segment, path)
     meta = segment.meta
@@ -534,12 +377,12 @@ def _segment_states(
 
 def read_oem_trajectory(path: str | Path) -> Trajectory:
     """
-    Read a CCSDS OEM in KVN. See the module notes for what is read.
+    Read a CCSDS OEM in KVN.
 
     Parameters
     ----------
-    path : str | Path
-        Filepath of the OEM
+    path : str or Path
+        The OEM file
 
     Returns
     -------
@@ -551,8 +394,8 @@ def read_oem_trajectory(path: str | Path) -> Trajectory:
     FileNotFoundError
         If the file does not exist
     ValueError
-        If the layout is broken or a value is not read, naming the line, or if
-        the segments overlap
+        If the layout breaks or a value is not read, naming the line, or the segments
+        overlap
     """
     path = Path(path)
     if not path.is_file():
@@ -585,29 +428,26 @@ def write_oem_trajectory(  # noqa: V103
     creation_date: TimeArray | None = None,
 ) -> Path:
     """
-    Write states to an OEM in KVN, version 2.0, as one segment in UTC.
+    Write states to an OEM in KVN, version 2.0, as one segment in UTC, to the
+    microsecond and the millimetre.
 
     Parameters
     ----------
-    path : str | Path
+    path : str or Path
         The file to write
     state : SkyCoord
-        Positions with velocities, with an `obstime` for each, such as from
-        `tle_states`
+        Positions with velocities, with their times
     frame : str, optional
-        The OEM frame to write the states in: one of `OEM_FRAMES`, or an ITRF
-        realisation. EME2000 by default.
+        One of `OEM_FRAMES`, or an ITRF realisation, by default EME2000
     name, object_id : str, optional
-        The `OBJECT_NAME` and `OBJECT_ID`, `UNKNOWN` by default
+        The `OBJECT_NAME` and `OBJECT_ID`, by default `UNKNOWN`
     creation_date : Time, optional
-        The `CREATION_DATE`, now by default. Give one for a file that must not
-        change from one run to the next.
+        The `CREATION_DATE`, by default now
 
     Returns
     -------
     path : Path
-        The file written. It keeps a microsecond, a millimetre and a micrometre
-        a second.
+        The file written
     """
     path = Path(path)
     frame_class, attributes = frame_of(_frame(frame, 0, path))
