@@ -16,7 +16,8 @@ import pytest
 from quicksat import u
 from quicksat.power.consumption import PowerConsumption, run_consumption
 from quicksat.power.orbits import interval_pieces, whole_orbits
-from quicksat.scenario.config import SLEW, Scenario
+from quicksat.scenario.config import Scenario
+from quicksat.scenario.names import SLEW
 from quicksat.scenario.run import run_scenario
 from quicksat.utils.intervals import labels_at
 

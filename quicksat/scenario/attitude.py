@@ -63,7 +63,9 @@ from quicksat.orbit.attitude import (
 from quicksat.orbit.geometry import EARTH_ROTATION_RATE, earth_rotations, ground_point
 from quicksat.orbit.tle import Tle
 from quicksat.orbit.trajectory import Trajectory
-from quicksat.scenario.config import (
+from quicksat.scenario.config import Scenario, Slew
+from quicksat.scenario.grid import GridOrbit
+from quicksat.scenario.names import (
     GROUND_VELOCITY,
     NADIR,
     ORBIT_NORMAL,
@@ -71,14 +73,12 @@ from quicksat.scenario.config import (
     SUN,
     UNPLANNED,
     VELOCITY,
-    Scenario,
-    Slew,
 )
-from quicksat.scenario.grid import GridOrbit
 from quicksat.utils.intervals import TimeArray, labels_at, round_time
 
 if TYPE_CHECKING:
-    from quicksat.scenario.run import Occurrence, ScenarioRun
+    from quicksat.scenario.events import Occurrence
+    from quicksat.scenario.run import ScenarioRun
 
 _TURN_TIME_TOLERANCE = Q_(1, "ms")
 """How close two rounds of the turn time must come for the search to stop."""

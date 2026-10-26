@@ -44,7 +44,7 @@ from quicksat import u
 from quicksat.orbit.attitude import quaternions
 from quicksat.scenario.articulation import grid_modes
 from quicksat.scenario.attitude import attitude_names, body_rotations
-from quicksat.scenario.config import PLATFORM
+from quicksat.scenario.names import PLATFORM
 from quicksat.scenario.run import ScenarioRun
 
 ATTITUDE_FILE = "attitude.ecsv"

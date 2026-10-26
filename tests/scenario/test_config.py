@@ -16,15 +16,9 @@ from astropy.tests.helper import assert_quantity_allclose
 from astropy.units import Quantity
 
 from quicksat import Q_, u
-from quicksat.scenario.config import (
-    Activity,
-    Modes,
-    OrbitCount,
-    Scenario,
-    Slew,
-    parse_constraint,
-    parse_trigger,
-)
+from quicksat.scenario.activities import Activity, Modes
+from quicksat.scenario.config import OrbitCount, Scenario, Slew
+from quicksat.scenario.triggers import parse_constraint, parse_trigger
 from quicksat.utils.intervals import TimeArray
 
 from .conftest import both

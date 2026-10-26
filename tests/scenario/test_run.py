@@ -25,23 +25,24 @@ from quicksat import Q_, u
 from quicksat.orbit.geometry import elevations, geodetic
 from quicksat.orbit.omm import write_omm_file
 from quicksat.orbit.tle import Tle, read_tle_file
+from quicksat.scenario.activities import Activity
 from quicksat.scenario.attitude import attitude_names, body_rotations
 from quicksat.scenario.attitude_files import attitude_table
-from quicksat.scenario.config import UNPLANNED, Activity, Scenario
-from quicksat.scenario.run import (
+from quicksat.scenario.config import Scenario
+from quicksat.scenario.events import (
     CUT_AT_END,
     EVENT_NEVER_CAME,
     NEGATIVE_DURATION,
     OUTSIDE_CONSTRAINT,
     STATUS_OK,
-    activity_table,
     find_events,
     next_event,
     resolve_activities,
-    run_length,
-    run_scenario,
-    scenario_orbit,
 )
+from quicksat.scenario.names import UNPLANNED
+from quicksat.scenario.run import run_length, run_scenario
+from quicksat.scenario.sources import scenario_orbit
+from quicksat.scenario.tables import activity_table
 from quicksat.scenario.viewer import scenario_data
 from quicksat.utils.intervals import labels_at, round_time
 

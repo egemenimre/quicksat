@@ -38,7 +38,7 @@ from astropy.units import Quantity
 from quicksat import Q_, u
 from quicksat.orbit.attitude import axis_vector
 from quicksat.scenario.attitude import body_rotations, directions
-from quicksat.scenario.config import PLATFORM, SUN
+from quicksat.scenario.names import PLATFORM, SUN
 from quicksat.utils.intervals import labels_at
 
 if TYPE_CHECKING:  # a type annotation only, as run.py imports this module

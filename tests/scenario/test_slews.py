@@ -18,8 +18,10 @@ import pytest
 from quicksat import Q_, u
 from quicksat.orbit.attitude import rotation_angles
 from quicksat.scenario.attitude import body_rotations
-from quicksat.scenario.config import SLEW, Scenario
-from quicksat.scenario.run import SLEW_STARTS_EARLY, run_scenario
+from quicksat.scenario.config import Scenario
+from quicksat.scenario.events import SLEW_STARTS_EARLY
+from quicksat.scenario.names import SLEW
+from quicksat.scenario.run import run_scenario
 
 from .conftest import SLEW as SLEW_BLOCK
 
