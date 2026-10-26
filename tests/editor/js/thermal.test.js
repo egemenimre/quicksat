@@ -123,3 +123,16 @@ test("balancing sets each mode's heater power from the table by mode", () => {
   // a mode with no balancing power keeps its heater
   assert.equal(heaterWatts(row, "downlink"), 70);
 });
+
+test("balancing the run sets each mode's heater power from the run's column", () => {
+  const row = heater({ units: 1 });
+  const modes = [
+    { "payload mode": "idle", "balancing heater [W]": 37.56, "run balancing heater [W]": 22.0861 },
+    { "payload mode": "imaging", "balancing heater [W]": 0, "run balancing heater [W]": 0 },
+    { "payload mode": "downlink", "balancing heater [W]": 0, "run balancing heater [W]": 0 },
+  ];
+  assert.deepEqual(balanceHeaters(row, modes, "run balancing heater [W]"), ["idle", "imaging", "downlink"]);
+  assert.equal(heaterWatts(row, "idle"), 22.1);
+  assert.equal(heaterWatts(row, "imaging"), 0);
+  assert.equal(heaterWatts(row, "downlink"), 0);
+});

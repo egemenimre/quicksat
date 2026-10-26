@@ -65,17 +65,18 @@ function setHeaterWatts(row, mode, watts) {
   row.power[mode] = tidy(Number(watts) / Number(row.units));
 }
 
-/** A balancing heater power, rounded up to 0.1 W, so that the mode does not end in deficit. */
+/** A balancing heater power, rounded up to 0.1 W, so that the mode or the run does not end in deficit. */
 const roundUp = (watts) => Math.max(0, Math.ceil(watts * 10 - 1e-6) / 10);
 
 /**
- * Set each mode's heater power to its balancing power, from the account's table
- * by mode. Returns the modes set.
+ * Set each mode's heater power to a balancing power from the account's table by
+ * mode: each mode's own by default, or the run's with `key` as
+ * `run balancing heater [W]`. Returns the modes set.
  */
-function balanceHeaters(row, modeRows) {
+function balanceHeaters(row, modeRows, key = "balancing heater [W]") {
   const set = [];
   for (const entry of modeRows) {
-    const balancing = entry["balancing heater [W]"];
+    const balancing = entry[key];
     if (balancing == null) continue;
     setHeaterWatts(row, entry["payload mode"], roundUp(balancing));
     set.push(entry["payload mode"]);
@@ -265,9 +266,14 @@ function fillAccount(node) {
       onclick: workOutThermal,
     }),
     el("button", {
-      class: "btn", text: "Balance", disabled: !results || !heater || thermal.running,
-      title: heater ? `Set each mode's heater power to its balancing power, in the heater row ${heater.id}` : "The payload's consumption table has no heater row",
+      class: "btn", text: "Balance each mode", disabled: !results || !heater || thermal.running,
+      title: heater ? `Set each mode's heater power to the power that balances the mode on its own, in the heater row ${heater.id}: the heater to install` : "The payload's consumption table has no heater row",
       onclick: () => { balanceHeaters(heater, results.modes); changed(true); },
+    }),
+    el("button", {
+      class: "btn", text: "Balance the run", disabled: !results || !heater || thermal.running,
+      title: heater ? `Set the heater powers that bring the run's net heat to zero, in the modes that lose heat only, in the heater row ${heater.id}: a thermostat's mean power` : "The payload's consumption table has no heater row",
+      onclick: () => { balanceHeaters(heater, results.modes, "run balancing heater [W]"); changed(true); },
     }),
     status ? el("span", { class: "hint", text: status }) : null));
   if (!up) parts.push(serverHelp());
@@ -280,13 +286,14 @@ function fillAccount(node) {
     parts.push(el("h4", { text: "By payload mode" }));
     parts.push(accountTable(results.modes, ["payload mode", "mode"], {
       lead: [["time [min]", "min"]],
-      extraHeads: ["balancing heater W", heater ? `heater W, ${heater.id}` : "heater W"],
+      extraHeads: ["balancing heater W", "run balancing heater W", heater ? `heater W, ${heater.id}` : "heater W"],
       extra: (entry) => [
         el("td", { class: "right", text: one(entry["balancing heater [W]"]) }),
+        el("td", { class: "right", text: one(entry["run balancing heater [W]"]) }),
         heater ? heaterCell(heater, entry["payload mode"]) : el("td", { class: "hint", text: "no heater row" }),
       ],
     }));
-    parts.push(el("p", { class: "hint", text: "The heaters are set for each payload mode. Edit a mode's heater power here, and it goes in the heater row of the payload's consumption table. Balance sets each mode's to its balancing power, rounded up to 0.1 W: the heater power that brings the mode's net energy over the run to zero, and never below zero. The powers take no margins." }));
+    parts.push(el("p", { class: "hint", text: "The heaters are set for each payload mode. Edit a mode's heater power here, and it goes in the heater row of the payload's consumption table. Balance each mode sets each mode's heater to the power that brings the mode's net energy to zero on its own: the heater to install. Balance the run sets the heaters that bring the run's net energy to zero, in the modes that lose heat only: a thermostat's mean power. Both round up to 0.1 W, and take no margins." }));
     parts.push(el("h4", { text: "By activity" }));
     parts.push(accountTable(results.activities, ["activity", "activity"], { lead: [["occurrences", "times"], ["time [min]", "min"]] }));
     parts.push(el("h4", { text: "The net heat in since the start" }), accountPlot(results));
