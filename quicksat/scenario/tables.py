@@ -24,7 +24,7 @@ from quicksat.scenario.events import (
     NEGATIVE_DURATION,
     OUTSIDE_CONSTRAINT,
     SLEW_STARTS_EARLY,
-    Illumination,
+    IlluminationIntervals,
     Occurrence,
 )
 from quicksat.scenario.names import (
@@ -130,7 +130,7 @@ def activity_summary(occurrences: list[Occurrence]) -> str:
 
 
 def gantt_rows(
-    illumination: Illumination,
+    illumination: IlluminationIntervals,
     occurrences: list[Occurrence],
     slews: list[SlewWindow],
 ) -> tuple[P.IntervalDict, P.IntervalDict, dict[str, P.IntervalDict]]:
