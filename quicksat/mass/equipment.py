@@ -23,24 +23,11 @@ class MassClass(str, Enum):
     """Ordinary hardware. Carries margins and is counted in every case."""
 
     PROPELLANT = "propellant"
-    """Consumable. Scaled by the `propellant` percentage, and never takes a margin.
-    Its uncertainty is covered by a delta-V margin, not by a mass contingency."""
+    """Consumable. Scaled by the `propellant` percentage, and never takes a margin."""
 
 
 def _default_mass_class(v):
-    """
-    Pydantic BeforeValidator: a blank mass class means ordinary equipment.
-
-    Parameters
-    ----------
-    v : str or MassClass or None
-        The raw CSV cell, which may be empty
-
-    Returns
-    -------
-    mass_class : str or MassClass
-        The value to validate, with a blank standing in for `equipment`
-    """
+    """Reads a blank mass class as `equipment`."""
     if v is None:
         return MassClass.EQUIPMENT
     if isinstance(v, str):
@@ -50,12 +37,7 @@ def _default_mass_class(v):
 
 
 class Equipment(BaseModel):
-    """
-    A single line item of the mass budget.
-
-    Each row is validated on load. So a malformed CSV raises an error that names the bad
-    row and field, rather than failing later in the arithmetic.
-    """
+    """A single line item of the mass budget, validated as it is read."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -66,8 +48,8 @@ class Equipment(BaseModel):
     """Full name, free text (e.g. "Jena Astro HP")."""
 
     location: NoSpaceStr
-    """Where the item sits. The single computation axis: it sets the harness fraction
-    and the system margin, and decides what survives separation."""
+    """Where the item sits. It sets the harness and the system margin, and what survives
+    separation."""
 
     responsibility: NoSpaceStr
     """Who is responsible for the item. Reporting axis only."""

@@ -4,20 +4,11 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Helpers for quicksat's plots: a style, colours, a legend and the coastlines.
+Helpers for quicksat's static plots: a style, colours, a legend and the coastlines.
 
-The plots are static matplotlib. Apply the style once, before drawing, with
-`plt.style.use(STYLE)`. The plots of each domain sit in that domain, such as
-`quicksat.scenario.plots`, and use the helpers here.
-
-Values take their colours in a fixed order from `PALETTE`, so a value keeps its
-colour in every plot of a notebook. Each colour differs clearly from the one
-before it, including for readers with colour blindness. A ninth value is grey.
-
-The coastlines are the Natural Earth 1:110m coastline, which is public domain.
-The file `quicksat/data/coastlines.json` holds 134 lines. Each line is a flat
-list of longitude and latitude pairs in degrees: `[lon, lat, lon, lat, ...]`.
-matplotlib draws them as plain lines, so no map library is needed.
+Apply the style once with `plt.style.use(STYLE)`. Values take their colours from
+`PALETTE` in a fixed order, so a value keeps its colour in every plot. The coastlines
+are Natural Earth's 1:110m, which is public domain.
 
 """
 
@@ -41,9 +32,8 @@ MUTED = "#898781"
 """Colour of a value past the end of the palette."""
 
 DIM = "#5c5b56"
-"""Colour of the time that no activity plans: a grey darker than `MUTED`, so that
-it differs from a slew. It stays clear of both a white background and the
-viewer's dark one."""
+"""Colour of the time that no activity plans: a grey darker than `MUTED`, apart from a
+slew."""
 
 GRID = "#e1e0d9"
 """Colour of grid lines."""
@@ -71,10 +61,8 @@ ILLUMINATION_COLOURS = {
     "penumbra": "#8197b8",
     "umbra": "#4a5d7e",
 }
-"""The illumination's colours: one slate hue, light where the sun is seen and dark
-where it is hidden, since the illumination is an amount of light. They take no
-colours from `PALETTE`, which is left for the attitudes and the modes. Each step
-stays clear of both a white background and the viewer's dark one."""
+"""The illumination's colours: one slate hue, light in the sun and dark in the shadow,
+apart from `PALETTE`."""
 
 STYLE = {  # noqa: V107
     "axes.spines.top": False,
@@ -93,26 +81,22 @@ STYLE = {  # noqa: V107
     "legend.frameon": False,
     "legend.fontsize": 9,
 }
-"""matplotlib settings for quicksat's plots. Apply with `plt.style.use(STYLE)`."""
+"""matplotlib settings for quicksat's plots."""
 
 
 def value_colours(values: Iterable[str]) -> dict[str, str]:
     """
-    One colour for each value, in a fixed order.
-
-    The first value takes the first colour of `PALETTE`, and so on. A value past
-    the end of the palette is grey. A value that appears twice keeps its first
-    colour.
+    One colour for each value, in `PALETTE`'s order, and grey past its end.
 
     Parameters
     ----------
     values : iterable of str
-        The values, in the order they should take the colours
+        The values, in the order they take the colours
 
     Returns
     -------
     colours : dict
-        The colour of each value, as a hex string
+        Each value's colour, as a hex string
     """
     unique = dict.fromkeys(values)
     return {
@@ -167,17 +151,13 @@ def legend_below(
 
 def load_coastlines() -> list[np.ndarray]:
     """
-    Read the coastlines shipped with quicksat.
-
-    Source: Natural Earth 1:110m coastline, public domain, from
-    https://www.naturalearthdata.com/. The longitudes run from -180 to 180 degrees.
-    No line crosses the antimeridian, so every line can be drawn as it is.
+    Read the coastlines shipped with quicksat, from -180 to 180 degrees of longitude.
+    None crosses the antimeridian.
 
     Returns
     -------
     lines : list of ndarray
-        One array of shape (n, 2) for each line, holding longitude and latitude in
-        degrees. This is the form a matplotlib `LineCollection` takes.
+        One array of shape (n, 2) per line, in degrees of longitude and latitude
     """
     text = (files("quicksat") / "data" / "coastlines.json").read_text()
     return [np.asarray(flat, dtype=float).reshape(-1, 2) for flat in json.loads(text)]

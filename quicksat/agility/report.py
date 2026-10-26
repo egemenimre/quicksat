@@ -4,11 +4,9 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The document view of the agility model.
+The document view of the agility budget.
 
-It takes the slew frame rather than an `AgilityBudget`. So the dependency runs one way,
-and the layout can be tested against a bare frame. The mass and delta-V reports work the
-same way.
+It takes the slew frame, not the budget, so the dependency runs one way.
 
 """
 
@@ -56,7 +54,7 @@ _LIMIT_LABELS = {"triangular": "torque", "trapezoidal": "momentum"}
 
 
 def _failed(row: pd.Series) -> str:
-    """Colours a row red when its slew does not fit the target duration."""
+    """Colours a row red when its slew does not fit."""
     return "color: #b00020" if row.get("verdict") == "FAILS" else ""
 
 
@@ -64,45 +62,25 @@ def tabulate(frame: pd.DataFrame, target_duration=None) -> Styler:
     """
     The slew table laid out as a document.
 
-    Each row is one slew angle. It gives how long the slew takes, which limit applies,
-    and how much of the wheel momentum it uses. Given a target duration, it also says
-    whether the slew fits. Without one, those two columns are left out, because there is
-    nothing to check against.
+    Given a target duration, it also says whether each slew fits.
 
     Parameters
     ----------
     frame : pd.DataFrame
-        A slew table, as `AgilityBudget.slew_table` returns
+        A slew table, from `AgilityBudget.slew_table`
     target_duration : Quantity, optional
-        Time the operation allows for the whole manoeuvre
+        The time allowed for the whole manoeuvre
 
     Returns
     -------
     report : Styler
-        One row per slew angle, rendered for reading
+        One row per slew angle
     """
     return styled_report(_assemble(frame, target_duration), FORMATS, HEADERS, _failed)
 
 
 def _assemble(frame: pd.DataFrame, target_duration=None) -> pd.DataFrame:
-    """
-    Adds the requirement check to the slew table, when there is a target.
-
-    A reader looks for the verdict first. So it gets its own column, rather than being
-    left to the sign of a number.
-
-    Parameters
-    ----------
-    frame : pd.DataFrame
-        A slew table
-    target_duration : Quantity, optional
-        Time the operation allows. Without it, the check is left out
-
-    Returns
-    -------
-    report : pd.DataFrame
-        The slew table, with `margin` and `verdict` columns when checked
-    """
+    """The slew table, with the margin and the verdict when there is a target."""
     report = frame.copy()
     report["profile"] = report["profile"].map(_LIMIT_LABELS)  # pyright: ignore[reportArgumentType]
     columns = [name for name in _COLUMNS if name not in ("margin", "verdict")]

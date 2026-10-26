@@ -6,13 +6,8 @@
 """
 The requirements: what the mission asks of the spacecraft.
 
-A requirement is asked of a spacecraft, and is not a property of one. So the
-requirements have a file of their own, `requirements.yaml`, beside the budgets'
-files. A budget reads its own section, and checks its figures against it with
-`checks()`.
-
-The file and each of its sections are optional. A budget with no requirement
-still works out its figures, and gives no check for that requirement.
+They are in `requirements.yaml`, beside the budgets' files. Each budget checks its own
+section with `checks()`. The file and each section are optional.
 
 """
 
@@ -37,13 +32,13 @@ class SlewRequirement(Commented):
     Parameters
     ----------
     axis : Axis
-        The axis the slew is about
+        The slew's axis
     angle : Quantity
         How far the spacecraft turns
     duration : Quantity
-        The time the slew may take, settling included
+        The time allowed, settling included
     comments : str, optional
-        The user's notes on the block. quicksat does not read them
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -60,10 +55,9 @@ class AgilityRequirements(Commented):
     Parameters
     ----------
     slews : dict of str to SlewRequirement
-        The slews the mission needs, keyed by any names you choose. Different
-        operations may ask different times of the same spacecraft
+        The slews the mission needs, by any names
     comments : str, optional
-        The user's notes on the block. quicksat does not read them
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -78,10 +72,9 @@ class DataRequirements(Commented):
     Parameters
     ----------
     orbits_without_downlink : float
-        The longest run of orbits with no payload data downlink. The mass memory must
-        hold the data generated over it
+        The longest run of orbits with no downlink, which the memory must cover
     comments : str, optional
-        The user's notes on the block. quicksat does not read them
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -98,9 +91,9 @@ class Requirements(YamlFile):
     agility : AgilityRequirements, optional
         The slews the mission needs
     data : DataRequirements, optional
-        The time the mass memory must cover
+        The orbits the memory must cover
     comments : str, optional
-        The user's notes on the block. quicksat does not read them
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(extra="forbid")

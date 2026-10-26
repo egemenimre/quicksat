@@ -8,10 +8,8 @@ Copy quicksat's sample into a folder, from the command line:
 
     python -m quicksat init my_satellite
 
-The sample comes from GitHub, for the installed version, with its data, its
-notebooks, and the viewers and editor pages written from them. `--from` takes a
-local copy of the repository instead, as a folder or as its zip. The folder must
-be empty, so nothing is overwritten. See `quicksat.sample`.
+The folder must be empty. `--from` takes a local copy of the repository. See
+`quicksat.sample`.
 
 """
 
