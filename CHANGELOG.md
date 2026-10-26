@@ -4,9 +4,11 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-26
+
 ### Added
 
-- Payload radiator sizing: a heat account of the payload over the scenario run, which sizes its radiators and heaters. Its code is the new package `quicksat.thermal`, a sub-domain of power. It reads a new optional file of the power folder, `payload_thermal.yaml`, and a `thermal` column in `payload_consumption.csv`. `python -m quicksat.thermal` prints the account after the power budget, and the Scenario Editor edits it on a Thermal tab. `docs/explanations/payload_thermal_model.md` explains it, `docs/power/payload_thermal_ref.ipynb` is the reference, and `sample/power/payload_thermal.ipynb` the worked example.
+- Payload radiator sizing: a heat account of the payload over the scenario run, which sizes its radiators and heaters. Its code is the new package `quicksat.thermal`, a sub-domain of power. It reads a new optional file of the power folder, `payload_thermal.yaml`, and a `thermal` column in `payload_consumption.csv`. `python -m quicksat.thermal` prints the account after the power budget, and the Scenario Editor edits it on a Thermal tab. The table by mode gives two balancing heater powers, and the tab has a button for each: each mode's, the heater to install, and the run's, a thermostat's mean draw. `docs/explanations/payload_thermal_model.md` explains it, `docs/power/payload_thermal_ref.ipynb` is the reference, and `sample/power/payload_thermal.ipynb` the worked example.
 
 ### Changed
 
@@ -185,7 +187,8 @@ Initial release.
 - A ground target search, through OpenStreetMap's Nominatim.
 - `python -m quicksat.editor serve FOLDER OUTPUT` serves the Scenario Editor on this computer, with a button that runs the page's files and writes the viewer.
 
-[Unreleased]: https://github.com/egemenimre/quicksat/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/egemenimre/quicksat/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/egemenimre/quicksat/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/egemenimre/quicksat/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/egemenimre/quicksat/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/egemenimre/quicksat/compare/v0.2.0...v0.3.0
