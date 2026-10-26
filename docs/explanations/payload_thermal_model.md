@@ -51,7 +51,7 @@ Each surface also takes three properties, and a fourth that is optional:
 
 - `absorptance`, α: the share of sunlight it absorbs, such as 0.20 for white paint. Set it for the year being sized, as power's `loss_factor` is. White paint's α rises over the mission, from about 0.2 to 0.4 or more.
 - `emissivity`, ε: the share of a black body's infrared it emits, such as 0.85. It also absorbs that share of the Earth's infrared.
-- `temperature`: its design temperature, such as `273 K`.
+- `temperature`: its design temperature, such as `273 K`. For a radiator, it is the radiator's own, below the equipment's, as [Kinds of radiator](#kinds-of-radiator) explains.
 - `fixed_temperature`: `true` when something else holds the surface at its temperature, such as the telescope's own heaters. Without the key, the surface floats, which matters only for the equilibrium temperature below.
 
 **Temperatures in kelvin.** Write each temperature in kelvin, such as `293 K`, as the samples do. A temperature in Celsius, such as `20 °C`, is accepted too, and turned into kelvin when the file is read. Kelvin is preferred because astropy, which reads the units, handles Celsius less reliably. It treats °C as a unit with an offset, and some ways of writing it do not read. Every computation works in kelvin, and the output gives every temperature in kelvin. A ΔT is a difference, so it is the same in K as in °C.
@@ -71,7 +71,7 @@ Each surface also takes three properties, and a fourth that is optional:
 
 **A surface radiates at its design temperature.** It gives εσAT⁴ to deep space at each step, with T its design temperature, which stays constant. σ is the Stefan-Boltzmann constant.
 
-**No temperature node, and no heat capacity.** The model does not follow the payload's temperature. The aim of a design is to keep the payload in balance, or to keep any imbalance short. A constant design temperature is then a fair assumption.
+**No temperature node, and no heat capacity.** The model does not follow the payload's temperature. The aim of a design is to keep the payload in balance, or to keep any imbalance short. A constant design temperature is then a fair assumption. [How far to trust the figures](#how-far-to-trust-the-figures) gives the sample's swing.
 
 ## The heat a surface absorbs
 
@@ -146,6 +146,35 @@ This is one equation, with a temperature for each surface. So the model moves al
 - **Every surface fixed:** nothing can move, so there is no ΔT, and the output says so.
 - **More heat out than in:** if the heat flows take out more than everything else brings in, no temperature can balance the equation. There is no answer, and the output says so.
 
+## Kinds of radiator
+
+The model treats a radiator as a flat surface at one temperature. A real radiator differs from that, and by how much depends on its kind. A small satellite usually has one of two kinds: a patch, or a panel with heat pipes.
+
+**A radiative patch** is an area of the structure, painted white or covered with optical solar reflectors. The equipment is mounted on the inside, behind it. The heat flows from the box into the panel, and spreads sideways through it. A patch costs almost no mass. But it works only where the equipment sits, so the box's place fixes the radiator's place.
+
+**A radiator panel with heat pipes** is a panel of its own, with heat pipes in it or on it. The pipes carry the heat from the equipment, and spread it across the panel. So the panel can sit on whichever face sees the least sun and Earth, away from the equipment. It costs the mass of the panel and of the pipes.
+
+**The drop to the radiator.** The equipment runs warmer than its radiator, by the drop along the path between them. For a box on a patch, the drop is at the box's mounting interface. For heat pipes, it is mostly at the bolted joints at each end. Either is usually a few kelvin, and more with a poor joint or a long path. A plain aluminium bracket in place of heat pipes can drop 10 K or more: 30 W through 1.7 W/K is 18 K. So the radiator's design temperature is the equipment's, less the drop.
+
+**Fin efficiency.** A panel cools as the heat spreads away from where it enters, so its far parts emit less. The fin efficiency η is the panel's real emission divided by εσAT⁴, with T the temperature where the heat enters. Rough values, for ε = 0.85 near 290 K:
+
+| Radiator | η |
+|---|---|
+| Panel with heat pipes every 10 to 15 cm | 0.85 to 0.95 |
+| Patch on a 1.5 mm aluminium plate, with its edge 30 cm from the box | about 0.65 |
+| Patch on a honeycomb panel with 0.3 to 0.5 mm face sheets, edge 30 cm from the box | 0.35 to 0.45 |
+| The part of a patch right under the box | close to 1 |
+
+The model has no fin efficiency, and emits from the whole area at the design temperature. For a heat pipe panel, it then overstates the emission by 5 to 20 %. For a patch that spreads far from its box, it can overstate it two or three times.
+
+**How to allow for it.** Enter the design temperature as T × η^¼. The full area then emits what the real panel does, and still absorbs the sun and the Earth over its full area. For example, a radiator at 273 K is entered at 266 K for η = 0.9, and at 217 K for η = 0.4. The output then gives that temperature, not the radiator's. A smaller area would give the same emission, but would understate the heat the radiator absorbs.
+
+**Variable conductance and diode heat pipes.** A variable conductance heat pipe shuts part of the radiator off as the payload cools. A diode heat pipe stops heat from flowing back into the payload when the radiator is warmer, such as when it sees the sun. The model has neither, and links the whole radiator to the payload in every mode. So it overstates the heat lost in a cold mode, and the heater needed for it. It also lets the sun's heat on a radiator into the payload. Both are on the safe side: the first for the heaters, the second for the hot case.
+
+**The view to space.** The model emits each surface into the whole hemisphere in front of it, and takes all of it as deep space. A radiator next to a wing, an antenna or a part of the body has part of that view blocked. It then emits less, and takes in their infrared, and a wing in the sun is warm. The model leaves this out, so keep each radiator's view to space clear.
+
+**What the model does not check.** A heat pipe carries a limited power, so size the pipes for the peak dissipation, not the mean. On the ground, gravity acts on the fluid, so a heat pipe is tested level.
+
 ## Sizing takes decisions
 
 The model gives the figures, but it does not size the payload by itself. Sizing takes decisions that the code cannot take. They come from the mission, from systems engineering and from safety. The power budget is the same: the code checks a design, and the user chooses it.
@@ -155,7 +184,7 @@ The model gives the figures, but it does not size the payload by itself. Sizing 
 - **Each mode balances: the heater to install.** Each mode's heater is its balancing power. No mode loses heat, but a hot mode still gains heat, since a heater cannot cool. So the run warms from orbit to orbit, and the heaters give more energy than the payload needs. The figure is still the one to install. A thermostat holds the payload at its set point. Once the heat of a hot mode has left, it holds the set point at about the cold mode's balancing power. So that power must be there, for a long stay in the coldest mode too.
 - **The run balances: the heater's mean draw.** The heater runs in the modes that lose heat only, and brings the run's net energy to zero. The hot modes heat the payload up a little, and the cold modes take the heat back. This is a thermostat's mean power over the run. After a hot mode, a thermostat stays off until the extra heat has left, and then holds the set point. So its net heat comes back to zero sooner, and then stays flat. Its energy is the same, since the run's balance fixes it. The power budget reads the heater row for the heater's energy, so this is the figure for it.
 
-The model has no thermostat, and keeps one heater power for each mode. So the heater row holds one of the two figures. The sample's row holds the run's: 22.1 W in idle, with 37.6 W to install. The temperature then swings over each orbit. The model has no heat capacity, so the size of the swing is the user's estimate.
+The model has no thermostat, and keeps one heater power for each mode. So the heater row holds one of the two figures. The sample's row holds the run's: 22.1 W in idle, with 37.6 W to install. The temperature then swings over each orbit. The model has no heat capacity, so the size of the swing is the user's estimate. In the sample, it is under 2 K an orbit, as [How far to trust the figures](#how-far-to-trust-the-figures) shows.
 
 **The radiator's size.** A larger radiator brings the hot modes closer to balance, but the cold modes need more heater power. A smaller one does the reverse. Neither is right by itself. The sample's 0.2 m² lets imaging and downlink heat up a little, for a modest heater in idle. Another systems engineering or safety decision could design the payload colder, with a slightly larger radiator. Imaging and downlink would then come closer to balance, and idle would need more heater power.
 
@@ -196,13 +225,50 @@ The file is optional. Without it, the folder sizes power only.
 - **The Scenario Editor's Thermal tab** edits the thermal file, and shows its surfaces in the 3D panel. With the editor's server, its Compute button gives the account. The table by mode edits the heater row. Balance each mode and Balance the run set the heaters to either balancing power. The server keeps the run and the surfaces' heat, so a change to the heaters, the flows or the dissipation is quick to work out again.
 - **The viewer** has no Thermal tab yet.
 
+## How far to trust the figures
+
+The account adds up exactly what it is given. So its figures are as good as its inputs and its simplifications. The geometry is its strongest part: the sun on each surface comes from the same code as the solar panels, which is checked against Orekit. Its weakest parts are the inputs that a first design can only estimate.
+
+**The inputs that matter most,** roughly from the largest effect down:
+
+- **The radiator's temperature.** The emission follows T⁴. At 273 K, 10 K more or less changes it by about 15 %. The drop to the equipment and the fin efficiency, from [Kinds of radiator](#kinds-of-radiator), both set it.
+- **The fin efficiency.** For a patch, it can change the emission two or three times.
+- **The absorptance's ageing.** White paint goes from about 0.2 to 0.4 or more, which doubles the sun and the albedo on it. Take the end of life's value for the hot case, and the start of life's for the cold case.
+- **The MLI's leak.** The model takes the MLI as a perfect insulator. A real blanket has an effective emittance of about 0.01 to 0.05, more for a small blanket with many seams and cut-outs. With the payload at 273 K, that loses a few watts for each square metre of blanket. In the sample, a few watts would be a large part of idle's 22 W heater. Enter it as a heat flow, such as `-5 W`.
+- **The interfaces.** The platform interface is one fixed flow. In reality it follows the difference between the two sides' temperatures, so it changes from case to case. Take the value for each case's own temperatures.
+- **The Earth's values.** In the sample, 0.1 of albedo or 25 W/m² of infrared moves idle's heater by about 6 %. Over a short activity, the spread is wider.
+- **The dissipation.** The account takes the equipment's powers without their margins. Early estimates of dissipation often grow, so check the radiator with the margins too.
+
+**The equilibrium ΔT is for a long stay.** It is where the payload would settle if an activity went on for days. The payload's heat capacity C is its mass times the specific heat of its materials, such as 900 J/(kg K) for aluminium. A payload of 50 kg, mostly aluminium, has C ≈ 45 kJ/K. Its time constant is C divided by the floating surfaces' extra emission for each kelvin, Σ 4εσAT³. With that C, the sample's time constant is about 16 h. So imaging's equilibrium ΔT of 70 K would take days to reach. One imaging session brings in 8.8 W h, and warms the payload by about 0.7 K: its net energy divided by C.
+
+**The payload is a large heat sink.** With the same C, the sample's payload swings by under 2 K within each orbit. So the account can size the radiator and the heater to the mean over the run, as it does. A small unit on its own radiator swings far more, and the account cannot show it.
+
+**What the figures are good for:**
+
+- The radiator's area, within the uncertainty of its temperature and its fin efficiency. At a first pass, that is tens of percent.
+- The radiator's place: which face sees the sun or the Earth, and in which activities.
+- The heater power, and the modes that need it.
+- The activities and the modes that bring in heat, and how much.
+
+**What they are not for:**
+
+- A unit's temperature, such as the detector's, the cooler's or a box's. The model keeps one account, at the design temperatures.
+- A temperature's stability, such as the detector's during imaging.
+- A unit on its own radiator, at its own temperature.
+- Qualification. A detailed thermal model, with the conduction paths and the nodes, does that later.
+
+**Margins.** A thermal design adds an uncertainty margin to each predicted temperature, and a margin to the heater power. The project's thermal requirements set them. A first pass with this model needs them at least as large as a detailed model would, since it leaves more out.
+
 ## Where it stops
 
-- **No heat capacity.** The model gives energies and an equilibrium, not a temperature over time.
+- **No heat capacity.** The model gives energies and an equilibrium, not a temperature over time. [How far to trust the figures](#how-far-to-trust-the-figures) says why that is enough for the payload as a whole.
 - **No temperature tracking.** Each surface stays at its design temperature through the run.
 - **No thermostat.** Each heater line keeps a fixed power for each payload mode.
 - **One account for the whole payload.** Two radiators at different temperatures add their emissions to one account. The model cannot say whether a cold focal plane radiator matches the focal plane's own heat.
 - **Every surface counts in every mode.** A surface that counts in some modes only, such as an aperture behind a door that opens for imaging, is not modelled.
+- **A radiator at one temperature.** The model has no fin efficiency, and no drop to the equipment. [Kinds of radiator](#kinds-of-radiator) shows how to allow for both.
+- **A perfect MLI.** Its leak is left out, unless it is entered as a heat flow.
+- **A clear view to space.** The model's other parts do not block a surface's view to space, nor send it their infrared.
 - **No shading of the Earth.** The model's other parts do not block a surface's view of the Earth. So the model overstates the Earth's heat, which is the safe side for the hot case, but not for the cold case.
 - **One albedo and one infrared for the run.** They do not follow the latitude, the ground below or the length of an activity. Each case takes the pair for its own scenario.
 - **One case a folder.** A hot case at the end of life and a cold case at the start of life each need a folder of their own, as power's winter and summer cases do.
@@ -210,8 +276,6 @@ The file is optional. Without it, the folder sizes power only.
 
 ## Later
 
-**A heat capacity.** With a heat capacity C, a short activity's temperature changes by about its imbalance divided by C. For example, an imbalance of 10 W h is 36 kJ. With 45 kJ/K, the temperature changes by 0.8 K.
-
-**Tracking the temperature until it settles.** This needs four inputs more: the heat capacity C, the coupling between the radiators and the payload, a start temperature, and a run long enough to settle. The time constant is C / (4εσAT³). A 0.5 m² radiator with ε = 0.8 at 20 °C gives about 2.3 W/K. With 45 kJ/K, the time constant is then about 5.5 h, or 3.5 orbits. A first design rarely has these figures.
+**Tracking the temperature until it settles.** This needs four inputs more: the heat capacity C, the coupling between the radiators and the payload, a start temperature, and a run long enough to settle. In the sample, the payload's time constant is about 16 h, as [How far to trust the figures](#how-far-to-trust-the-figures) says. So a run would need days to settle. A first design rarely has these figures.
 
 The reasons behind these choices are in [`decisions.md`](decisions.md), entry 26.

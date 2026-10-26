@@ -7,6 +7,7 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 ### Added
 
 - The README's License section says that quicksat comes with no warranty, and that its author takes no responsibility for any loss from its use. It names what is compared with Orekit, and points to sections 15 and 16 of the licence.
+- `docs/explanations/payload_thermal_model.md` explains the kinds of radiator, a patch and a panel with heat pipes, and how to allow for each in the inputs. It also says how far to trust the figures: the inputs that move them most, what they are good for, and what they are not for.
 
 ### Changed
 
