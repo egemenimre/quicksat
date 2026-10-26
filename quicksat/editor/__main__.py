@@ -4,22 +4,14 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Write the editor page for a folder of input files, from the command line:
+Write the editor page for a folder of input files, or serve it, from the command line:
 
     python -m quicksat.editor sample/power/data sample/power/editor
-    python -m quicksat.editor sample/sizing/data sample/sizing/editor
-
-A folder with a `scenario.yaml` gets the Scenario Editor, and a folder of sizing
-files, such as `mission.yaml`, gets the Sizing Editor.
-
-Or serve the editor from this computer. The Scenario Editor gets a button that
-runs the files and writes the viewer into the output folder. The Sizing Editor
-works out the budgets as the files change, and needs no output folder:
-
     python -m quicksat.editor serve sample/power/data sample/power/output
     python -m quicksat.editor serve sample/sizing/data
 
-See `quicksat.editor.server`.
+A folder with a `scenario.yaml` gets the Scenario Editor, and a folder of sizing files
+the Sizing Editor. See `quicksat.editor.server`.
 
 """
 
@@ -34,12 +26,12 @@ from quicksat.scenario import SCENARIO_FILE
 
 def main(argv: list[str] | None = None) -> None:
     """
-    Write the editor page, and print where it went. Or, after `serve`, serve it.
+    Write the editor page and print where it went, or, after `serve`, serve it.
 
     Parameters
     ----------
     argv : list of str, optional
-        The arguments, the command line's by default
+        The arguments, by default the command line's
     """
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["serve"]:

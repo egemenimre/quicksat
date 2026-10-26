@@ -6,25 +6,11 @@
 """
 The payload's heat account over a scenario run.
 
-The payload is wrapped in MLI, taken as a perfect insulator, so heat crosses its
-boundary in four places only. Every term is positive into the payload:
-
-- **Dissipation:** the payload's rows marked `inside_mli`, at their power in each
-  payload mode, without margins.
-- **Heaters:** the row marked `heater`, the total of the payload's heater lines,
-  without margins.
-- **Heat flows:** the thermal file's fixed powers, in each payload mode.
-- **Surfaces:** the heat each absorbs and emits, from `quicksat.thermal.surfaces`.
-
-The energies follow the power's rules. The terms of the payload's modes change at
-exact times between the grid's steps, so their energy comes from the mode
-intervals. The absorbed powers change linearly between the steps, as the
-generation does. The account is summed over each activity, each payload mode and
-each whole orbit.
-
-For each sum, the equilibrium ΔT is how far the floating surfaces would move
-from their design temperatures, all by the same ΔT, for the heat out to equal
-the heat in at the sum's mean powers. A fixed surface keeps its temperature.
+The payload's MLI is a perfect insulator, so heat crosses its boundary only as
+dissipation, heaters, heat flows and the surfaces' heat, each positive into the payload.
+The account sums them over each activity, payload mode and whole orbit, with an
+equilibrium ΔT for each. `docs/explanations/payload_thermal_model.md` explains the
+account and the sizing decisions.
 
 """
 
@@ -61,9 +47,8 @@ from quicksat.thermal.surfaces import ABSORBED, SurfacePowers, surface_powers
 from quicksat.utils.intervals import labels_at
 
 EDGE_ON = 1e-9
-"""Below this cosine of the sun's angle to a surface's normal, the sun is edge on
-to the surface. The surface table does not count it as time in the sun, so that
-rounding, as in sun pointing with the sun across a face, counts as none."""
+"""The cosine below which the sun is edge on to a surface, which the surface table does
+not count as time in the sun."""
 
 MODE_TERMS = ("dissipation", "heaters", "heat flows")
 """The terms of the account that follow the payload's mode."""
@@ -95,8 +80,8 @@ def payload_pieces(run: ScenarioRun) -> list[tuple[float, float, str]]:
     Returns
     -------
     pieces : list of tuple
-        The start and the end, in seconds from the run's start, and the payload's
-        mode, in time order
+        The start and end in s from the run's start, and the payload's mode, in time
+        order
     """
     return sorted(
         (start, end, mode)
@@ -111,8 +96,8 @@ def check_files(
     pieces: list[tuple[float, float, str]],
 ) -> list[str]:
     """
-    Check the thermal file and the payload's consumption file against each other
-    and against the run.
+    Check the thermal file and the payload's consumption file against each other and the
+    run.
 
     Parameters
     ----------
@@ -121,20 +106,18 @@ def check_files(
     consumption : PowerConsumption
         The payload's consumption file
     pieces : list of tuple
-        The payload's mode intervals over the run, from `payload_pieces`
+        The payload's mode intervals, from `payload_pieces`
 
     Returns
     -------
     notes : list of str
-        Notes for the reader: the modes of a heat flow that the run does not
-        give the payload
+        The modes of a heat flow that the run does not give the payload
 
     Raises
     ------
     ValueError
-        If the consumption file has no `thermal` column, a row has no value in
-        it, the file has no column for a payload mode of the run, or a flow
-        given by mode has no power for one
+        If the `thermal` column or a value in it is missing, or a run's mode has no
+        column or no flow power
     """
     name = (
         consumption.source_file.name
@@ -186,12 +169,8 @@ def equilibrium_dt(
     thermal: PayloadThermal, emitted: dict[str, float], heat_in: float
 ) -> tuple[float | None, str]:
     """
-    The ΔT that would balance the heat in, with every floating surface moved by
-    the same ΔT from its design temperature.
-
-    At equilibrium, Σ εᵢσAᵢ(Tᵢ + ΔT)⁴ over the floating surfaces, plus the
-    fixed surfaces' emission, equals the heat in. The left side only grows with
-    ΔT, so there is one answer at most. It is found with `scipy.optimize.brentq`.
+    The ΔT, moving every floating surface alike, at which the heat out equals the heat
+    in, found with `brentq`.
 
     Parameters
     ----------
@@ -200,15 +179,14 @@ def equilibrium_dt(
     emitted : dict of str to float
         Each surface's emission at its design temperature, in W, negative
     heat_in : float
-        The mean heat in, in W: the dissipation, the heaters, the flows and the
-        absorbed heat
+        The mean heat in, in W
 
     Returns
     -------
     dt : float or None
-        In K. None when no ΔT balances the heat.
+        In K, or None when no ΔT balances the heat
     reason : str
-        Why there is no ΔT, or empty
+        Why there is none, or empty
     """
     floating = [
         name
@@ -243,25 +221,23 @@ def equilibrium_dt(
 
 def run_balancing_heaters(modes: pd.DataFrame) -> pd.Series:
     """
-    The heater power in each payload mode that brings the run's net energy to
-    zero, with the heaters in the modes that lose heat only.
+    The heater power in each payload mode that brings the run's net energy to zero, in
+    the modes that lose heat only.
 
-    Each mode that loses heat gets the same share of its balancing power. The
-    share is the part of these modes' deficit that the modes that gain heat do
-    not cover. So no mode gets more than its balancing power. The share is 0
-    when the gain covers the whole deficit: the run then gains heat with no
-    heater. `docs/explanations/payload_thermal_model.md` says when to use it.
+    Each such mode gets the same share of its balancing power: the part of their deficit
+    that the modes that gain heat do not cover.
+    `docs/explanations/payload_thermal_model.md` says when to use it.
 
     Parameters
     ----------
     modes : pd.DataFrame
-        The table by mode, with `time [min]`, `net [Wh]`, `heaters [W]` and
-        `balancing heater [W]`
+        The table by mode, with `time [min]`, `net [Wh]`, `heaters [W]` and `balancing
+        heater [W]`
 
     Returns
     -------
     heaters : pd.Series
-        In W, one for each row of the table
+        In W, one per row
     """
     hours = modes["time [min]"] / 60
     before = modes["net [Wh]"] - modes["heaters [W]"] * hours
@@ -298,25 +274,14 @@ class ThermalRun:
 
     @property
     def run(self) -> ScenarioRun:
-        """
-        The scenario run.
-
-        Returns
-        -------
-        run : ScenarioRun
-        """
+        """The scenario run."""
         return self.surfaces.run
 
     @cached_property
     def mode_watts(self) -> dict[str, dict[str, float]]:
         """
-        The terms that follow the payload's mode, in each of its modes.
-
-        Returns
-        -------
-        watts : dict of str to dict of str to float
-            In W, without margins, by the mode's name, then by the term in
-            `MODE_TERMS`
+        The terms that follow the payload's mode, without margins, in W, by mode, then
+        by term.
         """
         watts = {}
         for mode in dict.fromkeys(mode for _, _, mode in self.pieces):
@@ -338,15 +303,7 @@ class ThermalRun:
 
     @cached_property
     def modes(self) -> np.ndarray:
-        """
-        The payload's mode at each time of the run's grid.
-
-        Returns
-        -------
-        modes : ndarray
-            The mode names. The run is open at its end, so its last time takes
-            the mode of its last piece.
-        """
+        """The payload's mode at each time of the run's grid."""
         modes = labels_at(self.run.mode[PAYLOAD], self.run.times)
         modes[-1] = self.pieces[-1][2]
         return modes
@@ -354,13 +311,8 @@ class ThermalRun:
     @cached_property
     def terms(self) -> dict[str, Quantity]:
         """
-        Each term of the account at each time of the grid.
-
-        Returns
-        -------
-        terms : dict of str to Quantity
-            In W, positive into the payload, by the term in `TERMS`. The absorbed
-            and the emitted heat are the surfaces' together.
+        Each term at each time of the grid, in W, positive into the payload, with the
+        surfaces' heat together.
         """
         terms = {
             term: Q_(
@@ -378,14 +330,7 @@ class ThermalRun:
 
     @property
     def net(self) -> Quantity:
-        """
-        The net heat into the payload at each time of the grid.
-
-        Returns
-        -------
-        net : Quantity
-            In W: the sum of the terms
-        """
+        """The net heat into the payload at each time of the grid, in W."""
         return sum(self.terms.values(), Q_(np.zeros(len(self.run.times)), "W"))
 
     def energies(self, start: float, end: float) -> dict[str, float]:
@@ -395,12 +340,12 @@ class ThermalRun:
         Parameters
         ----------
         start, end : float
-            The times, in seconds from the run's start, inside the run
+            The times, in s from the run's start, inside the run
 
         Returns
         -------
         energies : dict of str to float
-            In J, by the term in `TERMS`
+            In J, by term
         """
         energies: dict[str, float] = dict.fromkeys(MODE_TERMS, 0.0)
         for lower, upper, mode in self.pieces:
@@ -419,13 +364,8 @@ class ThermalRun:
     @cached_property
     def running_energy(self) -> Quantity:
         """
-        The net heat into the payload since the run's start, at each time of the
-        grid.
-
-        Returns
-        -------
-        energy : Quantity
-            In W h, 0 at the start
+        The net heat into the payload since the run's start, at each time of the grid,
+        in W h.
         """
         seconds = run_seconds(self.run)
         starts = np.array([start for start, _, _ in self.pieces])
@@ -476,15 +416,8 @@ class ThermalRun:
     @cached_property
     def activity_spans(self) -> dict[str, list[tuple[float, float]]]:
         """
-        The spans of each activity over the run, the slew into it included.
-
-        Returns
-        -------
-        spans : dict of str to list of tuple
-            The start and the end of each span, in seconds from the run's start,
-            by the activity's title, in the order of the scenario's list. A
-            slew takes its time from the activity before it, as the attitude row
-            does.
+        Each activity's spans over the run, in s, by title, with the slew into it
+        included.
         """
         owner = P.IntervalDict()
         for index, occurrence in enumerate(self.run.occurrences):
@@ -503,15 +436,8 @@ class ThermalRun:
     @cached_property
     def activity_table(self) -> pd.DataFrame:
         """
-        The account of each activity, over all its occurrences, the slews into
-        it included.
-
-        Returns
-        -------
-        table : pd.DataFrame
-            The activity's title and its number of occurrences, its time in
-            minutes, the mean power of each term in W, the net in W and in W h,
-            the equilibrium ΔT in K, and why there is none, if so
+        The account of each activity, over its occurrences, slews included: the time,
+        each term's mean, the net, and the equilibrium ΔT.
         """
         rows = []
         for title, spans in self.activity_spans.items():
@@ -525,20 +451,11 @@ class ThermalRun:
     @cached_property
     def mode_table(self) -> pd.DataFrame:
         """
-        The account of each payload mode, with its two balancing heater powers.
+        The account of each payload mode, with its two balancing heater powers, which do
+        not depend on the files' heaters.
 
-        The balancing heater power brings the mode's net energy over the run to
-        zero: the mode's deficit before any heater, over its time. It is never
-        below zero, since a heater cannot cool. The run balancing heater power
-        brings the run's net energy to zero instead, from
-        `run_balancing_heaters`. Neither depends on the heaters of the files.
-
-        Returns
-        -------
-        table : pd.DataFrame
-            The mode's name, its time in minutes, the mean power of each term in
-            W, the net in W and in W h, the equilibrium ΔT in K and why there is
-            none, if so, and the two balancing heater powers in W
+        The balancing heater power brings the mode's own net to zero, and the run
+        balancing heater power the run's, from `run_balancing_heaters`.
         """
         rows = []
         for mode in self.mode_watts:
@@ -554,14 +471,8 @@ class ThermalRun:
     @cached_property
     def orbit_table(self) -> pd.DataFrame:
         """
-        The account of each whole orbit, counted as power counts them.
-
-        Returns
-        -------
-        table : pd.DataFrame
-            The orbit number, its start as UTC text, the mean power of each term
-            in W, the net in W and in W h, and the equilibrium ΔT in K and why
-            there is none, if so. Empty for a run shorter than one orbit.
+        The account of each whole orbit: each term's mean, the net, and the equilibrium
+        ΔT.
         """
         rows = []
         for number, (start, end) in enumerate(whole_orbits(self.run), start=1):
@@ -579,19 +490,8 @@ class ThermalRun:
     @cached_property
     def surface_table(self) -> pd.DataFrame:
         """
-        Each surface's properties, the sun it sees, and the heat it absorbs and
-        emits over the run.
-
-        Returns
-        -------
-        table : pd.DataFrame
-            The surface's name, its part (blank when typed in), its area in m²,
-            its absorptance and emissivity, its design temperature in K and
-            whether it is fixed. Then the range of the sun's angle to its normal
-            outside the umbra in degrees, the time it sees the sun in minutes, with
-            the sun more than edge on (see `EDGE_ON`), its
-            peak and mean sun in W, its mean view factor to the Earth, its mean
-            albedo and Earth infrared in W, and its emission in W
+        Each surface's properties, the sun it sees past `EDGE_ON`, and the heat it
+        absorbs and emits over the run.
         """
         seconds = run_seconds(self.run)
         steps = np.diff(seconds)
@@ -663,25 +563,22 @@ def run_thermal(
     consumption : PowerConsumption
         The payload's consumption file, with its `thermal` column
     power_system : PowerSystem
-        The power system file, for its self-shadowing switch
+        The power system file, for the self-shadowing
     run : ScenarioRun
-        The scenario run, with its 3D model if any surface names a part
+        The scenario run
     surfaces : SurfacePowers, optional
-        The surfaces' heat, from `surface_powers` with the same thermal file's
-        surfaces and Earth, the same power system file and the same run. Worked
-        out here if not given.
+        The surfaces' heat for the same files and run, worked out here if not given
 
     Returns
     -------
     thermal_run : ThermalRun
-        The account over the run, and the notes
+        The account, and the notes
 
     Raises
     ------
     ValueError
-        If the files do not suit each other or the run, as `check_files`
-        checks, or a surface's part does not suit, as `flat_geometry` checks,
-        or the surfaces' heat comes from another run
+        If the files do not suit each other or the run, or the surfaces' heat comes from
+        another run
     """
     pieces = payload_pieces(run)
     notes = check_files(thermal, consumption, pieces)

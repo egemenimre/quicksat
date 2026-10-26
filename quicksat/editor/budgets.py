@@ -6,16 +6,10 @@
 """
 The sizing budgets' results, as the Sizing Editor's Budgets tab shows them.
 
-`budget_results` reads a folder of sizing files with quicksat's loaders, works
-out each budget whose files are there, and gives the page its figures, its
-tables and its checks. The tables are the ones the notebooks show, from the same
-methods, with the same headings and decimals. Every figure and every cell
-reaches the page as text, so the page formats no number of its own. A number
-also comes in full, for the page's Excel export.
-
-A budget whose files are missing has no results. A budget that quicksat cannot
-work out has an error in place of its results, and the others are still worked
-out.
+The tables come from the notebooks' own methods, with their headings and decimals. Every
+cell reaches the page as text, with its number in full for the Excel export. A budget
+that quicksat cannot work out has an error in place of its results. `decisions.md` 22
+explains the tab.
 
 """
 
@@ -45,12 +39,13 @@ _MARGINS = (
     ("With eqpt margin [kg]", {"sys_margin": False}),
     ("With sys margin [kg]", {}),
 )
-"""The three margin levels of the mass budget's grouped views, as the mass
-notebook compares them."""
+"""The mass budget's three margin levels, as the mass notebook compares them."""
 
 
 def _text(value, spec: str | None = None) -> str:
-    """A cell as the page shows it: formatted when it is a number, and blank when empty."""
+    """
+    A cell as the page shows it: formatted when it is a number, and blank when empty.
+    """
     if value is None or (isinstance(value, float) and value != value):
         return ""
     if spec and isinstance(value, numbers.Number) and not isinstance(value, bool):
@@ -59,7 +54,10 @@ def _text(value, spec: str | None = None) -> str:
 
 
 def _value(value) -> float | None:
-    """A cell's number in full, for the export. None for text, and for an empty or infinite number."""
+    """
+    A cell's number in full, for the export, or None for text and empty or infinite
+    numbers.
+    """
     if isinstance(value, numbers.Real) and not isinstance(value, bool):
         value = float(value)
         return value if math.isfinite(value) else None
@@ -85,8 +83,8 @@ def _figure(
     headline=False,
 ) -> dict:
     """
-    One of the figures above a budget's tables, from its number and its format.
-    A headline figure also goes on the overview.
+    One figure above a budget's tables, from its number and format. A headline also goes
+    on the overview.
     """
     number, spec = value
     return {
@@ -102,23 +100,8 @@ def _figure(
 
 def _report(frame: pd.DataFrame, headers: dict, formats: dict) -> dict:
     """
-    A budget's report table, as its notebook shows it.
-
-    Parameters
-    ----------
-    frame : pd.DataFrame
-        The report's frame, as its Styler's `.data` holds it
-    headers : dict
-        The heading of each column to show, by the column's name
-    formats : dict
-        The format of each column of numbers, by the column's name
-
-    Returns
-    -------
-    table : dict
-        `columns`, each with its `key`, `title` and whether it holds numbers,
-        and `rows`, each with its `type`, its `cells` as text, and its `values`:
-        the number of each cell in a column of numbers, and None for the others
+    A budget's report table as its notebook shows it: its columns, and its rows with
+    their cells as text and their numbers.
     """
     keys = [key for key in frame.columns if key in headers]
     return {
@@ -143,9 +126,8 @@ def _report(frame: pd.DataFrame, headers: dict, formats: dict) -> dict:
 
 def _rows(titles: list[str], rows: list[tuple[str, list]], spec="{:,.2f}") -> dict:
     """
-    A small table, from rows of cells. A cell is text, a number in the table's
-    format `spec`, or a number with its own format, as `(number, format)`.
-    A column holds numbers when one of its cells does.
+    A small table from rows of cells, each text, a number in `spec`, or a `(number,
+    format)` pair.
     """
     table = []
     for kind, cells in rows:
@@ -434,8 +416,7 @@ def _axis_figures(budget: AgilityBudget, degraded: bool) -> list[dict]:
 
 class _Agility:
     """
-    The agility budget for each axis and inertia case, with the mass read once
-    for each case: the budget would read the mass budget again at each step.
+    The agility budget for each axis and inertia case, with each case's mass read once.
     """
 
     def __init__(
@@ -470,10 +451,8 @@ class _Agility:
 
     def variants(self) -> dict:
         """
-        The selected case's figures and slew tables, about each axis, with every
-        wheel and with one failed, by `axis|degraded`. An error in their place
-        when quicksat cannot work out the case. The other cases are compared in
-        the table of cases only.
+        The selected case's figures and slew tables about each axis, nominal and
+        degraded, by `axis|degraded`, or an error.
         """
         variants = {}
         for axis in (Axis.ROLL, Axis.PITCH):
@@ -493,7 +472,7 @@ class _Agility:
         return variants
 
     def checks(self, case: str) -> list[Check]:
-        """A case's checks, about both axes. None when quicksat cannot work it out."""
+        """A case's checks about both axes, or None when quicksat cannot work it out."""
         try:
             return [
                 check
@@ -504,7 +483,9 @@ class _Agility:
             return []
 
     def case_row(self, case: str) -> tuple[str, list]:
-        """A case's line in the table of cases: its inertia, and its time for each slew."""
+        """
+        A case's line in the table of cases: its inertia, and its time for each slew.
+        """
         shape = self.config.for_case(case)
         selected = case == self.config.selected_case
         cells: list = [
@@ -530,7 +511,9 @@ class _Agility:
         return ("selected" if selected else "item", cells)
 
     def results(self) -> dict:
-        """The figures and tables of the agility budget, and the selected case's checks."""
+        """
+        The figures and tables of the agility budget, and the selected case's checks.
+        """
         selected = self.config.selected_case
         checks = self.checks(selected)
         titles = ["Case", "Inertia", "Roll [kg m²]", "Pitch [kg m²]"]
@@ -570,10 +553,7 @@ class _Agility:
 
 
 def _check_numbers(check: Check) -> dict:
-    """
-    A check's figures in full, for the export: the design, the limit and the
-    spare in the design's unit, and the margin as a share, so 0.12 is 12 %.
-    """
+    """A check's figures in full, for the export, with the margin as a share."""
     unit = check.design.unit
     return {
         "design": _value(check.design.value),
@@ -605,9 +585,8 @@ def _checks(budget: str, checks: list[Check], files: list[str]) -> list[dict]:
 
 class _Folder:
     """
-    A folder of sizing files, worked out one budget at a time. The mission and
-    the requirements are read once, and so is the mass budget, which delta-V and
-    agility read too.
+    A folder of sizing files, worked out one budget at a time, with the shared files
+    read once.
     """
 
     def __init__(self, folder: Path):
@@ -623,7 +602,7 @@ class _Folder:
         return all(self.path[kind].is_file() for kind in kinds)
 
     def read(self, kind: str, loader: Callable):
-        """A shared file, read; None when it is missing or quicksat refuses it."""
+        """A shared file, or None when it is missing or refused."""
         if not self.has(kind):
             return None
         try:
@@ -683,18 +662,14 @@ def budget_results(folder: str | Path) -> dict:
 
     Parameters
     ----------
-    folder : str | Path
-        A folder of sizing files, with their usual names
+    folder : str or Path
+        A folder of sizing files, under their usual names
 
     Returns
     -------
     results : dict
-        `budgets`: `mass`, `deltav`, `data` and `agility`, each None when the
-        folder lacks its files, `{"error": ...}` when quicksat cannot work it
-        out, and otherwise its `figures` and `tables`. `overview`: the budgets'
-        headline figures. `checks`: every check, as the page lists them, with
-        its budget and the files it compares. `notes`: what stopped a shared
-        file from being read.
+        Each budget's `figures` and `tables`, or None or an error, the `overview`, every
+        check, and the `notes`
     """
     files = _Folder(Path(folder))
     # in this order: delta-V and agility read the mass budget

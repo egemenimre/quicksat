@@ -6,18 +6,8 @@
 """
 The mission, and the quantities every budget derives from it.
 
-The mission is shared. The data budget needs the period and the orbits in a day. Delta-V
-needs the circular velocity and the design life. Agility needs the ground track speed.
-Each fact is stated once, and the rest is derived here, so the budgets cannot disagree.
-They would disagree as soon as the same altitude was copied into three config files, and
-then changed in only one of them.
-
-Where the spacecraft is and how long it flies are both here for the same reason: more
-than one module can use them. A fact that only one module uses stays in that module's
-own config, such as the Isp in delta_v_config.yaml.
-
-The orbit is circular throughout. Nothing here models eccentricity, perturbations
-or drag.
+Each fact is stated once, so the budgets cannot disagree. The orbit is circular, with no
+perturbations or drag. `docs/sizing/mission_ref.ipynb` explains it.
 
 """
 
@@ -35,14 +25,13 @@ class Mission(YamlFile):
     Parameters
     ----------
     altitude : Quantity
-        Height above the Earth's equatorial radius, `R_EARTH`
+        Height above the Earth's equatorial radius
     inclination : Quantity
-        Orbit plane inclination. Read only by calculations that change the plane
+        The orbit's inclination, for the plane changes
     duration : Quantity
-        Design life. Scales the recurring delta-V manoeuvres, and the power and
-        radiator work will need it too.
+        The design life, which scales the recurring manoeuvres
     comments : str, optional
-        The user's notes on the block. quicksat does not read them
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -53,62 +42,27 @@ class Mission(YamlFile):
 
     @property
     def radius(self):
-        """
-        Orbit radius, measured from the centre of the Earth.
-
-        Returns
-        -------
-        radius : Quantity
-        """
+        """The orbit's radius from the Earth's centre, in km."""
         return (R_EARTH + self.altitude).to("km")
 
     @property
     def period(self):
-        """
-        Orbital period, from Kepler's third law.
-
-        Returns
-        -------
-        period : Quantity
-        """
+        """The orbital period, from Kepler's third law, in s."""
         return (2 * np.pi * (self.radius**3 / MU_EARTH) ** 0.5).to("s")
 
     @property
     def orbits_per_day(self):
-        """
-        Revolutions completed in one day.
-
-        Dimensionless rather than a rate, because it turns a quantity per orbit into
-        a quantity per day.
-
-        Returns
-        -------
-        orbits_per_day : Quantity
-        """
+        """The orbits in one day, dimensionless."""
         return (Q_(1, "day") / self.period).to(u.dimensionless_unscaled)
 
     @property
     def velocity(self):
-        """
-        Circular orbital velocity.
-
-        Returns
-        -------
-        velocity : Quantity
-        """
+        """The circular orbital velocity, in km/s."""
         return ((MU_EARTH / self.radius) ** 0.5).to("km/s")
 
     @property
     def ground_track_speed(self):
         """
-        Speed of the sub-satellite point over a non-rotating Earth.
-
-        The orbital velocity scaled by the ratio of the Earth's radius to the orbit
-        radius. Earth rotation is not included, so this is the speed along the
-        ground track rather than relative to a fixed point on the surface.
-
-        Returns
-        -------
-        speed : Quantity
+        The speed of the point below the satellite over a non-rotating Earth, in km/s.
         """
         return (self.velocity * R_EARTH / self.radius).to("km/s")

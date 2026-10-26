@@ -6,25 +6,10 @@
 """
 The power that the solar panels generate over a scenario run.
 
-At each time of the run's grid, the power of a panel is
-
-    flux × area × fill ratio × cell efficiency × loss factor × cos θ × light
-
-- The flux is the sun's luminosity spread over a sphere through the satellite:
-  L_sun / (4π d²), with d the distance from the satellite to the sun. It is
-  about 1361 W/m² at 1 au, and changes by ±3.3% over a year.
-- θ is the angle between the panel's normal and the sun. The cells face one
-  way, so a panel generates nothing while the sun is behind it.
-- The light is the fraction of the sun's disk that the Earth does not hide,
-  from the run: 1 in sunlight, 0 in the umbra, and in between in the penumbra.
-
-A panel from the 3D model takes its area and its normal from its part. If the
-part sits under an articulation, such as a solar wing, the normal turns with the
-articulation's angle at each step. A typed-in panel keeps its normal fixed in
-body axes. The payload's thermal surfaces take their geometry the same way,
-through `flat_geometry` and `item_cosines`.
-
-Light reflected by the Earth and the Earth's infrared are left out.
+A panel's power is flux × area × fill ratio × cell efficiency × loss factor × cos θ ×
+light, at each step. A panel under an articulation turns with it. The thermal surfaces
+share the geometry, through `flat_geometry` and `item_cosines`.
+`docs/power/power_generation_ref.ipynb` explains the model and its check against Orekit.
 
 """
 
@@ -60,41 +45,35 @@ from quicksat.scenario.spacecraft import (
 
 # astropy.constants creates its constants at import, so pyright cannot see them
 SOLAR_LUMINOSITY = constants.L_sun  # pyright: ignore[reportAttributeAccessIssue]
-"""The sun's luminosity: astropy's default, the IAU 2015 nominal 3.828e26 W. It
-gives 1361 W/m² at 1 au."""
+"""The sun's luminosity: astropy's default, the IAU 2015 nominal, 1361 W/m² at 1 au."""
 
 FLAT_LIMIT = Q_(1, "deg")
-"""The largest angle between one triangle of a panel's part and the part's mean
-normal. A part with a triangle turned further is not a flat panel, and is
-refused. A thin box modelled as a wing is one such part: name its cell face as a
-part of its own."""
+"""The largest angle between a part's triangle and its mean normal before the part is
+refused as not flat."""
 
 _NO_AREA = 1e-12
-"""Below this share of a part's largest triangle, a triangle counts as having
-no area, and its normal is not checked."""
+"""The share of a part's largest triangle below which a triangle has no area, and its
+normal is not checked."""
 
 
 @dataclass(frozen=True)
 class FlatGeometry:
     """
-    A flat item's area and normal, in body axes, worked out from its file and the
-    model. The item is a solar panel or a thermal surface.
+    A flat item's area and normal in body axes, from its file and the model: a solar
+    panel or a thermal surface.
 
     Parameters
     ----------
     name : str
-        The item's name in its file
+        The item's name
     area : Quantity
-        The item's area, before a panel's fill ratio
+        Its area, before a panel's fill ratio
     normal : ndarray
-        The direction the item faces in body axes, a unit vector of shape (3,).
-        For an item that turns, this is its direction where the model draws it,
-        at an angle of zero.
+        The unit direction it faces, at an articulation angle of zero, shape (3,)
     articulation : str or None
-        The name of the articulation that turns the item, or None if it is fixed
+        The articulation that turns it, or None
     node : int or None
-        The index of the item's part in the model's nodes. None for a typed-in
-        item.
+        Its part's node index, or None for a typed-in item
     """
 
     name: str
@@ -111,21 +90,19 @@ def flat_panel(triangles: np.ndarray) -> tuple[float, np.ndarray]:
     Parameters
     ----------
     triangles : ndarray
-        The corners of the triangles, shape (m, 3, 3), counter-clockwise seen
-        from the side the normal points to
+        The corners, counter-clockwise from the normal's side, shape (m, 3, 3)
 
     Returns
     -------
     area : float
-        The sum of the triangle areas, in the units of the corners squared
+        The triangles' total area, in the corners' units squared
     normal : ndarray
-        The area-weighted mean of the triangle normals, a unit vector
+        The area-weighted mean normal, of unit length
 
     Raises
     ------
     ValueError
-        If the triangles have no area, or do not all face the same way within
-        `FLAT_LIMIT`
+        If the triangles have no area, or do not face one way within `FLAT_LIMIT`
     """
     doubled = np.cross(
         triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]
@@ -156,30 +133,28 @@ def flat_geometry(
     items: Mapping[str, FlatItem], scenario: Scenario
 ) -> tuple[dict[str, FlatGeometry], ModelGeometry | None]:
     """
-    The area and normal of each flat item, such as a panel, with the scenario's
-    3D model.
+    The area and normal of each flat item, such as a panel, with the scenario's 3D
+    model.
 
     Parameters
     ----------
     items : mapping of str to FlatItem
-        The items, by their names, such as the power system file's panels or the
-        thermal file's surfaces
+        The items, by name
     scenario : Scenario
-        The scenario, for its 3D model and its articulations
+        The scenario, for its model and articulations
 
     Returns
     -------
     items : dict of str to FlatGeometry
-        Each item, by its name
+        Each item, by name
     model : ModelGeometry or None
-        The model's triangles, or None if the scenario has no model
+        The model's triangles, or None
 
     Raises
     ------
     ValueError
-        If an item names a part and the scenario has no model, or the model has
-        no single node of that name, or the part has no triangles, is not flat,
-        or sits under more than one articulation
+        If a part is missing, empty, not flat, or under two articulations, or there is
+        no model
     """
     spacecraft = scenario.spacecraft_model
     model = gltf = None
@@ -242,11 +217,7 @@ def flat_geometry(
 
 def panel_notes(power_system: PowerSystem, has_model: bool) -> list[str]:
     """
-    Notes on the panels for the reader, such as which are typed in.
-
-    Typed-in panels have no triangles, so the self-shadowing cannot cover them.
-    The notes say so whenever there is one. They are text for the output, not
-    Python warnings.
+    Notes on the panels for the reader, such as which are typed in and so never shaded.
 
     Parameters
     ----------
@@ -258,8 +229,7 @@ def panel_notes(power_system: PowerSystem, has_model: bool) -> list[str]:
     Returns
     -------
     notes : list of str
-        One sentence or two for each note. Empty when every panel comes from the
-        model.
+        The notes, empty when every panel comes from the model
     """
     typed = [name for name, panel in power_system.panels.items() if panel.part is None]
     notes = []
@@ -292,12 +262,12 @@ def turned_normals(
     normal: np.ndarray, axis: np.ndarray, angles: Quantity
 ) -> np.ndarray:
     """
-    A normal turned about an axis, by each of a series of angles.
+    A normal turned right-handed about an axis, by each of a series of angles.
 
     Parameters
     ----------
     normal, axis : ndarray
-        Unit vectors, shape (3,). The turn is right-handed about the axis.
+        Unit vectors, shape (3,)
     angles : Quantity
         The angles, shape (n,)
 
@@ -319,24 +289,22 @@ def item_cosines(
     items: dict[str, FlatGeometry], run: ScenarioRun, directions: np.ndarray
 ) -> dict[str, np.ndarray]:
     """
-    The cosine of the angle between each item's normal and a direction, on the
-    run's grid. An item under an articulation turns with it.
+    The cosine between each item's normal, turned by any articulation, and a direction,
+    on the run's grid.
 
     Parameters
     ----------
     items : dict of str to FlatGeometry
-        The items, from `flat_geometry`
+        The items
     run : ScenarioRun
-        The run, with its 3D model's articulations if any item turns
+        The run
     directions : ndarray
-        Unit vectors in body axes, one for each time of the grid, shape (n, 3),
-        such as `run.sun_body`
+        Unit vectors in body axes on the grid, shape (n, 3), such as `run.sun_body`
 
     Returns
     -------
     cosines : dict of str to ndarray
-        Each item's cosine at each time of the grid, by its name. Negative while
-        the direction is behind the item.
+        Each item's cosine, by name, negative while the direction is behind it
     """
     spacecraft = run.scenario.spacecraft_model
     cosines = {}
@@ -361,27 +329,27 @@ def shaded_fractions(
     cosines: dict[str, np.ndarray],
 ) -> dict[str, np.ndarray]:
     """
-    The share of each item that the rest of the model leaves in the sun, on the
-    run's grid, with the power system file's self-shadowing switch.
+    The share of each item that the rest of the model leaves in the sun, on the run's
+    grid.
 
     Parameters
     ----------
     items : dict of str to FlatGeometry
-        The items, from `flat_geometry`
+        The items
     model : ModelGeometry or None
-        The model's triangles, from `flat_geometry`
+        The model's triangles
     power_system : PowerSystem
-        The power system file, for its self-shadowing switch and points
+        The power system file, for the self-shadowing
     run : ScenarioRun
         The run
     cosines : dict of str to ndarray
-        Each item's cosine to the sun, from `item_cosines`
+        Each item's cosine to the sun
 
     Returns
     -------
     lit : dict of str to ndarray
-        Each item's lit fraction at each time of the grid, from 0 to 1, by its
-        name. All 1 without the self-shadowing, and for a typed-in item.
+        Each item's lit fraction, by name, all 1 without the self-shadowing or for a
+        typed-in item
     """
     suns = run.sun_body
     lit = {name: np.ones(len(suns)) for name in items}
@@ -408,7 +376,7 @@ def shaded_fractions(
 
 def solar_flux(run: ScenarioRun) -> Quantity:
     """
-    The sun's flux at the satellite, on the run's grid.
+    The sun's flux at the satellite, L_sun / (4π d²), on the run's grid.
 
     Parameters
     ----------
@@ -418,8 +386,7 @@ def solar_flux(run: ScenarioRun) -> Quantity:
     Returns
     -------
     flux : Quantity
-        L_sun / (4π d²), with d the distance from the satellite to the sun, in
-        W/m², one for each time of the grid
+        In W/m²
     """
     cartesian = run.state.cartesian
     assert isinstance(cartesian, CartesianRepresentation)
@@ -435,7 +402,7 @@ def solar_flux(run: ScenarioRun) -> Quantity:
 @dataclass(frozen=True)
 class GenerationRun:
     """
-    The power that the panels generate over a scenario run.
+    The power that the panels generate over a scenario run, on its grid.
 
     Parameters
     ----------
@@ -446,22 +413,17 @@ class GenerationRun:
     panels : dict of str to FlatGeometry
         Each panel's area and normal
     flux : Quantity
-        The sun's flux at the satellite, on the grid, in W/m²
+        The sun's flux at the satellite, in W/m²
     cosines : dict of str to ndarray
-        For each panel, the cosine of the sun's angle to its normal, on the grid.
-        Negative while the sun is behind the panel.
+        Each panel's cosine to the sun
     lit : dict of str to ndarray
-        For each panel, the share of its area that no part of the model shades,
-        on the grid, from 0 to 1. All 1 without the self-shadowing, and for a
-        typed-in panel.
+        Each panel's lit fraction
     unshaded : dict of str to Quantity
-        For each panel, the power it would generate with no self-shadowing, on
-        the grid, in W
+        Each panel's power with no self-shadowing, in W
     power : dict of str to Quantity
-        For each panel, the power it generates, on the grid, in W: the unshaded
-        power times the lit fraction
+        Each panel's power, the unshaded times the lit fraction, in W
     notes : list of str
-        Notes for the reader, from `panel_notes`
+        The notes, from `panel_notes`
     """
 
     power_system: PowerSystem
@@ -476,26 +438,12 @@ class GenerationRun:
 
     @property
     def total(self) -> Quantity:
-        """
-        The power of all the panels together, on the grid.
-
-        Returns
-        -------
-        total : Quantity
-            In W
-        """
+        """The power of all the panels together on the grid, in W."""
         return sum(self.power.values(), Q_(np.zeros(len(self.run.times)), "W"))
 
     @cached_property
     def orbits(self) -> list[tuple[float, float]]:
-        """
-        The whole orbits in the run, from `quicksat.power.orbits.whole_orbits`.
-
-        Returns
-        -------
-        orbits : list of tuple of float
-            The start and the end of each orbit, in seconds from the run's start
-        """
+        """The run's whole orbits, each as a start and an end in s."""
         return whole_orbits(self.run)
 
     def energy(self, power: Quantity) -> list[Quantity]:
@@ -505,12 +453,12 @@ class GenerationRun:
         Parameters
         ----------
         power : Quantity
-            A power on the run's grid, such as `total` or one panel's
+            A power on the run's grid, such as `total`
 
         Returns
         -------
         energy : list of Quantity
-            In W h, one for each of `orbits`
+            In W h, one per orbit
         """
         bounds = np.array(self.orbits).reshape(-1)
         joules = energy_until(
@@ -523,15 +471,8 @@ class GenerationRun:
     @cached_property
     def panel_table(self) -> pd.DataFrame:
         """
-        The panels as the file and the model give them, one row each.
-
-        Returns
-        -------
-        table : pd.DataFrame
-            The columns are the panel's name, its part in the model (blank for a
-            typed-in panel), its area in m², its fill ratio in percent, its normal
-            in body axes where the model draws it, and the articulation it turns
-            with (blank for a fixed panel)
+        The panels as the file and the model give them: the name, part, area, fill
+        ratio, normal and articulation.
         """
         rows = []
         for name, panel in self.panels.items():
@@ -553,19 +494,8 @@ class GenerationRun:
     @cached_property
     def orbit_table(self) -> pd.DataFrame:
         """
-        The power of all the panels together, one row for each whole orbit.
-
-        The sunlit mean is the energy generated outside the eclipse, over the
-        time outside it. The penumbra counts as eclipse, as in the scenario, but
-        what the panels generate in it counts in the orbit's energy.
-
-        Returns
-        -------
-        table : pd.DataFrame
-            The columns are the orbit number, its start as UTC text, the time in
-            eclipse in minutes, the mean power over the whole orbit and over its
-            sunlit time in W, and the energy generated in W h. Empty for a run
-            shorter than one orbit.
+        All the panels' power in each whole orbit: the eclipse time, the mean over the
+        orbit and over its sunlit time, and the energy.
         """
         seconds = run_seconds(self.run)
         total = np.asarray(self.total.to_value(u.W))
@@ -601,13 +531,7 @@ class GenerationRun:
     @cached_property
     def panel_energy_table(self) -> pd.DataFrame:
         """
-        The energy each panel generates, one row for each whole orbit.
-
-        Returns
-        -------
-        table : pd.DataFrame
-            The orbit number, then one column for each panel and one for the
-            total, in W h. Empty for a run shorter than one orbit.
+        The energy each panel generates in each whole orbit, with the total, in W h.
         """
         columns = {
             f"{name} [Wh]": [e.to_value(u.W * u.h) for e in self.energy(power)]
@@ -619,19 +543,8 @@ class GenerationRun:
     @cached_property
     def shading_table(self) -> pd.DataFrame:
         """
-        How much the self-shadowing costs each panel from the model, over the run.
-
-        A panel counts as shaded while more than `SHADED_LIMIT` of it is shaded,
-        so that a shadow that only touches a corner does not count.
-
-        Returns
-        -------
-        table : pd.DataFrame
-            One row for each panel from the model: its lowest lit fraction while
-            it faces the sun outside the umbra, the time it is shaded in minutes,
-            the energy the shading costs in W h, and that energy as a share of
-            what the panel would generate unshaded, in percent. Empty without the
-            self-shadowing.
+        What the self-shadowing costs each panel from the model: its lowest lit
+        fraction, its time shaded past `SHADED_LIMIT`, and the energy lost.
         """
         if not self.power_system.shading:
             return pd.DataFrame()
@@ -670,12 +583,12 @@ def run_generation(power_system: PowerSystem, run: ScenarioRun) -> GenerationRun
     power_system : PowerSystem
         The power system file
     run : ScenarioRun
-        The scenario run, with its 3D model if any panel names a part
+        The scenario run
 
     Returns
     -------
     generation_run : GenerationRun
-        The power of each panel on the run's grid, and the notes
+        Each panel's power on the grid, and the notes
 
     Raises
     ------

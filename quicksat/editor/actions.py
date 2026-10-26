@@ -4,16 +4,11 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The work that the editor's server does for a page's requests.
+The work that the editor's server does for a page's requests, which
+`quicksat.editor.server` answers.
 
-Each request sends the page's files. `run_files` runs them and writes the
-viewer, `design_files` runs the scenario for the Activity Designer,
-`thermal_files` works out the payload's heat account, and `budget_files` works
-out the sizing budgets. Each writes the files into a temporary folder first, and
-reads them there with quicksat's loaders. `save_files` writes the changed files
-into the input folder.
-
-`quicksat.editor.server` answers the requests, and calls these.
+Each request's files go into a temporary folder, and quicksat's loaders read them there.
+`save_files` writes the changed files into the input folder.
 
 """
 
@@ -63,23 +58,14 @@ _ROLES = {
 _DESIGN_ROLES = {
     "scenario": lambda path: Scenario.from_yaml_file(path, designer=True),
 }
-"""The files that the Activity Designer reads, with their loaders. It runs the
-scenario alone, so it leaves the power files out."""
+"""The files that the Activity Designer reads, with their loaders: the scenario's
+alone."""
 
 
 def _relative(name: str) -> str | None:
     """
-    A file's name as a relative path in `/` form, or None if it is absolute.
-
-    Parameters
-    ----------
-    name : str
-        The name as the scenario gives it, with `/` or `\\`
-
-    Returns
-    -------
-    path : str or None
-        The name, normalised, such as `../models/sat.glb`
+    A file's name as a relative path in `/` form, such as `../models/sat.glb`, or None
+    if absolute.
     """
     name = name.replace("\\", "/")
     if name.startswith("/") or PureWindowsPath(name).drive:
@@ -89,32 +75,8 @@ def _relative(name: str) -> str | None:
 
 def _write_inputs(root: Path, files: list[dict]) -> tuple[Path, dict]:
     """
-    Write the page's files into a folder, where the scenario will find them.
-
-    The scenario names its 3D model, its orbit file and its satellite targets'
-    files by a path from its own folder, which may start with `..`. So the scenario goes deep enough inside `root` for
-    each such path to stay inside it too. A file named by an absolute path is not
-    written: quicksat reads it from where it is.
-
-    Parameters
-    ----------
-    root : Path
-        An empty folder
-    files : list of dict
-        The page's files, each with `kind`, `name`, and `text` or `base64`
-
-    Returns
-    -------
-    base : Path
-        The folder that holds the scenario file
-    names : dict
-        The names of the files that quicksat reads, by kind
-
-    Raises
-    ------
-    ValueError
-        If a file has no name, or the scenario, the power system or the
-        consumption is not a plain file name
+    Write the page's files into a folder, with the scenario deep enough for each `..`
+    path to stay inside, and give its folder and the names by kind.
     """
     paths = {}
     for file in files:
@@ -152,27 +114,8 @@ def _run_inputs(
     files: list[dict], roles: dict, work: Callable[[Path, dict], dict]
 ) -> dict:
     """
-    Write the page's files into a temporary folder, check them, and run them.
-
-    The folder is deleted after the run. quicksat's loaders read each file that
-    `roles` names. If they all read, `work` runs on the folder.
-
-    Parameters
-    ----------
-    files : list of dict
-        The page's files, as `_write_inputs` takes them
-    roles : dict
-        The loader of each kind of file to check, by the kind
-    work : callable
-        Runs the files, given the folder of the scenario and the names of the
-        files by kind. It gives the result's own fields.
-
-    Returns
-    -------
-    result : dict
-        `ok`, and `checks`, what the loaders said of each file. When `ok`, the
-        fields from `work`, and `seconds`, the time taken. Otherwise `error`,
-        the reason, with no temporary path in it.
+    Write the page's files into a temporary folder, check them with their loaders, and
+    run `work` on them if they all read.
     """
     start = time.perf_counter()
     if not any(file.get("kind") == "scenario" for file in files):
@@ -221,36 +164,21 @@ def _run_inputs(
 
 def run_files(files: list[dict], output: str | Path) -> dict:
     """
-    Run the editor's files, and write the viewer.
-
-    The files go in a temporary folder, which is deleted after the run. quicksat's
-    loaders read the scenario and, if there are any, the power system and the
-    two consumption files. If they all read, the run goes ahead: the power
-    budget when the power system and both consumption files are there, and the
-    scenario alone otherwise. The viewer
-    goes in `output`, as `python -m quicksat.scenario` or `python -m quicksat.thermal`
-    would write it. With the thermal file too, the report gives the payload's heat
-    account.
+    Run the editor's files, and write the viewer, as the scenario, power or thermal
+    command would.
 
     Parameters
     ----------
     files : list of dict
-        The page's files, each with `kind`: `scenario`, `model`, `orbit`,
-        `power`, `payload_consumption`, `platform_consumption`, or `target:`
-        and the file's name for a
-        satellite target's file. `name`: the name the scenario gives it, or the
-        file's own name. `text`, or `base64` for the 3D model.
-    output : str | Path
-        The folder to write the viewer in. It is made if it does not exist.
+        The page's files, each with its `kind`, its `name`, and its `text` or `base64`
+    output : str or Path
+        The folder for the viewer, made if missing
 
     Returns
     -------
     result : dict
-        `ok`, and `checks`, what quicksat's loaders said of each file, as the
-        editor's page holds them. When `ok`: `page`, the viewer's page in
-        `output`, `report`, the results as the command prints them, and
-        `seconds`, the time taken. Otherwise `error`, the reason, with no
-        temporary path in it.
+        `ok` and `checks`, then `page`, `report` and `seconds`, or `error`, with no
+        temporary path in it
     """
 
     def work(base: Path, names: dict) -> dict:
@@ -272,30 +200,20 @@ def run_files(files: list[dict], output: str | Path) -> dict:
 
 def design_files(files: list[dict], repeat: bool) -> dict:
     """
-    Run the editor's scenario for the Activity Designer, and write nothing.
-
-    The files go in a temporary folder, as for `run_files`. The scenario is read
-    as the designer reads it, so its list of activities may be empty. The power
-    files are left out, and the scenario runs alone.
+    Run the editor's scenario alone for the Activity Designer, and write nothing.
 
     Parameters
     ----------
     files : list of dict
         The page's files, as `run_files` takes them
     repeat : bool
-        Whether to repeat the list of activities until the run ends, or run it
-        once
+        Whether to repeat the list until the run ends
 
     Returns
     -------
     result : dict
-        `ok`, `checks` and `seconds`, or `error`, as from `run_files`. When `ok`:
-        `data`, the viewer's data from `scenario_data` for the designer, and
-        `id`, its id. `rows`, the results of each activity from
-        `activity_rows`, and `warnings`, the run's warnings. `duration_s`, the
-        run's length, `period_s`, the orbit's period, and `pass_s`, the length
-        of one pass of the list, or None. `max_rate_deg_s` and
-        `max_acceleration_deg_s2`, the slew block's limits, or None.
+        As from `run_files`, with the designer's `data`, its `id`, the activities'
+        `rows`, the warnings, and the lengths and limits the page shows
     """
     files = [
         file
@@ -325,29 +243,24 @@ def design_files(files: list[dict], repeat: bool) -> dict:
 
 def thermal_files(files: list[dict], cache: dict) -> dict:
     """
-    Work out the payload's heat account from the editor's files, and write
-    nothing.
+    Work out the payload's heat account from the editor's files, and write nothing.
 
-    The files go in a temporary folder, as for `run_files`. The run and the
-    surfaces' heat are kept in `cache` with `surfaces_key`. A request with the
-    same key reuses them, so a change to the heaters, the flows or the
-    dissipation only redoes the sums.
+    The run and the surfaces' heat are kept in `cache` under `surfaces_key`, so a change
+    to the heaters, the flows or the dissipation only redoes the sums.
 
     Parameters
     ----------
     files : list of dict
-        The page's files, as `run_files` takes them. They must hold the power
-        system file, the payload's consumption file and the thermal file.
+        The page's files, with the power system, the payload's consumption and the
+        thermal file
     cache : dict
-        The server's cache, which this reads and fills: `key`, `run` and
-        `surfaces`
+        The server's cache, read and filled: `key`, `run` and `surfaces`
 
     Returns
     -------
     result : dict
-        `ok`, `checks` and `seconds`, or `error`, as from `run_files`. When
-        `ok`: `results`, from `thermal_results`, and `reused`, whether the run
-        and the surfaces' heat came from the cache.
+        As from `run_files`, with `results` from `thermal_results`, and whether the
+        cache was `reused`
     """
 
     def work(base: Path, names: dict) -> dict:
@@ -381,21 +294,15 @@ def budget_files(files: list[dict]) -> dict:
     """
     Work out the sizing budgets from the Sizing Editor's files, and write nothing.
 
-    The files go in a temporary folder, under their kinds' usual names, which is
-    deleted afterwards. A file of a kind that the sizing folder does not have is
-    left out.
-
     Parameters
     ----------
     files : list of dict
-        The page's files, each with `kind`, such as `mission` or `equipment`, and
-        `text`
+        The page's files, each with its `kind` and `text`
 
     Returns
     -------
     result : dict
-        `ok`, `results`, from `budget_results`, with no temporary path in them,
-        and `seconds`, the time taken. Otherwise `error`, the reason.
+        `ok`, `results` from `budget_results`, and `seconds`, or `error`
     """
     start = time.perf_counter()
     with tempfile.TemporaryDirectory(prefix="quicksat_budgets_") as tmp:
@@ -437,29 +344,24 @@ def file_hash(path: Path) -> str:
 
 def save_files(folder: str | Path, files: list[dict]) -> dict:
     """
-    Write the page's files into the input folder, unless one changed on disk.
+    Write the page's files into the input folder, unless one changed on disk since the
+    page read it.
 
-    Each file names the SHA-256 of the file as the page last read or saved it. A
-    file whose bytes on disk no longer match was changed since, by another
-    program or another page, so none of the files is written. Each file goes
-    in a temporary file in the same folder first, which then takes its place.
-    So a failure leaves the old file whole.
+    Each file goes into a temporary file first, which then takes its place, so a failure
+    leaves the old one whole.
 
     Parameters
     ----------
-    folder : str | Path
+    folder : str or Path
         The input folder
     files : list of dict
-        Each with `name`, its path from the folder, `text`, and `sha256`, the
-        hash of the file as the page last read or saved it, or None for a file
-        the folder did not have
+        Each with its `name` from the folder, its `text`, and the `sha256` the page last
+        knew, or None for a new file
 
     Returns
     -------
     result : dict
-        `ok`, and `files`, each file's `name` and the `sha256` of its new
-        bytes, for the page's next save. Otherwise `error`, the reason, and
-        nothing is written.
+        `ok`, and each file's `name` and new `sha256`, or `error`, with nothing written
     """
     folder = Path(folder).resolve()
     targets = []

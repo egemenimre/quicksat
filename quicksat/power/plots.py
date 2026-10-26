@@ -4,16 +4,11 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Plots of power: the panels in 3D, each panel's power and the total, the loads by
-subsystem, the power generated against the power consumed, and the battery's
-charge.
+Plots of power: the panels in 3D, the panels' power, the loads by subsystem, the balance
+and the battery's charge.
 
-Each plot draws from a `GenerationRun` and returns the matplotlib axes, without
-showing the figure. So a notebook can add to a plot before showing it. Apply
-`quicksat.utils.plot_helpers.STYLE` first for quicksat's look.
-
-The power plots shade the eclipses. Each panel keeps one colour in every plot,
-from `panel_colours`.
+Each returns the matplotlib axes without showing the figure. The power plots shade the
+eclipses, and each panel keeps one colour from `panel_colours`.
 
 """
 
@@ -49,12 +44,12 @@ ECLIPSE = "eclipse"
 """The legend's name for the shaded eclipses."""
 
 ECLIPSE_ALPHA = 0.18
-"""How strongly the eclipses are shaded, so that the lines stay on top."""
+"""How strongly the eclipses are shaded, under the lines."""
 
 
 def panel_colours(generation_run: GenerationRun) -> dict[str, str]:
     """
-    The colour of each panel, in the order of the power system file.
+    The colour of each panel, in the power system file's order.
 
     Parameters
     ----------
@@ -64,7 +59,7 @@ def panel_colours(generation_run: GenerationRun) -> dict[str, str]:
     Returns
     -------
     colours : dict
-        The colour of each panel, as a hex string
+        Each panel's colour, as a hex string
     """
     return value_colours(generation_run.power)
 
@@ -75,7 +70,7 @@ def _minutes(run: ScenarioRun) -> np.ndarray:
 
 
 def _shade_eclipses(ax: Axes, run: ScenarioRun) -> Patch:
-    """Shades each eclipse on the axes, and gives the legend's entry for them."""
+    """Shades each eclipse, and gives the legend's entry."""
     colour = ILLUMINATION_COLOURS["umbra"]
     for piece in run.eclipses:
         if piece.empty:
@@ -116,17 +111,14 @@ def panel_power_plot(
     """
     The power of each panel against time.
 
-    Panels that see the sun alike, such as the two panels of a wing, draw one
-    line over the other.
-
     Parameters
     ----------
     generation_run : GenerationRun
         The generation
     colours : dict, optional
-        The colour of each panel. `panel_colours` by default.
+        Each panel's colour, by default `panel_colours`
     ax : Axes, optional
-        The axes to draw on. A new figure by default.
+        The axes to draw on, by default a new figure
 
     Returns
     -------
@@ -150,18 +142,15 @@ def panel_power_plot(
 
 def total_power_plot(generation_run: GenerationRun, ax: Axes | None = None) -> Axes:
     """
-    The power of all the panels together against time, with each orbit's mean.
-
-    The orbits are counted from the start of the run, one period each, as in
-    `GenerationRun.orbit_table`. A dashed line spans each whole orbit at its mean
-    power.
+    The power of all the panels against time, with a dashed line at each whole orbit's
+    mean.
 
     Parameters
     ----------
     generation_run : GenerationRun
         The generation
     ax : Axes, optional
-        The axes to draw on. A new figure by default.
+        The axes to draw on, by default a new figure
 
     Returns
     -------
@@ -212,31 +201,24 @@ def panel_drawing(
     azim: float = -60,
 ) -> Axes3D:
     """
-    The panels and their normals in body axes, as a still 3D drawing.
-
-    The model is drawn as it is, with each wing at an angle of zero. The panels
-    from the model take their colours, and the rest of the model is grey. An
-    arrow from the middle of each panel shows its normal. A typed-in panel has
-    no shape, so its normal starts at the origin. The body axes are drawn from
-    the origin, each half the model's reach long. The viewer shows the
-    model turning over the run.
+    The panels and their normals in body axes, as a still 3D drawing with each wing at
+    zero.
 
     Parameters
     ----------
     generation_run : GenerationRun
         The generation
     colours : dict, optional
-        The colour of each panel. `panel_colours` by default.
+        Each panel's colour, by default `panel_colours`
     ax : Axes3D, optional
-        3D axes to draw on. A new figure by default.
+        The 3D axes to draw on, by default a new figure
     elev, azim : float, optional
-        The view's elevation and azimuth, in degrees, as matplotlib takes them.
-        A negative elevation looks from below the x-y plane, from -z.
+        The view's elevation and azimuth, in degrees
 
     Returns
     -------
     ax : Axes3D
-        The 3D axes drawn on
+        The axes drawn on
     """
     colours = colours or panel_colours(generation_run)
     if ax is None:
@@ -311,14 +293,12 @@ def consumption_plot(consumption_run: ConsumptionRun, ax: Axes | None = None) ->
     """
     The loads against time, stacked by subsystem, with the equipment margins.
 
-    The top of the stack is the total. The power budget adds the system margin.
-
     Parameters
     ----------
     consumption_run : ConsumptionRun
         The loads over a run
     ax : Axes, optional
-        The axes to draw on. A new figure by default.
+        The axes to draw on, by default a new figure
 
     Returns
     -------
@@ -346,18 +326,14 @@ def consumption_plot(consumption_run: ConsumptionRun, ax: Axes | None = None) ->
 
 def balance_plot(budget: BudgetRun, ax: Axes | None = None) -> Axes:
     """
-    The power generated at the array's output against the power the loads take.
-
-    The loads carry all the margins. Where the generated line is above the
-    consumed one, the surplus charges the battery. Where it is below, the battery
-    makes up the rest. The conditioning losses are not drawn.
+    The power at the array's output against the power the loads take, all margins in.
 
     Parameters
     ----------
     budget : BudgetRun
         The budget
     ax : Axes, optional
-        The axes to draw on. A new figure by default.
+        The axes to draw on, by default a new figure
 
     Returns
     -------
@@ -391,7 +367,7 @@ def charge_plot(budget: BudgetRun, ax: Axes | None = None) -> Axes:
     budget : BudgetRun
         The budget
     ax : Axes, optional
-        The axes to draw on. A new figure by default.
+        The axes to draw on, by default a new figure
 
     Returns
     -------

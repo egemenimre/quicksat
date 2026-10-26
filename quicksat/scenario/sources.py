@@ -4,12 +4,8 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Where a run's states come from: the scenario's orbit, and its satellite targets'
-orbits.
-
-Each is an element set for SGP4 or a trajectory. `orbit_warnings` checks each
-against the run: an element set's epoch far from the run, or a trajectory whose
-ends come close to the run's.
+Where a run's states come from: the scenario's orbit, and its satellite targets' orbits,
+each an element set or a trajectory.
 
 """
 
@@ -33,18 +29,14 @@ from quicksat.utils.intervals import (
 )
 
 OrbitSource = Tle | Trajectory
-"""Where a run's states come from: an element set for SGP4, or a trajectory.
-Each gives a `name`, a `period` for a duration in orbits, and `states(times)` in
-GCRS."""
+"""An element set for SGP4, or a trajectory. Each gives a `name`, a `period` and
+`states(times)` in GCRS."""
 
 
 def scenario_orbit(scenario: Scenario) -> OrbitSource:
     """
-    Where the scenario's states come from.
-
-    An element set is read from the TLE file or the OMM file, or built for the
-    sun-synchronous orbit, with its epoch at the start of the run. A trajectory
-    is read from the trajectory file.
+    Where the scenario's states come from: the element set of a TLE, OMM or
+    sun-synchronous orbit, or the trajectory.
 
     Parameters
     ----------
@@ -73,12 +65,8 @@ def scenario_orbit(scenario: Scenario) -> OrbitSource:
 
 def target_orbits(scenario: Scenario) -> dict[str, OrbitSource]:
     """
-    Where each satellite target's states come from, read from its file.
-
-    A TLE or OMM file gives the element set that the target's `object` names.
-    Without `object`, a file of one element set gives that one, and a file of
-    several gives the one named as the target. A file that several targets share
-    is read once.
+    Where each satellite target's states come from, with a file that several share read
+    once.
 
     Parameters
     ----------
@@ -88,15 +76,14 @@ def target_orbits(scenario: Scenario) -> dict[str, OrbitSource]:
     Returns
     -------
     orbits : dict of str to Tle or Trajectory
-        Each satellite target's element set or trajectory, by its name
+        Each target's element set or trajectory, by name
 
     Raises
     ------
     FileNotFoundError
         If a target's file does not exist
     ValueError
-        If a target's file cannot be read, or does not hold the element set asked
-        for. The message names the target.
+        If a target's file cannot be read or lacks its element set, naming the target
     """
     read: dict[Path, list[Tle]] = {}
     orbits: dict[str, OrbitSource] = {}
@@ -126,35 +113,30 @@ def orbit_warnings(
     end: TimeArray,
 ) -> list[str]:
     """
-    Check each orbit against the run: an element set's epoch, and a trajectory's
-    span.
+    Check each orbit against the run: an element set's epoch, and a trajectory's span.
 
-    An element set gets a warning when either end of the run is more than 7
-    days from its epoch. The sun-synchronous orbit is left out: quicksat builds
-    its element set, with the epoch at the start, so it defines the orbit rather
-    than tracking one. A trajectory must cover the run, and gets a warning when
-    the run comes close to one of its ends.
+    The sun-synchronous orbit is left out, as quicksat builds it at the run's start.
 
     Parameters
     ----------
     scenario : Scenario
         The scenario
     orbit : Tle or Trajectory
-        Where the scenario's own states come from
+        The scenario's orbit
     sat_orbits : dict of str to Tle or Trajectory
         The satellite targets' orbits, by name
     start, end : Time
-        The start and the end of the run
+        The run's start and end
 
     Returns
     -------
     warnings : list of str
-        The text of each warning, which Python's warnings also give
+        Each warning, which Python's warnings also give
 
     Raises
     ------
     ValueError
-        If a trajectory does not cover the run, or crosses a gap in it
+        If a trajectory does not cover the run, or a gap crosses it
     """
     labels: dict[str, OrbitSource] = {}
     if isinstance(orbit, Trajectory):

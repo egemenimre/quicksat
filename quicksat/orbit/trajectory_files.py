@@ -4,13 +4,8 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Trajectory files, told apart by what they hold.
-
-quicksat reads two formats: ECSV, in `quicksat.orbit.ecsv_trajectory`, and
-CCSDS OEM in KVN, in `quicksat.orbit.oem_trajectory`. OEM files come named
-`.oem`, `.txt` or `.kvn`, so the name says too little. The first line that is
-neither blank nor a comment tells instead: `# %ECSV` starts an ECSV file, and
-`CCSDS_OEM_VERS` an OEM. An XML OEM is refused.
+Trajectory files, told apart by their first line that says anything: `# %ECSV` for ECSV,
+and `CCSDS_OEM_VERS` for an OEM in KVN. An XML OEM is refused.
 
 """
 
@@ -30,8 +25,8 @@ def trajectory_format(path: str | Path) -> str:
 
     Parameters
     ----------
-    path : str | Path
-        Filepath of the trajectory file
+    path : str or Path
+        The trajectory file
 
     Returns
     -------
@@ -75,8 +70,8 @@ def read_trajectory_file(path: str | Path) -> Trajectory:
 
     Parameters
     ----------
-    path : str | Path
-        Filepath of the trajectory file
+    path : str or Path
+        The trajectory file
 
     Returns
     -------

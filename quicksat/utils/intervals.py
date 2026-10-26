@@ -6,21 +6,9 @@
 """
 Helpers for time intervals built with portion.
 
-Eclipses and activities are both time intervals, and portion does the set
-arithmetic on them. That covers union, intersection and difference. portion takes
-astropy `Time` values as bounds, but it compares them exactly. Two values for the
-same instant often differ by a few picoseconds. Rounding every bound to one fixed
-grid removes that problem, so plain portion is enough.
-
-The helpers here round a time and add up the length of an interval. They also
-look up the value of an `IntervalDict` at every time of a `Time` array, and find
-when the next piece of an interval begins. `intervals_where` finds where a
-condition holds, such as the shadow or a latitude limit, with its edges located
-between the steps of a time grid.
-
-Every interval in quicksat is closed at its start and open at its end, made with
-`P.closedopen`. So touching intervals join. The pieces of a run then fit together
-without gaps or overlaps.
+Every bound is rounded to a 1 ms grid, so the same instant compares equal, and every
+interval is closed at its start and open at its end, so touching pieces join.
+`docs/scenario/scenario_ref.ipynb` explains why.
 
 """
 
@@ -35,38 +23,29 @@ from astropy.units import Quantity
 from quicksat import Q_, u
 
 TimeArray = Any
-"""An astropy `Time`, holding one time or an array of times.
-
-astropy's `Time` has no usable type hints: a type checker reads `times[0]` as
-`None`, and `time.utc` as an array. So the package annotates its times with this
-alias, which is `Any` for the checker. The docstrings say whether a single time or
-an array is meant.
-"""
+"""An astropy `Time`, holding one time or an array. It is `Any` for the type checker,
+since `Time` has no usable type hints."""
 
 _GRID_ORIGIN = Time("2000-01-01T12:00:00", scale="tt")
 """J2000, the point the 1 ms grid is counted from."""
 
 TIME_GRID = Q_(1, "ms")
-"""Spacing of the grid that every interval bound is rounded to."""
+"""The spacing of the grid that every interval bound is rounded to."""
 
 
 def round_time(t: TimeArray) -> TimeArray:
     """
     Round a time to the 1 ms grid, counted from J2000.
 
-    Two values for the same instant then compare exactly equal, whichever way they
-    were worked out. Rounding twice changes nothing, and a time moves by at most
-    half a millisecond.
-
     Parameters
     ----------
     t : Time
-        A single time or an array of times, in any time scale
+        One time or an array, in any time scale
 
     Returns
     -------
     rounded : Time
-        The rounded time or times, in the TT time scale
+        The rounded time or times, in TT
     """
     step = TIME_GRID.to(u.s).value
     seconds = (t - _GRID_ORIGIN).to_value(u.s)
@@ -80,15 +59,12 @@ def duration(interval: P.Interval) -> Quantity:
     Parameters
     ----------
     interval : portion.Interval
-        An interval with `Time` bounds, in one piece or in many. It must not be
-        unbounded.
+        A bounded interval with `Time` bounds
 
     Returns
     -------
     length : Quantity
-        The summed length, in seconds, rounded to the 1 ms grid. Every bound is on
-        that grid, so the rounding only removes the float noise of the subtraction.
-        An empty interval gives exactly zero.
+        In s, rounded to the 1 ms grid, and exactly zero when empty
     """
     seconds = 0.0
     for piece in interval:
@@ -100,26 +76,20 @@ def duration(interval: P.Interval) -> Quantity:
 
 def labels_at(row: P.IntervalDict, times: TimeArray) -> np.ndarray:
     """
-    Value of an `IntervalDict` at each time of a `Time` array.
-
-    portion takes only single times as bounds, and looking up one sample at a time
-    is slow. This compares the whole array once for each piece of the row, which
-    is about a thousand times faster. The values are assumed not to overlap, as in
-    any `IntervalDict`.
+    The value of an `IntervalDict` at each time of an array, compared once per piece for
+    speed.
 
     Parameters
     ----------
     row : portion.IntervalDict
-        A row mapping time intervals to values, such as a mode or an attitude name
+        Time intervals mapped to values, such as the modes
     times : Time
-        The sample times, as an array. They should have been through `round_time`,
-        so that a sample on a boundary compares exactly.
+        The sample times, rounded with `round_time`
 
     Returns
     -------
     labels : ndarray
-        One value for each time, as an array of objects. A time that no piece of
-        the row covers gets `None`.
+        One value per time, as objects, None where no piece covers it
     """
     labels = np.full(times.shape, None, dtype=object)
     for interval, value in row.items():
@@ -136,28 +106,22 @@ def labels_at(row: P.IntervalDict, times: TimeArray) -> np.ndarray:
 
 def next_start(intervals: P.Interval, after: TimeArray) -> TimeArray | None:
     """
-    When the next piece of an interval begins, strictly after a given time.
+    When the next piece of an interval begins, strictly after a time, as an event
+    trigger finds its event.
 
-    Intersecting with the open interval from `after` onwards does the work. A piece
-    that began at or before `after` comes out open at its start. A piece that
-    begins later keeps its closed start. So the first closed start is the answer.
-    A piece cut by the start of the run is never an answer either, because no
-    activity starts before the run.
-
-    This is how an event trigger finds its event. An eclipse entry is the start of
-    an eclipse, and an eclipse exit is the start of a sunlit piece.
+    A piece cut by the run's start is never an answer.
 
     Parameters
     ----------
     intervals : portion.Interval
         Intervals with `Time` bounds, each closed at its start
     after : Time
-        A single time
+        One time
 
     Returns
     -------
     start : Time or None
-        The first start after `after`, or None if no piece begins after it
+        The first start after `after`, or None
     """
     for piece in intervals & P.open(after, P.inf):
         if piece.left == P.CLOSED:
@@ -171,36 +135,25 @@ def intervals_where(
     flags_at: Callable[[TimeArray], np.ndarray],
 ) -> P.Interval:
     """
-    Where a condition holds over the span of a time grid, as portion intervals.
+    Where a condition holds over a time grid, with each edge found to 1 ms by bisection
+    between the steps.
 
-    Wherever the flag changes between two grid steps, one edge lies between them.
-    All the brackets are halved together by bisection. Each midpoint evaluates
-    the condition again, with `flags_at`, so the result does not depend on the
-    step. The search stops once every bracket is shorter than 1 ms. It then takes
-    the midpoint and rounds it with `round_time`.
-
-    It assumes that no bracket holds two edges. That holds for any step far
-    shorter than the time the condition holds or fails. A spell shorter than one
-    step can be missed.
-
-    Each piece is closed at its start and open at its end. A piece already under
-    way at the first time begins there, and one still under way at the last time
-    ends there. These cut ends are not edges, and `next_start` never takes them
-    for an event.
+    A spell shorter than one step can be missed. The cut ends at the grid's first and
+    last times are not edges.
 
     Parameters
     ----------
     times : Time
-        The grid times, in order, rounded with `round_time`
+        The grid's times, in order, rounded with `round_time`
     flags : ndarray
-        Whether the condition holds at each grid time, as an array of bools
+        Whether the condition holds at each time, as bools
     flags_at : callable
-        Gives the same flags for any `Time` array
+        The same flags for any `Time` array
 
     Returns
     -------
     intervals : portion.Interval
-        Where the condition holds, between the first and the last time of the grid
+        Where the condition holds, within the grid's span
     """
     changed = np.flatnonzero(flags[:-1] != flags[1:])
     rises = ~flags[changed]

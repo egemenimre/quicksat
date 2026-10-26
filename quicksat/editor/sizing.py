@@ -4,16 +4,12 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The sizing editor: a web page that fills in and edits a folder of sizing files.
+The Sizing Editor: a web page that fills in and edits a folder of sizing files, each
+under its usual name.
 
-A sizing folder holds `mission.yaml`, `requirements.yaml` and the files of the
-budgets it sizes: the mass budget's settings and equipment list, the payload
-data flow, the delta-V settings and manoeuvres, and the agility settings. Each
-file has its usual name, as the sizing notebooks read them by name.
-
-The page is made as the scenario editor's is, from the same shared parts. It is
-a page of its own, because the sizing files share nothing with a scenario: their
-orbit is a reference orbit, with no epoch and no node (`decisions.md` 9).
+It is built from the same shared parts as the Scenario Editor, as a page of its own,
+since the sizing files share nothing with a scenario (`decisions.md` 9).
+`docs/guides/sizing/edit_the_sizing_files.md` says how to use it.
 
 """
 
@@ -31,9 +27,7 @@ FORMAT = "quicksat-sizing-editor"
 """The `format` field of the data the page holds."""
 
 VERSION = 1
-"""The `version` field of the data the page holds. It stays the same during
-development, even when a field changes. It goes up only once older pages must
-still be read."""
+"""The `version` field of the page's data, which stays the same in development."""
 
 NAMES = {
     "mission": "mission.yaml",
@@ -56,8 +50,8 @@ SCRIPTS = (
     "export.js",
     "views.js",
 )
-"""The sizing editor's own scripts in `templates/sizing/`, in the order they run
-after the shared ones."""
+"""The Sizing Editor's own scripts in `templates/sizing/`, in the order they run after
+the shared ones."""
 
 
 def sizing_data(folder: str | Path) -> dict:
@@ -66,18 +60,14 @@ def sizing_data(folder: str | Path) -> dict:
 
     Parameters
     ----------
-    folder : str | Path
-        The folder that holds the files. Any of them may be missing.
+    folder : str or Path
+        The folder of sizing files, any of which may be missing
 
     Returns
     -------
     data : dict
-        `format`, `version` and `folder`, the folder's name. `label`, the folder
-        as given when relative, and its name otherwise, so that no local path
-        goes into the page. `files`, each file by its kind, or None when it is
-        missing. `checks`, what quicksat's loaders said of each budget's files.
-        `results`, every budget as quicksat works it out now, from
-        `budget_results`, for the Budgets tab.
+        The format and version, the folder's name and label, with no local path, the
+        files by kind, the loaders' checks, and the budgets' `results`
 
     Raises
     ------
@@ -162,7 +152,7 @@ def sizing_data(folder: str | Path) -> dict:
 
 def sizing_page(data: dict) -> str:
     """
-    The sizing editor's page, with the folder's files inside.
+    The Sizing Editor's page, with the folder's files inside.
 
     Parameters
     ----------
@@ -172,26 +162,26 @@ def sizing_page(data: dict) -> str:
     Returns
     -------
     page : str
-        The page, as HTML text
+        The page, as HTML
     """
     return build_page("sizing", SCRIPTS, data, ("sizing",))
 
 
 def write_sizing_editor(folder: str | Path, output: str | Path) -> Path:
     """
-    Write the sizing editor's page for a folder of sizing files.
+    Write the Sizing Editor's page for a folder of sizing files.
 
     Parameters
     ----------
-    folder : str | Path
-        The folder that holds the sizing files
-    output : str | Path
-        The folder to write the page in. It is made if it does not exist.
+    folder : str or Path
+        The folder of sizing files
+    output : str or Path
+        The folder for the page, made if missing
 
     Returns
     -------
     page : Path
-        The page written. Double-click it to open the editor.
+        The page, which opens in a browser
     """
     data = sizing_data(folder)
     output = Path(output)

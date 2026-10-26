@@ -6,37 +6,10 @@
 """
 The scenario file: the orbit, the period, the attitudes and the activities.
 
-A scenario is one YAML file. It names the orbit and gives the start time and the
-duration of the run. It also defines the attitudes, and lists the activities.
-The list is written once, and the run repeats it until the duration ends. Each
-activity is a short list of four or five items:
-
-    - [downlink pass, 10 min, nadir, {payload_mode: downlink, platform_mode: ttc}, eclipse]
-
-They are the title, which names what the activity is for, the trigger that ends
-the activity, the attitude, the modes, and an optional constraint on the
-illumination. The modes are two: the payload's, and the platform's that carries
-it. A third, optional key says which activity's mode the payload is in during
-the slew into this one. The activities form a chain. Each one starts where the
-one before it ends, and the first starts at the start time.
-
-An activity may also be written as a mapping with the same fields named, which
-leaves room for its comments:
-
-    - title: downlink pass
-      end: 10 min
-      attitude: nadir
-      mode: {payload_mode: downlink, platform_mode: ttc}
-      comments: The X-band antenna is on +z.
-
-Every block of the file may hold the user's own notes in a `comments` field, and
-so may the file as a whole. The sections of named items, such as `attitudes`,
-may hold one too, so no item may be named `comments`.
-
-This module reads and checks the file. It does not run anything. The file's
-parts have modules of their own: the orbit and the targets in `orbit_config`,
-the triggers in `triggers`, the activities in `activities`, and the names they
-share in `names`.
+This module reads and checks the file, and runs nothing. The orbit and the targets are
+in `orbit_config`, the triggers in `triggers`, the activities in `activities`, and the
+shared names in `names`. `docs/scenario/scenario_ref.ipynb`, under "The scenario file",
+explains the file.
 
 """
 
@@ -79,21 +52,7 @@ DEFAULT_STEP = Q_(10, "s")
 
 
 def _different_axes(first: str, second: str, names: str) -> None:
-    """
-    Check that two axes of one attitude use different body axes.
-
-    Parameters
-    ----------
-    first, second : str
-        Axes such as `+z` and `-y`
-    names : str
-        What the two axes are, for the error message
-
-    Raises
-    ------
-    ValueError
-        If both axes use the same letter, whatever their signs
-    """
+    """Refuses two axes of one attitude on the same body axis, whatever their signs."""
     if first[1] == second[1]:
         raise ValueError(
             f"{names} must use different body axes, got '{first}' and '{second}'"
@@ -102,22 +61,7 @@ def _different_axes(first: str, second: str, names: str) -> None:
 
 def _read_pair(value) -> tuple[str, str]:
     """
-    An `[axis, direction]` pair, as the file writes it.
-
-    Parameters
-    ----------
-    value : list
-        The pair, such as `[+z, nadir]`
-
-    Returns
-    -------
-    pair : tuple of str
-        The axis and the direction, without the spaces at their ends
-
-    Raises
-    ------
-    ValueError
-        If the value is not a list of two strings
+    An `[axis, direction]` pair, stripped, refusing anything but a list of two strings.
     """
     if (
         not isinstance(value, (list, tuple))
@@ -138,22 +82,7 @@ _OFFSET_TURN = re.compile(r"\s*([xyz])\s+(.+?)\s*")
 
 def _read_offsets(value) -> list[tuple[str, Quantity]]:
     """
-    The turns of an attitude's offset, as the file writes them.
-
-    Parameters
-    ----------
-    value : list of str or None
-        Turns such as `x 30 deg`: a body axis and an angle
-
-    Returns
-    -------
-    turns : list of tuple
-        The axis, `x`, `y` or `z`, and the angle in degrees, in order
-
-    Raises
-    ------
-    ValueError
-        If the value is not a list, or a turn is not an axis and an angle
+    An attitude's offset turns as an axis letter and an angle in degrees each, in order.
     """
     if value is None:
         return []
@@ -184,29 +113,24 @@ def _read_offsets(value) -> list[tuple[str, Quantity]]:
 
 class Attitude(Commented):
     """
-    An attitude: one body axis fixed on a direction, and a second body axis
-    turned as close as it can get to another direction.
+    An attitude: one body axis fixed on a direction, and a second turned as close as it
+    can to another.
 
-    A direction is one of `DIRECTIONS`, or a target that the scenario names in
-    `gnd_targets` or `sat_targets`.
+    A direction is one of `DIRECTIONS`, or a target's name.
 
     Parameters
     ----------
     point : tuple of str
-        The body axis and the direction it is fixed on, written `[+z, nadir]`
+        The body axis and its direction, `[+z, nadir]`
     constrain : tuple of str
-        The second body axis and the direction it turns as close as it can get
-        to, written `[-y, orbit normal]`. It must use a different body axis.
+        A second body axis and its direction, `[-y, orbit normal]`
     fallback : str, optional
-        The direction that takes the constraint's place where the constraint's
-        direction is parallel to the pointed one. By default, the first of
-        `FALLBACKS` that the attitude does not use.
+        The direction that replaces the constraint's where it is parallel to the pointed
+        one. By default, the first of `FALLBACKS` not used
     offset : list, optional
-        Turns about the body axes, applied in order after the orientation above,
-        written `[x 30 deg]`. Each is right-handed, about the body's own axis as
-        the turns before it left it.
+        Turns about the body's own axes, in order, after the orientation, `[x 30 deg]`
     comments : str, optional
-        Your own notes on this block. quicksat keeps them and does not read them.
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -240,14 +164,8 @@ class Attitude(Commented):
     @property
     def fallback_direction(self) -> str:
         """
-        The direction that replaces the constraint's where it is parallel to the
-        pointed one.
-
-        Returns
-        -------
-        direction : str
-            `fallback`, or by default the first of `FALLBACKS` that the attitude
-            does not use
+        The direction that replaces the constraint's where it is parallel: `fallback`,
+        or the first of `FALLBACKS` not used.
         """
         if self.fallback is not None:
             return self.fallback
@@ -257,12 +175,8 @@ class Attitude(Commented):
     @property
     def directions(self) -> list[str]:
         """
-        Every direction the attitude uses: the pointed one, the constraint's, and
-        the fallback.
-
-        Returns
-        -------
-        directions : list of str
+        Every direction the attitude uses: the pointed one, the constraint's, and the
+        fallback.
         """
         return [self.point[1], self.constrain[1], self.fallback_direction]
 
@@ -274,16 +188,13 @@ _ORBIT_COUNT = re.compile(r"(\d+(?:\.\d*)?|\.\d+)\s*orbits?", re.IGNORECASE)
 @dataclass(frozen=True)
 class OrbitCount:
     """
-    A duration given as a number of orbits.
-
-    One orbit is the nodal period of the element set: the time from one ascending
-    node to the next. The run turns the count into a time once the element set is
-    known.
+    A duration as a number of orbits, each the element set's nodal period, turned into a
+    time by the run.
 
     Parameters
     ----------
     count : float
-        The number of orbits, positive. It need not be whole.
+        The number of orbits, positive
     """
 
     count: float
@@ -295,23 +206,7 @@ class OrbitCount:
 
 def _parse_duration(value) -> Quantity | OrbitCount:
     """
-    Pydantic BeforeValidator for the duration of the run.
-
-    Parameters
-    ----------
-    value : str or Quantity
-        A time with a unit, such as `5 h`, or a number of orbits, such as
-        `3 orbits`
-
-    Returns
-    -------
-    duration : Quantity or OrbitCount
-        The time, or the number of orbits
-
-    Raises
-    ------
-    ValueError
-        If the value is neither, or is not positive
+    The run's duration, as a positive time or a number of orbits, such as `3 orbits`.
     """
     example = "such as 5 h, or a number of orbits, such as 3 orbits"
     if isinstance(value, str):
@@ -343,24 +238,8 @@ def _parse_duration(value) -> Quantity | OrbitCount:
 
 def _parse_start(value) -> Time:
     """
-    Pydantic BeforeValidator for the start time.
-
-    Parameters
-    ----------
-    value : str or datetime or Time
-        An ISO time such as `2026-10-01T00:00:00`, in UTC. YAML turns an unquoted
-        one into a `datetime` with no time zone. A time zone is converted to UTC,
-        and a date alone means midnight.
-
-    Returns
-    -------
-    start : Time
-        The start time, in the UTC time scale
-
-    Raises
-    ------
-    ValueError
-        If the value is not an ISO time
+    The start time from an ISO time, or YAML's datetime, in UTC. A date alone is
+    midnight.
     """
     if isinstance(value, Time):
         return value
@@ -384,26 +263,21 @@ def _parse_start(value) -> Time:
 
 class Slew(Commented):
     """
-    How the body turns from one attitude to another.
+    How the body turns from one attitude to another: rest to rest about one axis, then
+    settling.
 
-    A slew turns from rest to rest about one axis. It speeds up at the maximum
-    acceleration, coasts at the maximum rate if it reaches it, and slows down
-    again. The body then settles for the settling time before the activity
-    starts. The same rate and acceleration hold for every axis. They can be set
-    close to the agility budget's, but nothing reads them from it.
+    The same limits hold for every axis.
 
     Parameters
     ----------
     max_rate : Quantity, optional
-        The fastest the body turns, such as `0.7 deg/s`. Without it, the slew
-        speeds up until the midpoint, then slows down.
+        The fastest turn, such as `0.7 deg/s`
     max_acceleration : Quantity, optional
-        How fast the turn speeds up and slows down, such as `0.08 deg/s2`.
-        Without it, the slew starts and stops at the maximum rate at once.
+        The fastest change of rate, such as `0.08 deg/s2`
     settling_time : Quantity, optional
-        Time to settle after the turn, 0 s by default
+        The time to settle after the turn, by default 0 s
     comments : str, optional
-        Your own notes on this block. quicksat keeps them and does not read them.
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -414,7 +288,7 @@ class Slew(Commented):
 
     @model_validator(mode="after")
     def _a_positive_limit(self):
-        """Checks for at least one limit, and that each limit is above zero."""
+        """Checks for at least one limit, each above zero."""
         limits = {"max_rate": self.max_rate, "max_acceleration": self.max_acceleration}
         given = {name: limit for name, limit in limits.items() if limit is not None}
         if not given:
@@ -425,14 +299,7 @@ class Slew(Commented):
         return self
 
     def _limits(self) -> tuple[float | None, float | None]:
-        """
-        The two limits as plain numbers, in rad/s and rad/s^2.
-
-        Returns
-        -------
-        limits : tuple
-            The maximum rate and the maximum acceleration, or None for either
-        """
+        """The maximum rate and acceleration in rad/s and rad/s2, or None for either."""
         rate = None if self.max_rate is None else self.max_rate.to(u.rad / u.s).value
         acceleration = (
             None
@@ -453,21 +320,21 @@ class Slew(Commented):
         Returns
         -------
         time : Quantity
-            In seconds
+            In s
         """
         seconds = slew_duration(np.asarray(angle.to(u.rad).value), *self._limits())
         return Q_(float(seconds), "s")
 
     def turned(self, angle: Quantity, elapsed: Quantity) -> np.ndarray:
         """
-        How far through the turn the body is, as a fraction.
+        How far through the turn the body is, from 0 to 1.
 
         Parameters
         ----------
         angle : Quantity
-            The whole angle of the turn
+            The turn's whole angle
         elapsed : Quantity
-            Time since the turn started, one value or an array
+            The time since the turn started
 
         Returns
         -------
@@ -485,33 +352,25 @@ FULL_TURN = (Q_(-180, "deg"), Q_(180, "deg"))
 
 class Articulation(Commented):
     """
-    A part of the 3D model that turns about one body axis, such as a solar wing
-    that follows the sun.
+    A part of the 3D model that turns about one body axis, such as a solar wing that
+    follows the sun.
 
-    At each step, the part turns about `axis` until the axis that `point` names
-    is as close to its direction as the turn allows. The angle is zero where the
-    model draws the part, and turns right-handed about the axis. In a platform
-    mode that `park` names, the part holds the angle given there instead.
+    The part turns until its pointing axis comes as close to its direction as it can. In
+    a platform mode that `park` names, it holds that angle instead.
+    `docs/scenario/scenario_ref.ipynb`, under "Articulations", explains them.
 
     Parameters
     ----------
     part : str
-        The name of the GLB node that turns. It turns about the axis through its
-        own origin, and its children turn with it.
+        The GLB node that turns, about its own origin, with its children
     axis : str
         The drive axis, in body axes, such as `+y`
     point : tuple of str
-        The part's axis, as the model draws the part, and the direction to turn
-        it toward, written `[-z, sun]`. The direction is one an attitude can
-        use: a built-in direction, or a target named in `gnd_targets` or
-        `sat_targets`. The
-        axis must use a different body axis from `axis`.
+        The part's axis and its direction, `[-z, sun]`, on another body axis than `axis`
     range : tuple of Quantity, optional
-        The lowest and the highest angle, from -180 to 180 degrees. All the way
-        round by default. Where the direction asks for an angle outside it, the
-        part stops at the nearer end.
+        The lowest and highest angle, by default all the way round
     park : dict of str to Quantity, optional
-        A fixed angle for each platform mode named, inside the range
+        A fixed angle for each platform mode named, in the range
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -524,7 +383,7 @@ class Articulation(Commented):
 
     @model_validator(mode="after")
     def _check(self):
-        """Checks the axes, the range, and that each park angle is in the range."""
+        """Checks the axes, the range, and that each park angle is in it."""
         _different_axes(self.axis, self.point[0], "axis and point")
         low, high = self.range
         if not FULL_TURN[0] <= low < high <= FULL_TURN[1]:
@@ -542,7 +401,7 @@ class Articulation(Commented):
 
 
 def _model_mapping(value):
-    """A `3d_model` given as a file name, as the mapping with only `file`."""
+    """Reads a `3d_model` given as a file name as the mapping with only `file`."""
     if isinstance(value, (str, Path)):
         return {"file": value}
     return value
@@ -552,18 +411,14 @@ class SpacecraftModel(Commented):
     """
     The spacecraft's 3D model, and the parts of it that turn.
 
-    `3d_model` in the scenario file is either the name of the GLB file, or a
-    mapping with `file` and `articulations`.
-
     Parameters
     ----------
     file : Path
-        The GLB file, in body axes and metres. A relative path is taken from the
-        folder of the scenario file.
+        The GLB file, in body axes and metres
     articulations : dict of str to Articulation, optional
-        The parts that turn, each under a name of your choice
+        The parts that turn, by any names
     comments : str, optional
-        Your own notes on this block. quicksat keeps them and does not read them.
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -583,36 +438,26 @@ class Scenario(YamlFile):
     orbit : Orbit
         Where the orbit comes from
     start : Time
-        Start of the run, in UTC. An ISO string, or the datetime that YAML makes
-        of an unquoted ISO time.
+        The run's start, in UTC
     duration : Quantity or OrbitCount
-        Length of the run, positive: a time such as `5 h`, or a number of orbits
-        such as `3 orbits`. One orbit is the nodal period of the element set.
+        The run's length, positive, such as `5 h` or `3 orbits`
     step : Quantity
-        Time step of the grid that the orbit is evaluated on. Positive, shorter
-        than the duration, and 10 s by default.
+        The grid's time step, by default 10 s
     gnd_targets : dict of str to GroundTarget, optional
-        Ground points, by name, that an attitude can point at
+        Ground points, by name
     sat_targets : dict of str to SatelliteTarget, optional
-        Other satellites, by name, that an attitude can point at. No name may be
-        in both blocks.
+        Other satellites, by name
     attitudes : dict of str to Attitude
-        The attitudes the activities can name, by a name of your choice. At
-        least one, and none named `slew` or `unplanned`.
+        The attitudes, by any names but `slew` and `unplanned`
     activities : list of Activity
-        One repeat of the activities, at least one. The run repeats the list
-        until the duration ends, and cuts the last activity there. The Activity
-        Designer reads a scenario with `designer`, which allows an empty list.
+        One pass of the activities, which the run repeats. The Activity Designer allows
+        an empty list
     slew : Slew, optional
-        How the body turns between attitudes. Without it, attitude changes are
-        instant.
+        How the body turns, by default at once
     spacecraft_model : SpacecraftModel, optional
-        The spacecraft's 3D model, written `3d_model` in the file: a GLB file in
-        body axes and metres, and the parts of it that turn. The viewer draws it,
-        or a 1 m cube without it.
+        The 3D model, written `3d_model`, by default a 1 m cube
     comments : str, optional
-        Your own notes on the whole file. quicksat keeps them and does not read
-        them.
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -637,21 +482,19 @@ class Scenario(YamlFile):
     @classmethod
     def from_yaml_file(cls, file_path: str | Path, designer: bool = False) -> Self:
         """
-        Initialise the scenario from a YAML file.
-
-        A relative TLE path is taken from the folder of the YAML file.
+        Read the scenario file. Its relative paths are taken from its folder.
 
         Parameters
         ----------
-        file_path : str | Path
-            Filepath containing the scenario (YAML)
+        file_path : str or Path
+            The scenario file
         designer : bool, optional
-            Read the file as the Activity Designer does: see `from_yaml_text`
+            Read it as the Activity Designer does
 
         Returns
         -------
         scenario : Scenario
-            Scenario object from the input data
+            The scenario
         """
         return cls._from_file(file_path, designer=designer)
 
@@ -663,24 +506,22 @@ class Scenario(YamlFile):
         designer: bool = False,
     ) -> Self:
         """
-        Initialise the scenario from YAML text.
+        Read the scenario from YAML text.
 
         Parameters
         ----------
         yaml_text : str
-            Text containing the scenario (YAML)
-        base_dir : str | Path, optional
-            The folder a relative TLE path is taken from. Without it, the path
-            stays relative to the working directory.
+            The text
+        base_dir : str or Path, optional
+            The folder for relative paths, by default the working directory
         designer : bool, optional
-            Read the text as the Activity Designer does, for a list of activities
-            still being built. The list may then be empty, and a park mode need
-            not be one that the activities have yet. Every other check stays.
+            Allow an empty list, and park modes no activity gives yet, as the Activity
+            Designer does
 
         Returns
         -------
         scenario : Scenario
-            Scenario object from the input data
+            The scenario
         """
         return cls._from_text(yaml_text, base_dir=base_dir, designer=designer)
 
@@ -698,9 +539,8 @@ class Scenario(YamlFile):
         cls, model: SpacecraftModel | None, info: ValidationInfo
     ) -> SpacecraftModel | None:
         """
-        Takes a relative path from the folder of the scenario file, checks that
-        the viewer can read the model, and that each articulation names one of
-        its nodes.
+        Takes a relative model path from the file's folder, and checks the model and its
+        articulations' nodes.
         """
         if model is None:
             return None
@@ -724,7 +564,7 @@ class Scenario(YamlFile):
     @field_validator("attitudes")
     @classmethod
     def _name_attitudes(cls, attitudes: dict[str, Attitude]) -> dict[str, Attitude]:
-        """Checks that there is an attitude, and that each name can be used."""
+        """Checks there is an attitude, and each name can be used."""
         if not attitudes:
             raise ValueError("attitudes must define at least one attitude")
         for name in attitudes:
@@ -739,11 +579,7 @@ class Scenario(YamlFile):
     @field_validator("activities", mode="before")
     @classmethod
     def _read_activities(cls, value, info: ValidationInfo):
-        """
-        Reads every activity, in the list form or the map form, and names it by
-        its number in the list on an error. The list may be empty only in the
-        Activity Designer, where a key with no value is an empty list too.
-        """
+        """Reads each activity in either form, naming it by its number on an error."""
         designer = (info.context or {}).get("designer", False)
         if designer and value is None:
             value = []
@@ -764,15 +600,8 @@ class Scenario(YamlFile):
 
     def _direction_problems(self) -> list[str]:
         """
-        Problems with the names: a target named as a built-in direction, a name
-        in both target blocks, an attitude or an articulation with a direction
-        that is neither, an activity's attitude that is not defined, and a rise
-        or set of a target that is not defined.
-
-        Returns
-        -------
-        problems : list of str
-            One message for each problem
+        Each problem with the names of the targets, the directions, the attitudes and
+        the triggers' targets.
         """
         targets = [*self.gnd_targets, *self.sat_targets]
         problems = [
@@ -821,17 +650,8 @@ class Scenario(YamlFile):
 
     def _park_problems(self) -> list[str]:
         """
-        Problems with the articulations: a park mode that no activity gives the
-        platform. The park angles go by the platform's mode, since the drives are
-        platform equipment.
-
-        `slew` counts as a mode when the scenario has slews, since the platform
-        takes it while the body turns.
-
-        Returns
-        -------
-        problems : list of str
-            One message for each problem
+        Each park mode that no activity gives the platform, `slew` included when there
+        are slews.
         """
         if self.spacecraft_model is None:
             return []
@@ -849,12 +669,8 @@ class Scenario(YamlFile):
     @model_validator(mode="after")
     def _check_together(self, info: ValidationInfo):
         """
-        Checks what spans fields: the step against the duration, the names and
-        the directions, and the park modes. The Activity Designer skips the park
-        modes, as its list may not have them yet.
-
-        A duration in orbits is checked against the step only when the run
-        starts, once the nodal period is known.
+        Checks the step against the duration, the names, and the park modes, which the
+        Activity Designer skips.
         """
         problems = []
         if isinstance(self.duration, Quantity) and self.step >= self.duration:

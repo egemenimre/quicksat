@@ -4,16 +4,12 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Copy quicksat's sample into a folder, so that a user who installed quicksat with
-pip has files to start from.
+Copy quicksat's sample into a folder, so that a user who installed quicksat with pip has
+files to start from.
 
-The sample is not in the package. It is in the repository on GitHub, in
-`sample/`, with its data, its notebooks, and the viewers and editor pages written
-from them. `copy_sample` downloads the repository's archive for the installed
-version's tag, such as `v0.1.0`, and extracts `sample/` from it. When that tag has
-no archive, as for a development version, it takes `master` instead, and says so.
-A local copy of the repository, as a folder or as its zip, serves when there is no
-network connection.
+The sample comes from the repository's archive on GitHub for the installed version's
+tag, or from `master` when the tag has none. A local copy of the repository serves
+offline.
 
 """
 
@@ -33,7 +29,7 @@ SAMPLE_FOLDER = "sample"
 """The repository's folder that is copied."""
 
 _TIMEOUT = 60
-"""Seconds to wait for GitHub before giving up."""
+"""Seconds to wait for GitHub."""
 
 
 def archive_url(ref: str) -> str:
@@ -61,7 +57,7 @@ def download_archive(version: str = __version__) -> tuple[bytes, list[str]]:
     Parameters
     ----------
     version : str, optional
-        The quicksat version, the installed one by default
+        The quicksat version, by default the installed one
 
     Returns
     -------
@@ -98,17 +94,14 @@ def _download(url: str) -> bytes:
 
 def extract_sample(archive: zipfile.ZipFile, folder: Path) -> list[Path]:
     """
-    Write the archive's `sample/` folder into `folder`.
-
-    The archive is the repository's, as GitHub gives it: every path starts with
-    one top folder, such as `quicksat-0.1.0/`. `sample/` sits below it.
+    Write the archive's `sample/` folder, below its one top folder, into `folder`.
 
     Parameters
     ----------
     archive : zipfile.ZipFile
         The repository's archive
     folder : Path
-        The folder to write into. It must not hold anything yet.
+        The folder to write into, which must be empty
 
     Returns
     -------
@@ -152,10 +145,10 @@ def copy_sample(
     Parameters
     ----------
     folder : str or Path
-        The folder to copy into. It is made if missing, and must be empty if not.
+        The folder to copy into, made if missing, and empty if not
     source : str or Path, optional
-        A local copy of the repository: its folder, or its zip archive as GitHub
-        gives it. By default, the archive is downloaded from GitHub.
+        A local copy of the repository, as a folder or a zip. By default, GitHub's
+        archive
 
     Returns
     -------

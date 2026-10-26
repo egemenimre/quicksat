@@ -4,29 +4,14 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The articulations: the parts of the 3D model that turn about one axis.
+The articulations: the parts of the 3D model that turn about one axis, such as a solar
+wing.
 
-An articulation, such as a solar wing, turns about one body axis to point one of
-its own axes toward a direction: the sun for a wing, or a ground station for an
-antenna. The direction is one an attitude can use. At each time of the run's
-grid, its angle is one of two:
-
-- In a platform mode that its `park` names, the park angle. The drives are
-  platform equipment, so the payload's mode does not park them.
-- Otherwise the tracking angle. The direction, in body axes, loses its part
-  along the drive axis, and the part's pointing axis turns onto what is left.
-  The angle is then clamped to the range.
-
-The angle is zero where the model draws the part, and turns right-handed about
-the drive axis. It is set at each step from the geometry, with no drive and no
-rate limit. It follows the body through its slews. A wing keeps tracking the sun
-in eclipse, so it faces the sun when the sun rises. While the part tracks inside
-its range, the cosine between its pointing axis and the direction is the length
-of what is left: the square root of 1 - (direction . axis)**2.
-
-Where the direction lies along the drive axis, the tracking angle is undefined.
-The part then keeps the last angle it had. Before the first defined angle, it
-takes that first one. If the direction never leaves the axis, the angle is zero.
+At each step, a part takes its park angle in a platform mode that `park` names, or else
+turns its pointing axis as close to its direction as the drive axis allows, clamped to
+its range. There is no rate limit. Where the direction lies along the drive axis, the
+part keeps its last angle. `docs/scenario/scenario_ref.ipynb`, under "Articulations",
+explains them.
 
 """
 
@@ -45,30 +30,28 @@ if TYPE_CHECKING:  # a type annotation only, as run.py imports this module
     from quicksat.scenario.run import ScenarioRun
 
 GAP = 1e-6
-"""Below this length, the direction's part across the drive axis counts as none:
-the direction lies along the axis, within 0.2 arcseconds, and the angle is
-undefined. The attitudes use the same limit."""
+"""The length below which the direction's part across the drive axis counts as none,
+within 0.2 arcseconds."""
 
 
 def tracking_angles(
     axis: np.ndarray, pointing_axis: np.ndarray, targets: np.ndarray
 ) -> np.ndarray:
     """
-    The angles that turn `pointing_axis` about `axis` as close to each target
-    direction as it goes.
+    The angles that turn `pointing_axis` about `axis` as close to each target direction
+    as it goes.
 
     Parameters
     ----------
     axis, pointing_axis : ndarray
         Perpendicular unit vectors in body axes, shape (3,)
     targets : ndarray
-        Unit vectors toward the direction, such as the sun, in body axes, shape
-        (n, 3)
+        Unit vectors toward the direction, in body axes, shape (n, 3)
 
     Returns
     -------
     angles : ndarray
-        In radians, from -pi to pi. NaN where the direction lies along the axis.
+        In rad, from -pi to pi, NaN where the direction lies along the axis
     """
     across = targets - np.outer(targets @ axis, axis)
     side = np.cross(axis, pointing_axis)
@@ -89,8 +72,8 @@ def hold_last(angles: np.ndarray) -> np.ndarray:
     Returns
     -------
     angles : ndarray
-        No NaN left. The undefined angles before the first defined one take that
-        first one. All zero if none is defined.
+        With no NaN: before the first defined angle, that angle, and all zero if none is
+        defined
     """
     defined = ~np.isnan(angles)
     if not defined.any():
@@ -105,20 +88,20 @@ def hold_last(angles: np.ndarray) -> np.ndarray:
 
 def clamp_to_range(angles: np.ndarray, low: float, high: float) -> np.ndarray:
     """
-    The angles held inside a range, each one outside it moved to the nearer end.
+    The angles held inside a range, each one outside moved to the end it reaches by the
+    smaller turn.
 
     Parameters
     ----------
     angles : ndarray
         In degrees, from -180 to 180
     low, high : float
-        The ends of the range, in degrees, with -180 <= low < high <= 180
+        The range's ends, in degrees, with -180 <= low < high <= 180
 
     Returns
     -------
     angles : ndarray
-        In degrees. The nearer end is the one the angle reaches by the smaller
-        turn, going round through 180 if that is shorter. A tie goes to `low`.
+        In degrees, a tie going to `low`
     """
     outside = (angles < low) | (angles > high)
     up_to_low = np.mod(low - angles, 360)
@@ -129,8 +112,8 @@ def clamp_to_range(angles: np.ndarray, low: float, high: float) -> np.ndarray:
 
 def grid_modes(run: "ScenarioRun", group: str) -> np.ndarray:
     """
-    The payload's or the platform's mode at each time of the run's grid, the
-    platform's `slew` included.
+    The payload's or the platform's mode at each time of the run's grid, the platform's
+    `slew` included.
 
     Parameters
     ----------
@@ -142,12 +125,12 @@ def grid_modes(run: "ScenarioRun", group: str) -> np.ndarray:
     Returns
     -------
     modes : ndarray
-        The mode names, as an array of objects
+        The modes, as objects
 
     Raises
     ------
     ValueError
-        If part of the run is unplanned: see `ScenarioRun.unplanned`
+        If part of the run is `unplanned`
     """
     run.check_planned("the modes on the grid")
     modes = labels_at(run.mode[group], run.times)
@@ -168,15 +151,12 @@ def articulation_angles(run: "ScenarioRun") -> dict[str, Quantity]:
     Returns
     -------
     angles : dict of str to Quantity
-        For each articulation, by its name in the scenario file, its angles in
-        degrees, from -180 to 180, one for each time of the grid. Empty without
-        a model or without articulations.
+        Each articulation's angles in degrees, from -180 to 180, by name
 
     Raises
     ------
     ValueError
-        If there are articulations and part of the run is unplanned: see
-        `ScenarioRun.unplanned`
+        If there are articulations and part of the run is `unplanned`
     """
     model = run.scenario.spacecraft_model
     if model is None or not model.articulations:
@@ -203,22 +183,8 @@ def articulation_angles(run: "ScenarioRun") -> dict[str, Quantity]:
 
 def _body_directions(run: "ScenarioRun", names: set[str]) -> dict[str, np.ndarray]:
     """
-    Directions in body axes, as unit vectors on the run's grid.
-
-    The sun comes from `ScenarioRun.sun_body`, which the run keeps. The other
-    directions are worked out in GCRS and turned into body axes.
-
-    Parameters
-    ----------
-    run : ScenarioRun
-        The run
-    names : set of str
-        The directions: built-in ones and target names
-
-    Returns
-    -------
-    directions : dict of str to ndarray
-        Each direction, shape (n, 3), of unit length
+    Directions as unit vectors in body axes on the grid, the sun from
+    `ScenarioRun.sun_body`.
     """
     found = {SUN: run.sun_body} if SUN in names else {}
     others = names - {SUN}

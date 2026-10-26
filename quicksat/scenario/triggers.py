@@ -6,9 +6,7 @@
 """
 The triggers that end an activity, and the constraints on its illumination.
 
-A trigger is a duration, or an event with an optional offset: a shadow edge, a
-latitude crossing, a node, or a target's rise or set. `parse_trigger` reads one,
-and `parse_constraint` reads a constraint.
+`docs/scenario/scenario_ref.ipynb`, under "The triggers", lists the forms.
 
 """
 
@@ -38,33 +36,26 @@ from quicksat.utils.parser_helpers import PlainQty
 
 class Trigger(BaseModel):
     """
-    What ends an activity: a duration, or an event with an optional offset.
-
-    Build one with `parse_trigger`.
+    What ends an activity: a duration, or an event with an optional offset. Build one
+    with `parse_trigger`.
 
     Parameters
     ----------
     text : str
-        The trigger as written in the file, with the spaces tidied
+        The trigger as written, with its spaces tidied
     duration : Quantity, optional
-        The length of the activity, for a duration trigger
+        The activity's length, for a duration trigger
     event : str, optional
-        The kind of event that ends the activity, for an event trigger:
-        `eclipse entry`, `eclipse exit`, `umbra entry`, `umbra exit`,
-        `latitude crossing`, `rise` or `set`. The node triggers are latitude
-        crossings of 0 degrees.
+        The event's kind, such as `eclipse entry`, `latitude crossing` or `rise`. A node
+        is a crossing of 0 degrees
     latitude : Quantity, optional
-        The geodetic latitude crossed, from -90 to 90 degrees, for a latitude
-        crossing
+        The geodetic latitude crossed, for a latitude crossing
     direction : str, optional
-        `ascending` for a northward crossing, `descending` for a southward one,
-        or None for either. Only for a latitude crossing.
+        `ascending`, `descending`, or None for either, for a latitude crossing
     target : str, optional
-        The target that rises or sets, by its name in `gnd_targets` or
-        `sat_targets`. Only for a `rise` or a `set`.
+        The target that rises or sets
     offset : Quantity, optional
-        Time added to the event, negative to end the activity before it. Only for
-        an event trigger.
+        Time added to the event, negative to end before it
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
@@ -79,7 +70,7 @@ class Trigger(BaseModel):
 
     @model_validator(mode="after")
     def _consistent(self):
-        """Checks that the fields given suit a duration or an event."""
+        """Checks the fields given suit a duration or an event."""
         if (self.duration is None) == (self.event is None):
             raise ValueError("a trigger has either a duration or an event")
         if (self.event == LATITUDE_CROSSING) != (self.latitude is not None):
@@ -97,14 +88,8 @@ class Trigger(BaseModel):
     @property
     def event_key(self) -> tuple | None:
         """
-        What the event is, without the offset, as a key for a lookup table.
-
-        Returns
-        -------
-        key : tuple or None
-            The kind of event, then the latitude in degrees and the direction for
-            a latitude crossing, or the target for a rise or a set. None for a
-            duration trigger.
+        The event without its offset, as a lookup key: its kind, then its latitude and
+        direction or its target. None for a duration.
         """
         if self.event is None:
             return None
@@ -134,19 +119,12 @@ _VISIBILITY_TRIGGER = re.compile(
     rf"(?: ?(?P<sign>[+-]) ?(?P<offset>{_NUMBER}.*))?",
     re.IGNORECASE,
 )
-"""A ground target's rise or set, such as `Svalbard rise`, with an optional
-offset. The target's name keeps its case, and may hold spaces."""
+"""A target's rise or set, such as `Svalbard rise`, with an optional offset. The name
+keeps its case and spaces."""
 
 
 def _trigger_forms() -> str:
-    """
-    The accepted forms of a trigger, for the error message.
-
-    Returns
-    -------
-    forms : str
-        The forms in one sentence
-    """
+    """The accepted forms of a trigger, in one sentence, for the error."""
     return (
         "a positive duration with a unit, such as '20 min', or an event: "
         "'eclipse entry', 'eclipse exit', 'umbra entry', 'umbra exit', "
@@ -159,24 +137,8 @@ def _trigger_forms() -> str:
 
 def _parse_latitude(text: str, trigger: str) -> Quantity:
     """
-    Read the latitude of a latitude trigger.
-
-    Parameters
-    ----------
-    text : str
-        An angle with a unit, such as `30 deg` or `-45.5 deg`
-    trigger : str
-        The whole trigger, for the error message
-
-    Returns
-    -------
-    latitude : Quantity
-        The latitude, in degrees
-
-    Raises
-    ------
-    ValueError
-        If the text is not an angle, or is not from -90 to 90 degrees
+    A latitude trigger's latitude in degrees, refusing one that is not an angle from -90
+    to 90.
     """
     try:
         latitude = Q_(text)
@@ -197,26 +159,8 @@ def _parse_latitude(text: str, trigger: str) -> Quantity:
 
 def _parse_offset(sign: str, text: str, trigger: str) -> Quantity:
     """
-    Read the offset of an event trigger.
-
-    Parameters
-    ----------
-    sign : str
-        `+` or `-`
-    text : str
-        A time with a unit and no sign, such as `2 min`
-    trigger : str
-        The whole trigger, for the error message
-
-    Returns
-    -------
-    offset : Quantity
-        The offset, negative for `-`
-
-    Raises
-    ------
-    ValueError
-        If the text is not a time with a unit
+    An event trigger's offset, negative for `-`, refusing one that is not a time with a
+    unit.
     """
     try:
         offset = Q_(text)
@@ -231,19 +175,7 @@ def _parse_offset(sign: str, text: str, trigger: str) -> Quantity:
 
 
 def _event_trigger(tidy: str) -> Trigger | None:
-    """
-    Read an event trigger, if the text is one.
-
-    Parameters
-    ----------
-    tidy : str
-        The trigger, with its spaces tidied
-
-    Returns
-    -------
-    trigger : Trigger or None
-        The trigger, or None if the text is not an event trigger
-    """
+    """An event trigger from tidied text, or None if the text is not one."""
     match = _EVENT_TRIGGER.fullmatch(tidy)
     if match:
         name = match["event"].lower()
@@ -286,39 +218,26 @@ def parse_trigger(text: str) -> Trigger:
     """
     Read a trigger, the first field of an activity.
 
-    The accepted forms are:
-
-    - a positive duration with a unit, such as `20 min`. It must be at least as
-      long as the 1 ms time grid.
-    - the shadow edges `eclipse entry`, `umbra entry`, `umbra exit` and
-      `eclipse exit`;
-    - a latitude crossing, such as `latitude 30 deg ascending`, `latitude -30 deg
-      descending`, or `latitude 45 deg` for either direction;
-    - `ascending node` and `descending node`, the crossings of 0 degrees;
-    - a target's rise or set, such as `Svalbard rise` or `Svalbard set`. For a
-      ground target, the satellite passes above or below the target's minimum
-      elevation. For a satellite target, the line between the two satellites
-      comes to or leaves its minimum clearance above the Earth. The target must
-      be one that the scenario names in `gnd_targets` or `sat_targets`.
-    - any of these events with an offset, such as `eclipse entry + 2 min` or
-      `descending node - 30 s`.
-
-    The words may be in any case, except a target's name.
+    The forms are a positive duration, such as `20 min`, or an event: a shadow edge,
+    such as `eclipse entry`, a latitude crossing, such as `latitude 30 deg ascending`, a
+    node, or a target's rise or set, such as `Svalbard rise`. An event may take an
+    offset, such as `eclipse entry + 2 min`. The words may be in any case, except a
+    target's name.
 
     Parameters
     ----------
     text : str
-        The trigger as written in the scenario file
+        The trigger as written
 
     Returns
     -------
     trigger : Trigger
-        The parsed trigger
+        The trigger
 
     Raises
     ------
     ValueError
-        If the text is none of the accepted forms. The message names them.
+        If the text is none of the forms, which the message lists
     """
     if not isinstance(text, str):
         raise ValueError(f"trigger {text!r} is not text. Use {_trigger_forms()}")
@@ -358,7 +277,7 @@ def parse_constraint(text: str) -> Illumination:
     Parameters
     ----------
     text : str
-        `sunlit`, `penumbra`, `umbra`, or `eclipse` for either of the last two
+        `sunlit`, `penumbra`, `umbra`, or `eclipse`
 
     Returns
     -------

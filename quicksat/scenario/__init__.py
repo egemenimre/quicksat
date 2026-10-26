@@ -6,8 +6,7 @@
 """
 The scenario: the orbit, the attitudes and the activities, run over time.
 
-The file name is here, rather than in `config`, so that the editor and the
-commands can name the file without importing the loaders.
+The file's name is here, so the editor and the commands can name it without the loaders.
 """
 
 SCENARIO_FILE = "scenario.yaml"

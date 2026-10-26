@@ -6,10 +6,7 @@
 """
 Data and downlink budget: what the payload generates against what the link sends.
 
-Unlike the mass budget, there is nothing here to sum. This is one chain of calculations,
-from a few assumptions to a single comparison. So the input is a config file rather than
-a CSV. There is no `resolve()` and there are no `by_*` views, because there are no rows
-to filter or group.
+`docs/sizing/data_budget_ref.ipynb` explains the chain and its limits.
 
 """
 
@@ -39,13 +36,13 @@ class Generation(Commented):
     Parameters
     ----------
     raw_datarate : Quantity
-        Instrument output before compression
+        The instrument's output before compression
     compression_ratio : float
-        Divides the raw rate. 1 means no compression
+        Divides the raw rate, 1 for none
     duty_cycle : Quantity
-        Fraction of each orbit spent generating
+        The share of each orbit spent generating
     comments : str, optional
-        The user's notes on the block. quicksat does not read them
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -57,7 +54,7 @@ class Generation(Commented):
     @field_validator("duty_cycle")
     @classmethod
     def _at_most_all_of_the_orbit(cls, value):
-        """A payload cannot collect for more than the whole orbit."""
+        """Checks the duty cycle is at most the whole orbit."""
         if value > 1:
             raise ValueError(f"Duty cycle must not exceed 100%, got '{value}'")
         return value
@@ -65,21 +62,18 @@ class Generation(Commented):
 
 class Downlink(Commented):
     """
-    What the link sends.
-
-    It is given per day rather than per orbit. Contacts are counted over the ground
-    station's day, and the count does not divide evenly into orbits either.
+    What the link sends, counted per day as the contacts are.
 
     Parameters
     ----------
     rate : Quantity
-        Achieved throughput, not the symbol rate
+        The achieved throughput, not the symbol rate
     contacts_per_day : float
-        Usable ground contacts in a day, from Mission Analysis
+        Usable ground contacts in a day
     avg_contact_duration : Quantity
-        How long an average contact lasts
+        An average contact's length
     comments : str, optional
-        The user's notes on the block. quicksat does not read them
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -91,17 +85,14 @@ class Downlink(Commented):
 
 class Storage(Commented):
     """
-    The onboard memory.
-
-    How long the memory must hold the data is a requirement, not a property of
-    the memory. So it is in the requirements file, as `orbits_without_downlink`.
+    The onboard memory. The orbits it must cover are in the requirements file.
 
     Parameters
     ----------
     capacity : Quantity
-        The mass memory's usable capacity, after any space kept for other data
+        The mass memory's usable capacity
     comments : str, optional
-        The user's notes on the block. quicksat does not read them
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -113,9 +104,6 @@ class DataFlowModel(YamlFile):
     """
     The payload dataflow model: generation, downlink and storage.
 
-    They are in one file, because the budget exists to compare the first two. Splitting
-    the two sides of a comparison across files would make it harder to read, not easier.
-
     Parameters
     ----------
     generation : Generation
@@ -125,7 +113,7 @@ class DataFlowModel(YamlFile):
     storage : Storage
         The onboard memory
     comments : str, optional
-        The user's notes on the block. quicksat does not read them
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -137,12 +125,7 @@ class DataFlowModel(YamlFile):
 
 class DataBudget:
     """
-    A data and downlink budget for one satellite.
-
-    Generation is counted per orbit, because the payload collects data for a fraction of
-    each orbit. Downlink is counted per day, because the contacts follow the ground
-    station's day. Each side is computed over its own period. The two are compared per
-    day, and the margin is taken there.
+    A data and downlink budget for one satellite, compared per day.
 
     Parameters
     ----------
@@ -151,9 +134,7 @@ class DataBudget:
     mission : Mission
         The shared mission, for the period and the orbits in a day
     requirements : Requirements, optional
-        The shared requirements, for the orbits without downlink that the memory
-        must cover. Without them, the storage needs its orbits passed in, and
-        there is no storage check
+        The shared requirements, for the orbits the memory must cover and its check
     """
 
     def __init__(
@@ -174,24 +155,19 @@ class DataBudget:
         requirements_path: str | Path | None = None,
     ) -> "DataBudget":
         """
-        Build a data budget from a payload dataflow model and a mission file.
-
-        Where several budgets share one mission, load it once with
-        `Mission.from_yaml_file` and use the constructor instead.
+        Build a data budget from its files.
 
         Parameters
         ----------
-        model_path : str | Path
-            Filepath of the payload dataflow model (YAML)
-        mission_path : str | Path
-            Filepath of the shared mission (YAML)
-        requirements_path : str | Path, optional
-            Filepath of the shared requirements (YAML)
+        model_path, mission_path : str or Path
+            The payload dataflow model and the shared mission
+        requirements_path : str or Path, optional
+            The shared requirements
 
         Returns
         -------
         budget : DataBudget
-            The assembled budget
+            The budget
         """
         return cls(
             DataFlowModel.from_yaml_file(Path(model_path)),
@@ -203,99 +179,47 @@ class DataBudget:
 
     @property
     def effective_datarate(self):
-        """
-        Generated data rate, after compression.
-
-        Returns
-        -------
-        rate : Quantity
-        """
+        """The data rate after compression, in Mbit/s."""
         generation = self.model.generation
         return (generation.raw_datarate / generation.compression_ratio).to("Mbit/s")
 
     @property
     def generation_duration(self):
-        """
-        Time spent generating, per orbit.
-
-        Returns
-        -------
-        duration : Quantity
-        """
+        """The time spent generating in one orbit, in s."""
         duty = self.model.generation.duty_cycle.to(u.dimensionless_unscaled)
         return (duty * self.mission.period).to("s")
 
     @property
     def generated_per_orbit(self):
-        """
-        Data generated in one orbit.
-
-        Returns
-        -------
-        volume : Quantity
-        """
+        """The data generated in one orbit, in GB."""
         return (self.effective_datarate * self.generation_duration).to("GB")
 
     @property
     def generated_per_day(self):
-        """
-        Data generated in one day.
-
-        Returns
-        -------
-        volume : Quantity
-        """
+        """The data generated in one day, in GB."""
         return (self.generated_per_orbit * self.mission.orbits_per_day).to("GB")
 
     @property
     def contact_per_day(self):
-        """
-        Total ground contact time in one day.
-
-        Returns
-        -------
-        duration : Quantity
-        """
+        """The ground contact time in one day, in min."""
         downlink = self.model.downlink
         return (downlink.contacts_per_day * downlink.avg_contact_duration).to("min")
 
     @property
     def downlinked_per_day(self):
-        """
-        Data sent by the downlink in one day.
-
-        Returns
-        -------
-        volume : Quantity
-        """
+        """The data the downlink sends in one day, in GB."""
         return (self.model.downlink.rate * self.contact_per_day).to("GB")
 
     @property
     def downlinked_per_orbit(self):
-        """
-        Data sent by the downlink, averaged over one orbit.
-
-        Derived from the daily figure, since contacts are counted per day.
-
-        Returns
-        -------
-        volume : Quantity
-        """
+        """The data the downlink sends in a day, over the orbits in it, in GB."""
         return (self.downlinked_per_day / self.mission.orbits_per_day).to("GB")
 
     @property
     def margin(self):
         """
-        How much more the link sends than the payload generates.
-
-        A positive margin means that each day's data is sent down the same day. A
-        negative margin means data builds up until some is deleted or a pass is added.
-        The margin is a ratio, so the byte convention does not affect it.
-
-        Returns
-        -------
-        margin : Quantity
-            Dimensionless, so 0.12 is a 12% margin
+        How much more the link sends than the payload generates, as a share: 0.12 is 12
+        %.
         """
         return (self.downlinked_per_day / self.generated_per_day - 1).to(
             u.dimensionless_unscaled
@@ -303,21 +227,20 @@ class DataBudget:
 
     def storage_required(self, orbits_without_downlink: float | None = None):
         """
-        Onboard storage needed to cover a run of orbits with no payload data downlink.
+        The memory needed to hold the data of some orbits with no downlink.
 
-        This sizes the memory for the gap between passes, not for a backlog that grows
-        from day to day. The two are the same only while the budget closes. With a
-        negative margin, the backlog never clears, and the storage needed grows without
-        limit.
+        It sizes for the gap between passes. With a negative margin, the backlog grows
+        without limit.
 
         Parameters
         ----------
         orbits_without_downlink : float, optional
-            Orbits to cover. Defaults to the requirement's
+            The orbits to cover, by default the requirement's
 
         Returns
         -------
         volume : Quantity
+            In GB
 
         Raises
         ------
@@ -337,13 +260,8 @@ class DataBudget:
     @property
     def required_orbits(self) -> float | None:
         """
-        The orbits without downlink that the requirements ask the memory to
-        cover.
-
-        Returns
-        -------
-        orbits : float or None
-            None when there is no data requirement
+        The orbits without downlink that the requirements ask the memory to cover, or
+        None.
         """
         if self.requirements is None or self.requirements.data is None:
             return None
@@ -351,17 +269,15 @@ class DataBudget:
 
     def checks(self) -> list[Check]:
         """
-        The budget's checks: the downlink against the data generated, and the
-        mass memory against the storage required.
+        The checks: the downlink against the data generated, then the memory against the
+        storage required.
 
-        The downlink check needs no requirement: the link must send each day's
-        data. The storage check needs the data requirement, and is left out
-        without it.
+        The storage check needs the data requirement.
 
         Returns
         -------
         checks : list of Check
-            The downlink check, then the storage check
+            One or two checks
         """
         checks = [
             Check(
@@ -391,7 +307,6 @@ class DataBudget:
         Returns
         -------
         report : Styler
-            One row per quantity, rendered for reading. The frame is available as
-            `.data`, where every row has the `row_type` that the display hides.
+            One row per quantity, with the frame as `.data`
         """
         return tabulate(self)

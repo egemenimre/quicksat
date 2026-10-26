@@ -6,21 +6,10 @@
 """
 The body's turn rate within each activity, against the slew capacity.
 
-A slew turns the body between attitudes within the `slew` block's rate and
-acceleration. Within an activity, the attitude can move too: nadir turns with the
-orbit, and tracking a ground station turns the body fastest as the station
-passes below. Over a station near the zenith of a pass, the line of sight turns
-at about the ground speed over the altitude: 7.6 km/s over 510 km is 0.85 deg/s.
-
-So the run measures the body's rate and acceleration within each occurrence,
-outside the slews, between the steps of the grid. Where either goes past the
-`slew` block's limit, the satellite cannot follow that attitude, and the run
-gives a warning. The warnings are text, for the notebook and the viewer. The
-check needs a `slew` block: without one, attitude changes are instant and there
-is no capacity to check against.
-
-The rate is an average over each step of the grid, so a peak shorter than a step
-reads low.
+Within an activity, the attitude can move too, as when tracking a ground station. Where
+the rate or the acceleration, averaged over a grid step, goes past the `slew` block's
+limit, the run warns. `docs/scenario/scenario_ref.ipynb`, under "The turn rate within an
+activity", explains the check.
 
 """
 
@@ -56,8 +45,7 @@ class RateExcess:
     peak_acceleration : Quantity
         The largest angular acceleration within it, in deg/s2
     max_rate, max_acceleration : Quantity or None
-        The `slew` block's limits. Either may be left out of the block, and is
-        then None.
+        The `slew` block's limits, None where left out
     """
 
     occurrence: "Occurrence"
@@ -69,15 +57,7 @@ class RateExcess:
 
     @property
     def text(self) -> str:
-        """
-        The warning, as a sentence or two.
-
-        Returns
-        -------
-        text : str
-            Such as "Tracking in downlink Svalbard (track Svalbard), starting
-            2026-10-01 09:16:57 UTC, exceeds the slew capacity. ..."
-        """
+        """The warning, as a sentence or two."""
         rate = float(self.peak_rate.to(u.deg / u.s).value)
         acceleration = float(self.peak_acceleration.to(u.deg / u.s**2).value)
         limits = []
@@ -99,10 +79,8 @@ class RateExcess:
 
 def rate_excesses(run: "ScenarioRun") -> list[RateExcess]:
     """
-    The occurrences whose own attitude turns faster than the slew capacity.
-
-    Only the steps wholly inside an occurrence's own attitude time count, so the
-    slews, and the steps across their ends, are left out.
+    The occurrences whose own attitude turns faster than the slew capacity, counting
+    only the steps wholly inside it.
 
     Parameters
     ----------
@@ -112,7 +90,7 @@ def rate_excesses(run: "ScenarioRun") -> list[RateExcess]:
     Returns
     -------
     excesses : list of RateExcess
-        In time order. Empty without a `slew` block.
+        In time order, empty without a `slew` block
     """
     slew = run.scenario.slew
     if slew is None:

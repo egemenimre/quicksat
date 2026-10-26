@@ -4,12 +4,10 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Rendering of the delta-V budget as a document.
+The document view of the delta-V budget.
 
-This is presentation only. It reads a resolved manoeuvre table and lays it out, and
-nothing in it changes the arithmetic. It takes the frame and the config rather than a
-`DeltaVBudget`. So the dependency runs one way only, and the layout can be tested
-against a bare frame.
+It takes the resolved frame and the config, not the budget, so the dependency runs one
+way.
 
 """
 
@@ -70,28 +68,26 @@ def tabulate(
     loss_factor: bool = False,
 ) -> Styler:
     """
-    The delta-V budget laid out as a document.
-
-    Manoeuvres are grouped into mission phases, each with a subtotal. Then come the
-    budget total, the margin, and the total with margin.
+    The delta-V budget laid out as a document: the manoeuvres by phase, with subtotals,
+    then the total and the margin.
 
     Parameters
     ----------
     frame : pd.DataFrame
-        A resolved manoeuvre table, as `DeltaVBudget.resolve` returns
+        A resolved manoeuvre table, from `DeltaVBudget.resolve`
     config : DeltaVConfig
-        Budget settings, for the margin
+        The budget's settings, for the margin
     margin : bool
-        Show the margin line and the total that includes it
+        Show the margin and the total with it
     comments : bool
-        Show the manoeuvre file's comments column
+        Show the comments column
     loss_factor : bool
-        Show the loss factor that scaled each manoeuvre's delta-V
+        Show each manoeuvre's loss factor
 
     Returns
     -------
     report : Styler
-        One row per manoeuvre and per subtotal, rendered for reading
+        One row per manoeuvre and per subtotal
     """
     report = _assemble(frame, config, margin)
     hidden = ["row_type"]
@@ -104,25 +100,7 @@ def tabulate(
 
 
 def _row(manoeuvre_id: str, name: str, row_type: str, **values) -> dict[str, Any]:
-    """
-    One row of the report, with everything not supplied left blank.
-
-    Parameters
-    ----------
-    manoeuvre_id : str
-        The item's id, blank on the summary rows so captions indent
-    name : str
-        The manoeuvre name, or the caption for a subtotal
-    row_type : str
-        What kind of row this is
-    **values
-        Any report columns that apply to this row
-
-    Returns
-    -------
-    row : dict[str, Any]
-        One report row
-    """
+    """One report row, with the columns not given left blank."""
     row: dict[str, Any] = dict.fromkeys(_COLUMNS, NAN)
     row.update(manoeuvre_id=manoeuvre_id, name=name, type="", value="", comments="")
     row.update(row_type=row_type)
@@ -134,25 +112,7 @@ def _assemble(
     frame: pd.DataFrame, config: "DeltaVConfig", margin: bool
 ) -> pd.DataFrame:
     """
-    Builds the report rows from a resolved manoeuvre table.
-
-    Phases keep the order in which they first appear, rather than being sorted. So the
-    report keeps the structure of the manoeuvre file. That order is usually
-    chronological, so the report follows the mission.
-
-    Parameters
-    ----------
-    frame : pd.DataFrame
-        A resolved manoeuvre table
-    config : DeltaVConfig
-        Budget settings, for the margin
-    margin : bool
-        Add the margin and the total with margin
-
-    Returns
-    -------
-    report : pd.DataFrame
-        One row per manoeuvre and per subtotal, tagged by `row_type`
+    The report's rows, with the phases in the file's order, each tagged by `row_type`.
     """
     rows = []
 

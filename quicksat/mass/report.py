@@ -4,12 +4,10 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Rendering of the mass budget as a document.
+The document view of the mass budget.
 
-This is presentation only. It reads a budget table and lays it out, and nothing in it
-changes the arithmetic. It takes the equipment frame and the config rather than a
-`MassBudget`. So the dependency goes one way only, and the report can be tested against
-a bare frame.
+It takes the equipment frame and the config, not the budget, so the dependency runs one
+way.
 
 """
 
@@ -38,20 +36,20 @@ def tabulate(
     Parameters
     ----------
     frame : pd.DataFrame
-        The validated equipment table, harness rows included
+        The equipment table, harness rows included
     config : MassBudgetConfig
-        Margin settings, keyed on location
+        The margins, by location
     in_orbit : bool
-        Drop hardware left with the launcher, and report the in-orbit masses
+        Leave out the launcher's hardware, for the in-orbit masses
     subsystem_subtotals : bool
-        Add a subtotal line after each subsystem block
+        Add a subtotal after each subsystem
     comments : bool
-        Show the equipment file's comments column
+        Show the comments column
 
     Returns
     -------
     report : Styler
-        One row per item and per subtotal, rendered for reading
+        One row per item and per subtotal
     """
     report = _assemble(frame, config, in_orbit, subsystem_subtotals)
     # the subtotal and total rows name the location they close, so the
@@ -117,25 +115,8 @@ HEADERS = {
 
 def _row(name: str, row_type: str, **values) -> dict[str, Any]:
     """
-    One row of the tabulated report, with everything not supplied left blank.
-
-    `name` holds the equipment name on an item row, and the subtotal caption on the rows
-    between items. Subtotals leave `equipment_id` blank, so the captions sit one column
-    to the right of the items they sum.
-
-    Parameters
-    ----------
-    name : str
-        Equipment name, or the caption for a subtotal row
-    row_type : str
-        What kind of row this is, used for styling and filtering
-    **values
-        Any report columns that apply to this row
-
-    Returns
-    -------
-    row : dict[str, Any]
-        One report row, with unsupplied columns left blank
+    One report row, with the columns not given left blank. A subtotal's caption sits one
+    column right of the items.
     """
     row: dict[str, Any] = dict.fromkeys(_REPORT_COLUMNS, NAN)
     row.update(equipment_id="", location="", subsystem="", comments="")
@@ -151,27 +132,8 @@ def _assemble(
     subsystem_subtotals: bool,
 ) -> pd.DataFrame:
     """
-    Assembles the mass budget document.
-
-    Locations and subsystems keep the order in which they first appear in the equipment
-    file, rather than being sorted. So the report keeps the structure of the file. The
-    derived harness is added last, so it ends up at the bottom of its location.
-
-    Parameters
-    ----------
-    frame : pd.DataFrame
-        The validated equipment table, harness rows included
-    config : MassBudgetConfig
-        Margin settings, keyed on location
-    in_orbit : bool
-        Drop hardware left with the launcher, and report the in-orbit masses
-    subsystem_subtotals : bool
-        Add a subtotal line after each subsystem block
-
-    Returns
-    -------
-    report : pd.DataFrame
-        One row per item and per subtotal, tagged by `row_type`
+    The report's rows, in the file's order of locations and subsystems, each tagged by
+    `row_type`.
     """
     is_propellant = frame["mass_class"] == MassClass.PROPELLANT.value
     hardware = frame[~is_propellant]
@@ -278,17 +240,5 @@ def _assemble(
 
 
 def _with_margin(frame: pd.DataFrame) -> pd.Series:
-    """
-    Mass with margin per row, for the hardware rows of the report.
-
-    Parameters
-    ----------
-    frame : pd.DataFrame
-        Equipment rows to margin
-
-    Returns
-    -------
-    mass : pd.Series
-        Total mass with the per-item margin applied, aligned with `frame`
-    """
+    """Each hardware row's mass with its equipment margin."""
     return frame["eqpt_total_mass"] * (1.0 + frame["eqpt_margin"] / 100.0)

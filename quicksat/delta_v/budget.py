@@ -6,13 +6,9 @@
 """
 Delta-V budget: what the mission has to spend to fly its orbit.
 
-Mission Analysis does the orbital mechanics. This module holds their numbers, such as
-how many collision avoidance manoeuvres a year, the injection dispersion, and the
-altitude to deorbit from. It turns each into a delta-V with a short closed form.
-
-The orbits are circular throughout, the transfers have two impulses, and there are no
-perturbations. Anything that needs real analysis comes as a `given` manoeuvre, with the
-delta-V already worked out elsewhere.
+Each manoeuvre turns Mission Analysis's numbers into a delta-V with a short closed form,
+for circular orbits and two-impulse transfers. `docs/sizing/delta_v_ref.ipynb` explains
+the forms and their limits.
 
 """
 
@@ -74,8 +70,7 @@ class ManoeuvreType(str, Enum):
     """Hohmann transfer between two circular altitudes. `value` is the change."""
 
     COLLISION_AVOIDANCE = "collision_avoidance"
-    """The same Hohmann, doubled when the config says the spacecraft returns.
-    `value` is the altitude offset."""
+    """The same Hohmann, doubled for a return burn. `value` is the altitude offset."""
 
     INCLINATION_CHANGE = "inclination_change"
     """Plane change at circular velocity. `value` is the angle."""
@@ -97,12 +92,7 @@ _DIMENSIONS = {
 
 
 class Manoeuvre(BaseModel):
-    """
-    One line of the delta-V budget.
-
-    Each row is validated on load. So a malformed CSV raises an error that names the bad
-    row and field, rather than failing later in the arithmetic.
-    """
+    """One line of the delta-V budget, validated as it is read."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -128,27 +118,15 @@ class Manoeuvre(BaseModel):
     """When set, `count` is per year and is multiplied by the mission duration."""
 
     loss_factor: Annotated[float, Field(ge=1.0)] = 1.0
-    """Finite-burn and gravity losses, as a multiplier on the closed-form delta-V.
-
-    1.0 is the impulsive assumption that the closed forms make. 1.03 asks for 3%
-    more, to fly the manoeuvre with real burns. The size depends on how long each
-    burn arc is, and on how the manoeuvre is split into several burns. That is an
-    operational matter, which this module cannot see. So the factor is an input
-    rather than a calculation. It cannot be below 1.0, because a burn cannot need
-    less than the impulsive ideal."""
+    """The finite-burn and gravity losses, as a factor of at least 1.0 on the
+    closed-form delta-V."""
 
     comments: str = ""
     """Free text notes."""
 
     @model_validator(mode="after")
     def _value_matches_the_type(self):
-        """
-        Checks that `value` has the dimension that its manoeuvre type requires.
-
-        This check is the reason one `value` column can serve five types. A length where
-        a velocity belongs raises an error at its row, rather than becoming a wrong
-        number.
-        """
+        """Checks that `value` has the dimension its manoeuvre type needs."""
         unit, label = _DIMENSIONS[self.manoeuvre_type]
         if not unit.is_equivalent(self.value.unit):
             article = "an" if label[0] in "aeiou" else "a"
@@ -173,25 +151,19 @@ class CollisionAvoidance(Commented):
     model_config = ConfigDict(extra="forbid")
 
     return_burn: bool = True
-    """Up and back down. False when the satellite was due to be raised anyway, so the
-    manoeuvre also serves as that raise."""
+    """Up and back down. False when the raise was due anyway."""
 
 
 class DeltaVConfig(YamlFile):
     """
-    Budget settings.
-
-    Neither the orbit nor the mission duration is here. Both come from the shared
-    mission file, because other budgets need them too. What stays here is what only this
-    budget can use.
+    The budget's settings. The orbit and the mission's length are in the mission file.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     propulsion: Propulsion
     margin: Annotated[float, Field(ge=0)] = 0.0
-    """One allowance on the total, as a percentage. A contingency per manoeuvre means
-    little, because the counts are the uncertain part."""
+    """One allowance on the total, as a percentage."""
 
     collision_avoidance: CollisionAvoidance = CollisionAvoidance()
 
@@ -203,12 +175,12 @@ def hohmann_deltav(radius_1, radius_2):
     Parameters
     ----------
     radius_1, radius_2 : Quantity
-        Orbit radii, measured from the centre of the Earth
+        The orbits' radii, from the Earth's centre
 
     Returns
     -------
     deltav : Quantity
-        The sum of the two impulses, always positive
+        The sum of the two impulses, in m/s
     """
     velocity_1 = (MU_EARTH / radius_1) ** 0.5
     velocity_2 = (MU_EARTH / radius_2) ** 0.5
@@ -232,24 +204,26 @@ def plane_change_deltav(velocity, angle):
     Returns
     -------
     deltav : Quantity
+        In m/s
     """
     return (2 * velocity * np.sin(angle / 2)).to("m/s")
 
 
 def deorbit_deltav(radius, perigee_radius):
     """
-    Delta-V of the single impulse that lowers perigee to a re-entry altitude.
+    Delta-V of the one impulse that lowers the perigee to a re-entry altitude.
 
     Parameters
     ----------
     radius : Quantity
-        Starting circular orbit radius
+        The circular orbit's radius
     perigee_radius : Quantity
-        Target perigee radius
+        The target perigee's radius
 
     Returns
     -------
     deltav : Quantity
+        In m/s
     """
     velocity = (MU_EARTH / radius) ** 0.5
     ratio = (2 * perigee_radius / (radius + perigee_radius)) ** 0.5
@@ -258,25 +232,18 @@ def deorbit_deltav(radius, perigee_radius):
 
 class DeltaVBudget:
     """
-    A delta-V budget assembled from a flat list of manoeuvres.
-
-    Like the mass budget, it is a table, and `phase` and `manoeuvre_type` are two
-    ordinary columns to group over. Unlike the mass budget, it has one margin rather
-    than two: a single margin on the total. A delta-V contingency per manoeuvre would
-    mean little, because the counts are the uncertain part.
+    A delta-V budget from a flat list of manoeuvres, with one margin on the total.
 
     Parameters
     ----------
-    manoeuvres : list[Manoeuvre]
-        Validated manoeuvre items
+    manoeuvres : list of Manoeuvre
+        The manoeuvres
     config : DeltaVConfig
-        Propulsion and the margin
+        The propulsion and the margin
     mission : Mission
-        The shared mission: the orbit the manoeuvres are flown from, and the
-        duration that scales the recurring ones
+        The shared mission: the orbit, and the duration for recurring manoeuvres
     mass_budget : MassBudget, optional
-        The spacecraft that flies this budget, so that `propellant_mass` can take the
-        dry mass from it. Optional, and the only link between the two modules
+        The spacecraft, for the dry mass in `propellant_mass`
     """
 
     def __init__(
@@ -300,26 +267,21 @@ class DeltaVBudget:
         mass_budget: "MassBudget | None" = None,
     ) -> "DeltaVBudget":
         """
-        Build a delta-V budget from a manoeuvre CSV, a config and a mission file.
-
-        Where several budgets share one mission, load it once with
-        `Mission.from_yaml_file` and use the constructor instead.
+        Build a delta-V budget from its files.
 
         Parameters
         ----------
-        csv_path : str | Path
-            Filepath of the manoeuvre list (CSV)
-        config_path : str | Path
-            Filepath of the budget config (YAML)
-        mission_path : str | Path
-            Filepath of the shared mission (YAML)
+        csv_path : str or Path
+            The manoeuvre list
+        config_path, mission_path : str or Path
+            The budget's config and the shared mission
         mass_budget : MassBudget, optional
-            The spacecraft that flies this budget, for `propellant_mass`
+            The spacecraft, for `propellant_mass`
 
         Returns
         -------
         budget : DeltaVBudget
-            The assembled budget
+            The budget
         """
         config = DeltaVConfig.from_yaml_file(Path(config_path))
         mission = Mission.from_yaml_file(Path(mission_path))
@@ -332,27 +294,18 @@ class DeltaVBudget:
 
     @property
     def manoeuvre_table(self) -> pd.DataFrame:
-        """
-        The validated manoeuvre list.
-
-        Returns
-        -------
-        frame : pd.DataFrame
-            A copy, so no later code can write back into the budget
-        """
+        """A copy of the manoeuvre list."""
         return self._frame.copy()
 
     def resolve(self) -> pd.DataFrame:
         """
-        The manoeuvre table with the delta-V of each row worked out.
+        The manoeuvre table with each row's delta-V.
 
         Returns
         -------
         frame : pd.DataFrame
-            The manoeuvres, with `deltav_each` and `deltav_total` columns in m/s, and
-            the number of `occurrences` that the count comes to. `deltav_each` includes
-            the row's `loss_factor`. So it is the delta-V needed to fly the manoeuvre,
-            not the closed form's impulsive ideal
+            The manoeuvres, with `occurrences`, and `deltav_each` and `deltav_total` in
+            m/s, losses included
         """
         frame = self._frame
         years = self.mission.duration.to_value("yr")
@@ -376,11 +329,12 @@ class DeltaVBudget:
         Parameters
         ----------
         margin : bool
-            Apply the config's margin on top
+            Add the config's margin
 
         Returns
         -------
         deltav : Quantity
+            In m/s
         """
         total = self.resolve()["deltav_total"].sum()
         if margin:
@@ -389,33 +343,33 @@ class DeltaVBudget:
 
     def by_phase(self, margin: bool = True) -> pd.DataFrame:
         """
-        Delta-V grouped by mission phase.
+        Delta-V by mission phase.
 
         Parameters
         ----------
         margin : bool
-            Apply the config's margin on top
+            Add the config's margin
 
         Returns
         -------
         grouped : pd.DataFrame
-            One row per phase, with a single `deltav` column in m/s
+            One row per phase, with `deltav` in m/s
         """
         return self._grouped("phase", margin)
 
     def by_type(self, margin: bool = True) -> pd.DataFrame:
         """
-        Delta-V grouped by manoeuvre type.
+        Delta-V by manoeuvre type.
 
         Parameters
         ----------
         margin : bool
-            Apply the config's margin on top
+            Add the config's margin
 
         Returns
         -------
         grouped : pd.DataFrame
-            One row per manoeuvre type, with a single `deltav` column in m/s
+            One row per type, with `deltav` in m/s
         """
         return self._grouped("manoeuvre_type", margin)
 
@@ -423,32 +377,25 @@ class DeltaVBudget:
         """
         Propellant needed to deliver the budget, from the rocket equation.
 
-        With no `dry_mass`, it takes the dry mass from the attached mass budget. This is
-        the in-orbit mass with the tanks empty, which is the mass after the last burn. A
-        `dry_mass` passed in overrides it. This tries a different case without changing
-        the equipment file. It is also the only way to use this method when no mass
-        budget is attached.
-
-        Nothing is written back in either direction. The equipment CSV stays the only
-        record of the propellant actually loaded, and a person compares the two.
+        The dry mass is the mass budget's in orbit with empty tanks, unless one is
+        passed in. Nothing is written back.
 
         Parameters
         ----------
         dry_mass : Quantity, optional
-            Spacecraft mass with no propellant aboard, the final mass of the burn.
-            Defaults to the attached mass budget's `in_orbit_mass(propellant=0)`
+            The mass with no propellant, after the last burn
         margin : bool
-            Include the config's margin in the delta-V
+            Add the config's margin to the delta-V
 
         Returns
         -------
         mass : Quantity
-            Propellant required
+            In kg
 
         Raises
         ------
         ValueError
-            If no dry mass is given and no mass budget is attached
+            If there is neither a dry mass nor a mass budget
         """
         if dry_mass is None:
             if self.mass_budget is None:
@@ -466,15 +413,13 @@ class DeltaVBudget:
 
     def checks(self) -> list[Check]:
         """
-        The budget's check: the propellant loaded against the propellant required.
-
-        The propellant loaded is the equipment list's, through the attached mass
-        budget. Without a mass budget, there is nothing to compare, and no check.
+        The check: the propellant loaded, from the mass budget, against the propellant
+        required.
 
         Returns
         -------
         checks : list of Check
-            The propellant check, or none without a mass budget
+            The check, or none without a mass budget
         """
         if self.mass_budget is None:
             return []
@@ -499,36 +444,21 @@ class DeltaVBudget:
         Parameters
         ----------
         margin : bool
-            Show the margin line and the total that includes it
+            Show the margin and the total with it
         comments : bool
-            Show the manoeuvre file's comments column
+            Show the comments column
         loss_factor : bool
-            Show the loss factor that scaled each manoeuvre's delta-V. Off by default,
-            because in a budget of impulsive burns it is a column of ones
+            Show each manoeuvre's loss factor
 
         Returns
         -------
         report : Styler
-            One row per manoeuvre and per subtotal, rendered for reading
+            One row per manoeuvre and per subtotal
         """
         return tabulate(self.resolve(), self.config, margin, comments, loss_factor)
 
     def _grouped(self, column: str, margin: bool) -> pd.DataFrame:
-        """
-        Sums the resolved delta-V over one grouping axis.
-
-        Parameters
-        ----------
-        column : str
-            The column to group on
-        margin : bool
-            Apply the config's margin on top
-
-        Returns
-        -------
-        grouped : pd.DataFrame
-            One row per distinct value, with a single `deltav` column
-        """
+        """The resolved delta-V summed over one column, with or without the margin."""
         grouped = cast(
             pd.DataFrame,
             self.resolve().groupby(column, sort=True)[["deltav_total"]].sum(),
@@ -538,19 +468,7 @@ class DeltaVBudget:
         return grouped.rename(columns={"deltav_total": "deltav"})
 
     def _manoeuvre_deltav(self, row: Any) -> float:
-        """
-        Delta-V of one manoeuvre, in m/s, before any count is applied.
-
-        Parameters
-        ----------
-        row : namedtuple
-            One row of the manoeuvre frame
-
-        Returns
-        -------
-        deltav : float
-            Magnitude in m/s
-        """
+        """One manoeuvre's delta-V before its count, in m/s."""
         radius = self.mission.radius
         kind = ManoeuvreType(row.manoeuvre_type)
 
@@ -571,21 +489,8 @@ class DeltaVBudget:
 
 def _frame_from_items(manoeuvres: list[Manoeuvre]) -> pd.DataFrame:
     """
-    Flattens validated manoeuvres into the working table.
-
-    `value` stays a Quantity, rather than being reduced to a float. The mass budget has
-    a single dimension. Here, one column holds lengths, angles and velocities, so there
-    is no single unit to convert to.
-
-    Parameters
-    ----------
-    manoeuvres : list[Manoeuvre]
-        Validated manoeuvre items
-
-    Returns
-    -------
-    frame : pd.DataFrame
-        One row per manoeuvre
+    The manoeuvres as the working table, with `value` kept as a Quantity, since its unit
+    varies by row.
     """
     records = [
         {

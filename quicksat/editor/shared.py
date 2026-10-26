@@ -4,18 +4,11 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-What both editor pages share: the page built from its template, the help, the
-files read for the page, and what quicksat's loaders say of them.
+What both editor pages share: the page built from its template, the help, the files read
+for the page, and what quicksat's loaders say of them.
 
-`build_page` builds an editor page from its folder in `templates/`, the shared
-scripts in `templates/shared/`, the help and the folder's files. `yaml_file` and
-`csv_file` read a file for the page, and `loader_check` gives what a loader says
-of it.
-
-The page writes its own help as `#` lines and replaces the rest when it saves,
-so `comment_blocks` finds every `#` comment, with the key it belongs to. The
-page lists the ones it did not write, so that the user can move each into that
-key's comments before saving.
+The page writes its own help as `#` lines and replaces the rest when it saves. So
+`comment_blocks` finds the user's `#` comments, for the page to list before a save.
 
 """
 
@@ -29,7 +22,7 @@ from pathlib import Path
 import yaml
 
 PAGE_FILE = "editor.html"
-"""Name of the page written in the output folder."""
+"""The name of the page written in the output folder."""
 
 _PACKAGE = files("quicksat")
 
@@ -44,30 +37,12 @@ _VENDOR = _PACKAGE / "scenario" / "templates" / "vendor"
 
 
 SHARED_SCRIPTS = ("base.js", "files.js", "open.js", "frame.js", "server.js")
-"""The scripts in `templates/shared/` that every editor page runs first: the
-field controls, the file writing, the opening of files in the browser, the
-page's frame, and the editor's server as the page sees it. `templates/shared/editor.css` holds the styles they share."""
+"""The scripts in `templates/shared/` that every editor page runs first, with their
+styles in `editor.css`."""
 
 
 def _json_default(value):
-    """
-    Turns what YAML reads but JSON cannot hold into text.
-
-    Parameters
-    ----------
-    value
-        A value that `json.dumps` cannot write
-
-    Returns
-    -------
-    text : str
-        A date or a time in ISO form
-
-    Raises
-    ------
-    TypeError
-        For anything else
-    """
+    """A date or a time that YAML reads as ISO text, which JSON can hold."""
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     raise TypeError(f"cannot pass {value!r} to the page")
@@ -75,20 +50,8 @@ def _json_default(value):
 
 def _key_lines(text: str) -> list[tuple[int, int, list]]:
     """
-    The place of every key and every list item in a YAML text, with its path.
-
-    Parameters
-    ----------
-    text : str
-        The YAML text
-
-    Returns
-    -------
-    keys : list of tuple
-        The line and the column, counted from 0, and the path, such as
-        `["attitudes", "nadir"]` or `["activities", 2]`, in the order of the
-        file. A key comes before the keys inside it, so the first entry of a line
-        is the outermost.
+    The line, column and path of every key and list item in a YAML text, outermost
+    first.
     """
     found: list[tuple[int, int, list]] = []
 
@@ -109,19 +72,7 @@ def _key_lines(text: str) -> list[tuple[int, int, list]]:
 
 
 def _inline_comment(line: str) -> str | None:
-    """
-    The comment at the end of a line of YAML, outside any quotes.
-
-    Parameters
-    ----------
-    line : str
-        A line that does not start with `#`
-
-    Returns
-    -------
-    comment : str or None
-        The text after the `#`, or None if the line has no comment
-    """
+    """The comment at the end of a line of YAML, outside any quotes, or None."""
     quote = None
     for index, char in enumerate(line):
         if quote is not None:
@@ -138,14 +89,9 @@ def comment_blocks(text: str) -> list[dict]:
     """
     Every `#` comment in a YAML text, with the key it belongs to.
 
-    Comments go above what they describe. Lines of comment with nothing between
-    them form one block. A block belongs to the first key below it, or to the
-    file if no key follows. A block with a blank line between it and that key
-    belongs to the section that holds the key, or to the file at the top level.
-    A block that is indented more than that key closes a section, such as a
-    comment after the last attitude: it belongs to the section of the keys at
-    its own indent. A comment at the end of a line belongs to the outermost key
-    on that line.
+    A block of comment lines belongs to the first key below it, or to that key's section
+    after a blank line, or to the file. A comment at a line's end belongs to the
+    outermost key on it.
 
     Parameters
     ----------
@@ -155,10 +101,8 @@ def comment_blocks(text: str) -> list[dict]:
     Returns
     -------
     blocks : list of dict
-        `line`, the first line, counted from 1; `text`, the comment without its
-        `#` signs, one line of text for each line of comment; `path`, the key's
-        path, empty for the file; and `inline`, true for a comment at the end of
-        a line
+        Each block's first `line`, from 1, its `text`, its key's `path`, empty for the
+        file, and whether it is `inline`
     """
     keys = _key_lines(text)
     blocks = []
@@ -204,24 +148,8 @@ def comment_blocks(text: str) -> list[dict]:
 
 def _owner(keys: list[tuple[int, int, list]], block: dict, lines: list[str]) -> list:
     """
-    The path of the key that a block of full-line comments belongs to.
-
-    Parameters
-    ----------
-    keys : list of tuple
-        The keys, from `_key_lines`
-    block : dict
-        The block, with its first and last lines and its indent
-    lines : list of str
-        The text's lines
-
-    Returns
-    -------
-    path : list
-        The first key below the block. If that key is less indented than the
-        block, the section of the last key above the block at the block's own
-        indent. If a blank line comes between the block and the key, the section
-        that holds the key. Empty for the file.
+    The path of the key that a block of full-line comments belongs to, empty for the
+    file.
     """
     below = next(
         ((line, col, path) for line, col, path in keys if line > block["end"]), None
@@ -250,15 +178,14 @@ def loader_check(label: str, read) -> dict:
     Parameters
     ----------
     label : str
-        The file's name, such as `scenario.yaml`, or the files' names, such as
-        `equipment.csv with mass_budget_config.yaml`
+        The files' names, such as `scenario.yaml`
     read : callable
-        Reads the files with the loader, and takes no argument
+        Reads the files with the loader
 
     Returns
     -------
     check : dict
-        `file`, the label; `ok`; and `message`, the loader's error, or empty
+        `file`, `ok`, and the error's `message`, or empty
     """
     try:
         read()
@@ -279,7 +206,7 @@ def yaml_file(path: Path) -> dict:
     Returns
     -------
     file : dict
-        `name`, `data` as YAML reads it, and `comments` from `comment_blocks`
+        `name`, `data`, and `comments` from `comment_blocks`
     """
     text = path.read_text(encoding="utf-8")
     return {
@@ -301,7 +228,7 @@ def csv_file(path: Path) -> dict:
     Returns
     -------
     file : dict
-        `name`, `header`, the first row, and `rows`, the others that are not empty
+        `name`, `header`, and the `rows` that are not empty
     """
     rows = list(csv.reader(io.StringIO(path.read_text(encoding="utf-8"))))
     return {
@@ -312,20 +239,7 @@ def csv_file(path: Path) -> dict:
 
 
 def _script_json(value) -> str:
-    """
-    JSON that is safe inside a script tag.
-
-    Parameters
-    ----------
-    value
-        The value to write
-
-    Returns
-    -------
-    text : str
-        Compact JSON, with every `</` written `<\\/` so that no text ends the
-        tag early. JSON reads `\\/` as `/`.
-    """
+    """Compact JSON that is safe inside a script tag, with every `</` escaped."""
     text = json.dumps(
         value, ensure_ascii=False, separators=(",", ":"), default=_json_default
     )
@@ -334,12 +248,8 @@ def _script_json(value) -> str:
 
 def help_text(domains: tuple[str, ...]) -> dict:
     """
-    The help of some domains, from their files in `help/`, for a page to hold.
-
-    Each key is a step of the editor, a key of the files, or both. It holds the
-    step's `title` and `info`, the information box, and the `file` help that the
-    editor writes above the key when it saves. So the page and the files it saves
-    read the same text.
+    The help of some domains, from their files in `help/`, so the page and the files it
+    saves read the same text.
 
     Parameters
     ----------
@@ -349,7 +259,7 @@ def help_text(domains: tuple[str, ...]) -> dict:
     Returns
     -------
     help : dict
-        Each key's help, from all the domains
+        Each key's `title`, `info` and `file` help, from all the domains
 
     Raises
     ------
@@ -368,18 +278,17 @@ def help_text(domains: tuple[str, ...]) -> dict:
 
 def vendor_text(name: str) -> str:
     """
-    A library from the viewer's vendor folder, with its licence in front.
+    A library from the viewer's vendor folder, with its licence in front as a comment.
 
     Parameters
     ----------
     name : str
-        The library's file, such as `three.min.js`. Its licence is the file of
-        the same name before the first dot, with `.LICENSE`.
+        The library's file, such as `three.min.js`, beside its `.LICENSE`
 
     Returns
     -------
     text : str
-        The licence, as a comment that minifiers keep, then the library
+        The licence, then the library
     """
     notice = (_VENDOR / f"{name.split('.')[0]}.LICENSE").read_text(encoding="utf-8")
     return f"/*!\n{notice}*/\n" + (_VENDOR / name).read_text(encoding="utf-8")
@@ -398,28 +307,25 @@ def build_page(
     Parameters
     ----------
     page : str
-        The page's folder in `templates/`, such as `scenario` or `sizing`. It
-        holds the page's `editor.html` and its own scripts.
+        The page's folder in `templates/`, such as `scenario`
     scripts : tuple of str
-        The page's own scripts, in the order they run, after the shared ones
+        The page's own scripts, in order, after the shared ones
     data : dict
-        The folder's files, which go in the page as JSON
+        The folder's files, as JSON in the page
     domains : tuple of str
-        The domains whose help the page holds, from `help_text`
+        The domains whose help the page holds
     **parts : str
-        Any other placeholder of the template and its text, such as
-        `{"/*@three@*/": ...}`
+        Any other placeholder of the template, with its text
 
     Returns
     -------
     page : str
-        The page, as HTML text
+        The page, as HTML
 
     Raises
     ------
     ValueError
-        If a placeholder is missing from the template or appears twice, or if a
-        script holds text that would end its tag early
+        If a placeholder is missing or doubled, or a script would end its tag early
     """
     shared = _TEMPLATES / "shared"
     folder = _TEMPLATES / page

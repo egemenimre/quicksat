@@ -4,10 +4,9 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The Thermal tab's side of the editor's server: the key of the run and the
-surfaces' heat that the server keeps, and the heat account as the tab shows it.
-
-`server.thermal_files` works out the account from the page's files, with these.
+The Thermal tab's side of the editor's server: the key of the run and the surfaces' heat
+that the server keeps, and the heat account as the tab shows it, for
+`actions.thermal_files`.
 """
 
 import hashlib
@@ -27,9 +26,8 @@ _ACCOUNT_KINDS = (
     "platform_consumption",
     "payload_thermal",
 )
-"""The files whose changes leave the run and the surfaces' heat as they are, but
-for two of their parts. The power system file's self-shadowing and the thermal
-file's surfaces and Earth go into the hash on their own."""
+"""The files whose changes leave the run and the surfaces' heat as they are, apart from
+the parts that go into the hash on their own."""
 
 
 def _without_comments(value):
@@ -47,12 +45,13 @@ def surfaces_key(
     files: list[dict], power_system: PowerSystem, thermal: PayloadThermal
 ) -> str:
     """
-    The hash of what the run and the surfaces' heat depend on.
+    The hash of what the run and the surfaces' heat depend on: the scenario and its
+    files, the self-shadowing and the surfaces, comments left out.
 
     Parameters
     ----------
     files : list of dict
-        The page's files, as `_write_inputs` takes them
+        The page's files
     power_system : PowerSystem
         The power system file, for its self-shadowing
     thermal : PayloadThermal
@@ -61,9 +60,7 @@ def surfaces_key(
     Returns
     -------
     sha256 : str
-        64 hex digits. It changes with the scenario, its 3D model, its orbit and
-        target files, the self-shadowing and the surfaces, and with nothing
-        else, comments included.
+        64 hex digits
     """
     digest = hashlib.sha256()
     kept = [file for file in files if file.get("kind") not in _ACCOUNT_KINDS]
@@ -107,13 +104,8 @@ def thermal_results(account: ThermalRun) -> dict:
     Returns
     -------
     results : dict
-        `activities`, `modes`, `orbits` and `surfaces`, the account's tables as
-        rows of their columns, with None where a value is missing. `notes`, the
-        account's notes. `start`, the run's start as UTC text. `t_min`, the
-        grid's times in minutes from the start, and `energy_wh`, the net heat
-        into the payload since the start, in W h, for the plot. `bands`, the
-        payload's modes over the run, each with its `mode` and its `start_min`
-        and `end_min`.
+        The four tables as rows, the notes, the run's start, the net heat's curve in W h
+        against min, and the payload's mode bands
     """
     run = account.run
     return {

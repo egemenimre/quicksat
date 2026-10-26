@@ -4,7 +4,7 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Pydantic and unit parsing helpers.
+Pydantic and unit parsing helpers, shared by every input file.
 
 """
 
@@ -35,29 +35,8 @@ _LEADING_NUMBER = re.compile(r"^\s*[-+]?[\d_.]+(?:[eE][-+]?[\d_]+)?")
 
 def _parse_quantity(v):
     """
-    Pydantic BeforeValidator for Quantity objects.
-
-    Parameters
-    ----------
-    v : str or Quantity
-        Text such as "100 kg", or an already-parsed Quantity
-
-    Returns
-    -------
-    quantity : Quantity
-        The parsed quantity
-
-    Raises
-    ------
-    ValueError
-        If the text is not a number followed by a unit. astropy raises a
-        `TypeError` when the text does not start with a number, which Pydantic
-        would not report as a validation error
-
-    Notes
-    -----
-    Underscores are taken out of the number only, so `1_000 kg` reads as 1000 kg.
-    A unit such as `deg_C` keeps its own.
+    Reads a quantity's text, with underscores taken out of its number, and refuses text
+    that is not a number and a unit.
     """
     if isinstance(v, u.Quantity):
         return v
@@ -69,43 +48,12 @@ def _parse_quantity(v):
 
 
 def _serialize_quantity(v) -> str:
-    """
-    Pydantic PlainSerializer for Quantity objects.
-
-    Parameters
-    ----------
-    v : Quantity
-        The quantity to serialise
-
-    Returns
-    -------
-    text : str
-        The quantity as text, value and unit
-    """
+    """A quantity as text: its value and its unit."""
     return str(v)
 
 
 def _check_unit_fraction(value: Quantity, info: ValidationInfo) -> Quantity:
-    """
-    Pydantic AfterValidator that checks a fraction is above 0 and at most 1.
-
-    Parameters
-    ----------
-    value : Quantity
-        The fraction, dimensionless
-    info : ValidationInfo
-        The field's details, for its name in the error message
-
-    Returns
-    -------
-    value : Quantity
-        The fraction, unchanged
-
-    Raises
-    ------
-    ValueError
-        If the fraction is 0, or above 1
-    """
+    """Refuses a fraction of 0, or above 1, naming the field."""
     if not 0 < float(value.to(u.dimensionless_unscaled).value) <= 1:
         raise ValueError(
             f"{info.field_name} must be above 0 and at most 1 (100 %), got {value}"
@@ -115,20 +63,19 @@ def _check_unit_fraction(value: Quantity, info: ValidationInfo) -> Quantity:
 
 def non_negative_quantity(unit, label: str):
     """
-    Builds an Annotated Quantity type for one dimension, with non-negative values.
+    An Annotated Quantity type for one dimension, with non-negative values.
 
     Parameters
     ----------
     unit : Unit
-        Any unit of the required dimension, such as `u.kg` for a mass. The value
-        must be convertible to it
+        Any unit of the dimension, such as `u.kg`
     label : str
-        Name of the quantity, used in the error messages
+        The quantity's name, for the error messages
 
     Returns
     -------
     annotated : type
-        A type usable as a Pydantic field annotation
+        A Pydantic field type
     """
 
     def _validate(v):
@@ -148,20 +95,19 @@ def non_negative_quantity(unit, label: str):
 
 def signed_quantity(unit, label: str):
     """
-    Builds an Annotated Quantity type for one dimension, with values of either sign.
+    An Annotated Quantity type for one dimension, with values of either sign.
 
     Parameters
     ----------
     unit : Unit
-        Any unit of the required dimension, such as `u.deg` for an angle. The value
-        must be convertible to it
+        Any unit of the dimension, such as `u.deg`
     label : str
-        Name of the quantity, used in the error messages
+        The quantity's name, for the error messages
 
     Returns
     -------
     annotated : type
-        A type usable as a Pydantic field annotation
+        A Pydantic field type
     """
 
     def _validate(v):
@@ -178,11 +124,8 @@ def signed_quantity(unit, label: str):
 
 
 MassQty = non_negative_quantity(u.kg, "mass")
-"""Annotated Quantity type restricted to non-negative masses.
-
-Rejects an entry of the wrong dimension, such as '100 W' in a mass column. A plain
-float would have accepted it without an error.
-"""
+"""Annotated Quantity type for non-negative masses. It refuses another dimension, such
+as `100 W`."""
 
 LengthQty = non_negative_quantity(u.m, "length")
 """Annotated Quantity type restricted to non-negative lengths."""
@@ -191,8 +134,8 @@ PowerQty = non_negative_quantity(u.W, "power")
 """Annotated Quantity type restricted to non-negative powers, such as `10 W`."""
 
 EnergyQty = non_negative_quantity(u.W * u.h, "energy")
-"""Annotated Quantity type restricted to non-negative energies, such as `1024 W h`.
-astropy does not read `Wh`, so watt-hours are written with a space."""
+"""Annotated Quantity type for non-negative energies, such as `1024 W h`, with a
+space."""
 
 AreaQty = non_negative_quantity(u.m**2, "area")
 """Annotated Quantity type restricted to non-negative areas, such as `0.2 m2`."""
@@ -200,23 +143,8 @@ AreaQty = non_negative_quantity(u.m**2, "area")
 
 def _parse_temperature(v):
     """
-    Pydantic BeforeValidator for temperatures, which turns Celsius into kelvin.
-
-    Parameters
-    ----------
-    v : str or Quantity
-        Text such as "293 K" or "20 °C", or an already-parsed Quantity
-
-    Returns
-    -------
-    temperature : Quantity
-        The temperature in kelvin, or the parsed quantity unchanged when it is
-        not a temperature, for the dimension check to refuse
-
-    Raises
-    ------
-    ValueError
-        If the text is not a number followed by a unit
+    Reads a temperature, with Celsius turned into kelvin. Any other dimension passes on,
+    for the check to refuse.
     """
     v = _parse_quantity(v)
     if v.unit is None or v.unit.physical_type != "temperature":
@@ -225,24 +153,7 @@ def _parse_temperature(v):
 
 
 def _validate_temperature(v):
-    """
-    Pydantic AfterValidator that refuses a temperature at or below absolute zero.
-
-    Parameters
-    ----------
-    v : Quantity
-        The temperature, already in kelvin
-
-    Returns
-    -------
-    v : Quantity
-        The same temperature
-
-    Raises
-    ------
-    ValueError
-        If the value is not a temperature, or is 0 K or less
-    """
+    """Refuses a value that is not a temperature, or is at or below 0 K."""
     if v.unit.physical_type != "temperature":
         raise ValueError(f"Value must have temperature dimensions, got '{v}'")
     if v <= 0 * u.K:
@@ -256,28 +167,19 @@ TemperatureQty = Annotated[
     AfterValidator(_validate_temperature),
     PlainSerializer(_serialize_quantity, return_type=str),
 ]
-"""Annotated Quantity type for absolute temperatures, held in kelvin.
-
-A temperature in Celsius, such as `20 °C`, `20 Celsius` or `20 deg_C`, is turned
-into kelvin when it is read, with astropy's `u.temperature()` equivalency. Kelvin is
-preferred: astropy reads °C as a unit with an offset, and spellings such as `20 degC`
-do not read. A temperature difference must not use this type, since the offset
-would be added to it.
-"""
+"""Annotated Quantity type for absolute temperatures, held in kelvin.  Celsius, such as
+`20 °C`, turns into kelvin as it is read, but kelvin is preferred. A temperature
+difference must not use this type."""
 
 AngleQty = non_negative_quantity(u.deg, "angle")
-"""Annotated Quantity type for angles.
-
-astropy gives angles a dimension of their own, so this rejects both `500 km` and a
-bare `97.4`. An inclination must say whether it is in degrees or radians.
-"""
+"""Annotated Quantity type for angles, which refuses a bare number."""
 
 SignedAngleQty = signed_quantity(u.deg, "angle")
 """Annotated Quantity type for angles of either sign, such as `-90 deg`."""
 
 SignedLengthQty = signed_quantity(u.m, "length")
-"""Annotated Quantity type for lengths of either sign, such as an altitude below
-the ellipsoid."""
+"""Annotated Quantity type for lengths of either sign, such as an altitude below the
+ellipsoid."""
 
 
 PlainQty = Annotated[
@@ -285,23 +187,15 @@ PlainQty = Annotated[
     BeforeValidator(_parse_quantity),
     PlainSerializer(_serialize_quantity, return_type=str),
 ]
-"""Annotated Quantity type that is parsed but not dimension-checked.
-
-For a column whose dimension depends on another field, where the check has to be
-a model validator rather than a field one.
-"""
+"""Annotated Quantity type with no dimension check, for a field whose dimension a model
+validator checks."""
 
 DataRateQty = non_negative_quantity(u.bit / u.s, "data rate")
-"""Annotated Quantity type for data rates.
-
-astropy treats the bit as a unit of its own, so a data rate is information over
-time. This rejects `800 MHz` as well as `500 km`. `800 Mbps` does not parse at all,
-so write `800 Mbit/s`.
-"""
+"""Annotated Quantity type for data rates, such as `800 Mbit/s`. `800 Mbps` does not
+read."""
 
 DataVolumeQty = non_negative_quantity(u.byte, "data volume")
-"""Annotated Quantity type for data volumes, such as a memory's `2 TB`. A volume
-in bits, such as `16 Tbit`, is accepted too."""
+"""Annotated Quantity type for data volumes, such as `2 TB` or `16 Tbit`."""
 
 TimeQty = non_negative_quantity(u.s, "time")
 """Annotated Quantity type restricted to non-negative durations."""
@@ -310,19 +204,16 @@ AngularRateQty = non_negative_quantity(u.deg / u.s, "angular rate")
 """Annotated Quantity type for non-negative angular rates, such as `0.7 deg/s`."""
 
 AngularAccelerationQty = non_negative_quantity(u.deg / u.s**2, "angular acceleration")
-"""Annotated Quantity type for non-negative angular accelerations, such as
-`0.08 deg/s2`."""
+"""Annotated Quantity type for non-negative angular accelerations, such as `0.08
+deg/s2`."""
 
 FractionQty = non_negative_quantity(u.dimensionless_unscaled, "fraction")
-"""Annotated Quantity type for dimensionless fractions, written as percentages.
-
-astropy reads `5 %` as 5 percent, which converts to 0.05 of one, so a duty cycle
-can be entered either way.
-"""
+"""Annotated Quantity type for dimensionless fractions: `5 %` and `0.05` are the
+same."""
 
 UnitFractionQty = Annotated[FractionQty, AfterValidator(_check_unit_fraction)]
 """Annotated Quantity type for a fraction above 0 and at most 1, such as an
-efficiency or a battery's depth of discharge."""
+efficiency."""
 
 NoSpaceStr = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\S+$")]
 """String field that must not contain whitespace, used for the grouping axes."""
@@ -331,32 +222,25 @@ MomentumQty = non_negative_quantity(u.N * u.m * u.s, "angular momentum")
 """Annotated Quantity type for angular momentum, as a wheel stores it (`4 N*m*s`)."""
 
 TorqueQty = non_negative_quantity(u.N * u.m, "torque")
-"""Annotated Quantity type for torque.
-
-Torque and energy share a dimension, so this rejects `4 N*m*s` but cannot tell
-`0.2 N*m` from `0.2 J`.
-"""
+"""Annotated Quantity type for torque. It cannot tell `0.2 N*m` from `0.2 J`."""
 
 InertiaQty = non_negative_quantity(u.kg * u.m**2, "moment of inertia")
 """Annotated Quantity type for a moment of inertia (`264.7 kg*m**2`)."""
 
 
 COMMENTS = "comments"
-"""The key of the user's own notes, which every block of an input file may have.
-quicksat keeps them and does not read them. No named item may take this name."""
+"""The key of the user's notes in every block. No named item may take it."""
 
 
 class Commented(BaseModel):
     """
-    A block of an input file that may hold the user's own notes.
-
-    The notes go in `comments`, so that every YAML reader keeps them, the editor
-    included. A `#` comment is lost when the editor saves the file.
+    A block of an input file that may hold the user's notes, under `comments`, which the
+    editor keeps.
 
     Parameters
     ----------
     comments : str, optional
-        The user's notes on the block. quicksat does not read them.
+        The user's notes, which quicksat does not read
     """
 
     comments: str | None = None
@@ -364,15 +248,10 @@ class Commented(BaseModel):
 
 class YamlFile(Commented):
     """
-    An input file in YAML, read from a file or from text.
+    An input file in YAML, read from a file or from text as UTF-8.
 
-    Every input file in YAML reads in the same way, through this class. The file
-    is read as UTF-8, as the editor writes it. Its text must be a mapping of keys
-    to values. The model keeps the path and the text it was read from, for the
-    viewer and the editor.
-
-    The validators of a file read from disk find its folder as `base_dir` in the
-    validation context, for the paths the file gives.
+    It keeps the path and the text it was read from. A file's validators find its folder
+    as `base_dir` in the validation context.
     """
 
     _EMPTY_ALLOWED: ClassVar[bool] = False
@@ -383,26 +262,12 @@ class YamlFile(Commented):
 
     @property
     def source_file(self) -> Path | None:
-        """
-        The file this was read from.
-
-        Returns
-        -------
-        path : Path or None
-            None when it was read from text, or built in code
-        """
+        """The file this was read from, or None."""
         return self._source_file
 
     @property
     def source_text(self) -> str | None:
-        """
-        The text this was read from, as written.
-
-        Returns
-        -------
-        text : str or None
-            None when it was built in code
-        """
+        """The text this was read from, as written, or None."""
         return self._source_text
 
     @classmethod
@@ -412,7 +277,7 @@ class YamlFile(Commented):
 
         Parameters
         ----------
-        file_path : str | Path
+        file_path : str or Path
             The YAML file
 
         Returns
@@ -425,8 +290,7 @@ class YamlFile(Commented):
         FileNotFoundError
             If there is no such file
         ValueError
-            If the file is empty, is not a mapping of keys to values, or does
-            not pass the checks
+            If the file is empty, not a mapping, or fails the checks
         """
         return cls._from_file(file_path)
 
@@ -448,8 +312,7 @@ class YamlFile(Commented):
         Raises
         ------
         ValueError
-            If the text is empty, is not a mapping of keys to values, or does
-            not pass the checks
+            If the text is empty, not a mapping, or fails the checks
         """
         return cls._from_text(yaml_text)
 
@@ -482,14 +345,12 @@ class YamlFile(Commented):
 
 def read_csv_rows(csv_path: str | Path, required: Iterable[str]) -> pd.DataFrame:
     """
-    An input file in CSV, with every cell as text.
-
-    The spaces after each comma, and around each column's name, are taken out.
-    An empty cell stays an empty string.
+    An input file in CSV, with every cell as text and the spaces around the cells and
+    the names taken out.
 
     Parameters
     ----------
-    csv_path : str | Path
+    csv_path : str or Path
         The CSV file
     required : iterable of str
         The columns the file must have
@@ -497,7 +358,7 @@ def read_csv_rows(csv_path: str | Path, required: Iterable[str]) -> pd.DataFrame
     Returns
     -------
     frame : pd.DataFrame
-        One row per line after the header, every cell as text
+        One row per line after the header
 
     Raises
     ------
@@ -526,7 +387,7 @@ def validated_rows[T](
     Parameters
     ----------
     model : callable
-        The model of one row, called with the row's fields
+        The model of one row
     records : iterable of dict
         The rows' fields, in the file's order
     file_name : str
@@ -540,8 +401,7 @@ def validated_rows[T](
     Raises
     ------
     ValueError
-        If a row does not pass the model's checks. The message names the file
-        and the row's line, where line 2 is the first after the header.
+        If a row fails the checks, naming the file and the row's line
     """
     rows = []
     for row_number, record in enumerate(records, start=2):
@@ -554,25 +414,23 @@ def validated_rows[T](
 
 def without_comments(value):
     """
-    Pydantic BeforeValidator for a mapping of named items, such as the attitudes.
-
-    The mapping may hold the user's notes on the whole section under `comments`.
-    They are taken out before the items are read, so no item may take that name.
+    Takes the section's `comments` out of a mapping of named items, before the items are
+    read.
 
     Parameters
     ----------
     value
-        The mapping as the file gives it, or anything else, which is passed on
+        The mapping as the file gives it, or anything else, which passes on
 
     Returns
     -------
     value
-        The mapping without its `comments` key
+        The mapping without `comments`
 
     Raises
     ------
     ValueError
-        If `comments` holds anything but text, such as an item that took the name
+        If `comments` holds anything but text
     """
     if not isinstance(value, dict) or COMMENTS not in value:
         return value

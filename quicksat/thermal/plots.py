@@ -4,10 +4,8 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Plots of the payload's heat account: its net heat in since the start of the run.
-
-Each plot draws from a `ThermalRun` and returns the matplotlib axes, without
-showing the figure, as the power plots do.
+Plots of the payload's heat account. Each returns the matplotlib axes without showing
+the figure.
 """
 
 import matplotlib.pyplot as plt
@@ -25,17 +23,15 @@ MODE_ALPHA = 0.22
 
 def heat_plot(thermal_run: ThermalRun, ax: Axes | None = None) -> Axes:
     """
-    The payload's net heat in since the start of the run, over its modes.
-
-    Each payload mode is shaded in a colour of its own behind the line. Where the
-    line rises, heat builds up in the payload. Where it falls, the payload cools.
+    The payload's net heat in since the run's start, over its modes. Where the line
+    rises, heat builds up.
 
     Parameters
     ----------
     thermal_run : ThermalRun
-        The payload's heat account
+        The heat account
     ax : Axes, optional
-        The axes to draw on. A new figure by default.
+        The axes to draw on, by default a new figure
 
     Returns
     -------

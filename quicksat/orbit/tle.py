@@ -4,26 +4,11 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-SGP4 element sets, and the states SGP4 computes from them.
+SGP4 element sets, and the states SGP4 computes from them, in GCRS.
 
-An element set is an sgp4 `Satrec` and a name. The `Satrec` holds every element,
-so the text it was read from is not kept. A TLE is one way in, and later OMM can
-be another: sgp4 reads both into the same `Satrec`. The two TLE lines can always
-be written again from the elements, with `Tle.lines`.
-
-A TLE file holds one element set or several, each in two lines or in three with
-a name line first, as CelesTrak and Space-Track give a group of satellites.
-`read_tle_file` takes one: the file's only one, or the satellite asked for, by
-its name or its catalogue number.
-
-sgp4's fast parser checks very little. It accepts a wrong checksum, and gives an
-error code for swapped lines instead of raising. So sgp4's own checks run first:
-`verify_checksum`, and its pure-Python parser, which checks the fixed columns and
-that both lines name the same satellite.
-
-SGP4 gives positions and velocities in TEME, the true equator and mean equinox
-frame of date. astropy's own transform turns them into GCRS, so that they share
-a frame with the sun.
+An element set is an sgp4 `Satrec` and a name, from a TLE or an OMM. sgp4's own checks
+run before its fast parser, which checks little. `docs/scenario/scenario_ref.ipynb`,
+under "A TLE file", explains the files.
 
 """
 
@@ -50,8 +35,8 @@ from quicksat import Q_, u
 from quicksat.utils.intervals import TimeArray
 
 MAX_EPOCH_OFFSET = Q_(7, "day")
-"""How far either end of a run may be from the epoch of an element set before
-`warn_if_far_from_epoch` complains. SGP4 loses accuracy away from its epoch."""
+"""How far either end of a run may be from an element set's epoch before
+`warn_if_far_from_epoch` warns."""
 
 
 @dataclass(frozen=True)
@@ -62,9 +47,9 @@ class Tle:
     Parameters
     ----------
     name : str or None
-        The name of the satellite, if known
+        The satellite's name, if known
     satrec : Satrec
-        The initialised sgp4 object, which holds every element
+        The initialised sgp4 object
     """
 
     name: str | None
@@ -72,42 +57,21 @@ class Tle:
 
     @property
     def epoch(self) -> TimeArray:
-        """
-        The epoch of the element set.
-
-        Returns
-        -------
-        epoch : Time
-            The epoch, in the UTC time scale
-        """
+        """The element set's epoch, in UTC."""
         return Time(
             self.satrec.jdsatepoch, self.satrec.jdsatepochF, format="jd", scale="utc"
         )
 
     @property
     def nodal_period(self) -> Quantity:
-        """
-        The time from one ascending node to the next. See `nodal_period`.
-
-        Returns
-        -------
-        period : Quantity
-            The nodal period, in minutes
-        """
+        """The time from one ascending node to the next, in min. See `nodal_period`."""
         return nodal_period(self.satrec)
 
     @property
     def period(self) -> Quantity:
         """
-        One orbit, for a duration in orbits: the nodal period.
-
-        A `Trajectory` has a `period` too, measured from its states. So a run
-        reads one orbit the same way from either.
-
-        Returns
-        -------
-        period : Quantity
-            The nodal period, in minutes
+        One orbit, for a duration in orbits: the nodal period, in min, as a `Trajectory`
+        measures its own.
         """
         return self.nodal_period
 
@@ -118,31 +82,20 @@ class Tle:
         Parameters
         ----------
         times : Time
-            The sample times, as an array
+            The times, as an array
         with_velocity : bool, optional
-            Whether the state carries velocities as well as positions. True by
-            default.
+            Whether to add the velocities
 
         Returns
         -------
         state : SkyCoord
-            The position, and the velocity if asked for, in GCRS
+            The positions, and any velocities, in GCRS
         """
         return tle_states(self, times, with_velocity)
 
     @property
     def lines(self) -> tuple[str, str]:
-        """
-        The two TLE lines, written from the elements by sgp4's exporter.
-
-        TLE text rounds some elements, such as the angles to 0.0001 degrees. The
-        element set itself keeps its full precision.
-
-        Returns
-        -------
-        lines : tuple of str
-            Line 1 and line 2
-        """
+        """The two TLE lines, written from the elements, which round some of them."""
         line1, line2 = export_tle(self.satrec)
         return line1, line2
 
@@ -150,10 +103,6 @@ class Tle:
 def nodal_period(satrec: Satrec) -> Quantity:
     """
     The time from one ascending node to the next, at SGP4's secular rates.
-
-    This is one turn of the argument of latitude: the mean anomaly plus the
-    argument of perigee. SGP4's short-period terms move each node crossing a
-    little, but they average out over an orbit.
 
     Parameters
     ----------
@@ -163,53 +112,20 @@ def nodal_period(satrec: Satrec) -> Quantity:
     Returns
     -------
     period : Quantity
-        The nodal period, in minutes
+        In min
     """
     return Q_(2 * np.pi / (satrec.mdot + satrec.argpdot), "min")
 
 
 def _name(line: str) -> str:
-    """
-    A TLE's name line, without the padding, and without the `0 ` that
-    Space-Track's three-line form puts in front.
-
-    Parameters
-    ----------
-    line : str
-        The name line
-
-    Returns
-    -------
-    name : str
-        The satellite's name
-    """
+    """A TLE's name line, without its padding or Space-Track's leading `0 `."""
     name = line.strip()
     return name[2:].strip() if name.startswith("0 ") else name
 
 
 def _element_set(name: str | None, line1: str, line2: str, where: str) -> Tle:
     """
-    One TLE, checked by sgp4, and initialised.
-
-    Parameters
-    ----------
-    name : str or None
-        The name line's satellite, if there is a name line
-    line1, line2 : str
-        The two TLE lines
-    where : str
-        The file and the line, for the messages
-
-    Returns
-    -------
-    tle : Tle
-        The checked element set
-
-    Raises
-    ------
-    ValueError
-        If sgp4 finds a wrong checksum or a wrong column, or SGP4 reports an
-        error when it initialises
+    One TLE, checked by sgp4 and initialised, or an error naming the file and the line.
     """
     try:
         verify_checksum(line1, line2)
@@ -229,30 +145,24 @@ def _element_set(name: str | None, line1: str, line2: str, where: str) -> Tle:
 
 def read_tle_sets(path: str | Path) -> list[Tle]:
     """
-    Read every TLE in a file.
-
-    Each TLE has two lines, or three with a name line first, as CelesTrak and
-    Space-Track give a group of satellites. Blank lines are ignored. sgp4 checks
-    both checksums, the fixed columns, and that both lines name the same
-    satellite. SGP4 must then initialise without an error.
+    Read every TLE in a file, each in two lines, or three with a name line first.
 
     Parameters
     ----------
-    path : str | Path
-        Filepath of the TLE file
+    path : str or Path
+        The TLE file
 
     Returns
     -------
     tles : list of Tle
-        The checked element sets, in the file's order
+        The element sets, checked, in the file's order
 
     Raises
     ------
     FileNotFoundError
         If the file does not exist
     ValueError
-        If the file holds no TLE, a line belongs to no TLE, or a TLE is not
-        valid
+        If the file holds no TLE, a line belongs to none, or a TLE is not valid
     """
     path = Path(path)
     if not path.is_file():
@@ -306,8 +216,8 @@ def _label(tle: Tle) -> str:
 
 def _is_satellite(tle: Tle, satellite: str | int) -> bool:
     """
-    Whether an element set is the satellite asked for: by its catalogue number,
-    or by its name, whatever the case and the spaces.
+    Whether an element set is the satellite asked for, by catalogue number or by name,
+    whatever the case and the spaces.
     """
     wanted = " ".join(str(satellite).split()).casefold()
     if wanted.isdigit() and int(wanted) == tle.satrec.satnum:
@@ -326,9 +236,8 @@ def pick_element_set(
     element_sets : list of Tle
         The file's element sets
     satellite : str or int or None
-        The satellite's name, or its catalogue number. None takes the file's
-        only element set.
-    path : str | Path
+        The satellite's name or catalogue number, or None for the only one
+    path : str or Path
         The file, for the messages
 
     Returns
@@ -339,8 +248,7 @@ def pick_element_set(
     Raises
     ------
     ValueError
-        If no satellite is asked for and the file holds several element sets, if
-        none is the satellite asked for, or if several are
+        If the choice is not one element set
     """
     labels = [_label(tle) for tle in element_sets[:_LISTED]]
     if len(element_sets) > _LISTED:
@@ -372,28 +280,24 @@ def read_tle_file(path: str | Path, satellite: str | int | None = None) -> Tle:
     """
     Read one TLE from a file: its only one, or the satellite asked for.
 
-    See `read_tle_sets` for the file, and `pick_element_set` for the choice.
-
     Parameters
     ----------
-    path : str | Path
-        Filepath of the TLE file
+    path : str or Path
+        The TLE file
     satellite : str or int, optional
-        The satellite's name, or its catalogue number, for a file that holds
-        several. Without it, the file must hold one TLE.
+        The satellite's name or catalogue number, for a file of several
 
     Returns
     -------
     tle : Tle
-        The checked element set
+        The element set, checked
 
     Raises
     ------
     FileNotFoundError
         If the file does not exist
     ValueError
-        If a TLE in the file is not valid, or the file does not hold the one TLE
-        asked for
+        If a TLE is not valid, or the one asked for is not there
     """
     return pick_element_set(read_tle_sets(path), satellite, path)
 
@@ -405,28 +309,24 @@ def warn_if_far_from_epoch(
     label: str = "the TLE",
 ) -> str | None:
     """
-    Warn if either end of a run is more than 7 days from the epoch of an element
-    set.
-
-    SGP4 loses accuracy away from the epoch of its element set. A run that starts
-    or ends a week or more from it should not be trusted.
+    The warning when either end of a run is more than 7 days from an element set's
+    epoch, where SGP4 loses accuracy.
 
     Parameters
     ----------
     tle : Tle
         The element set
     start : Time
-        The start of the run
+        The run's start
     end : Time, optional
-        The end of the run. Without it, the start alone is checked.
+        The run's end
     label : str, optional
-        What the element set is, for the message, such as `the TLE`
+        What the element set is, for the message
 
     Returns
     -------
     text : str or None
-        The warning's text, so that a run can show it too, or None if both ends
-        are close enough
+        The warning, or None
     """
     ends = {"starts": start} if end is None else {"starts": start, "ends": end}
     offsets = {
@@ -448,35 +348,29 @@ def warn_if_far_from_epoch(
 
 def tle_states(tle: Tle, times: TimeArray, with_velocity: bool = True) -> SkyCoord:
     """
-    The satellite's state from SGP4, in GCRS.
+    The satellite's state from SGP4, in GCRS, with all the times in one call.
 
-    The whole `Time` array goes through SGP4 in one call, with sgp4's
-    `sgp4_array`, and through the frame transform in one call. There is no loop
-    over the samples. SGP4 takes UTC, so the times may be in any time scale.
-
-    astropy transforms velocities about five times slower than positions. So a
-    caller that needs positions only, such as the eclipse search, leaves them out.
+    Velocities are optional, since astropy transforms them about five times slower than
+    positions.
 
     Parameters
     ----------
     tle : Tle
         The element set
     times : Time
-        The sample times, as an array
+        The times, as an array, in any time scale
     with_velocity : bool, optional
-        Whether the state carries velocities as well as positions. True by
-        default.
+        Whether to add the velocities
 
     Returns
     -------
     state : SkyCoord
-        The position of the satellite relative to the centre of the Earth, and its
-        velocity if asked for, in GCRS. Its `obstime` is `times`.
+        The positions from the Earth's centre, and any velocities, in GCRS, at `times`
 
     Raises
     ------
     ValueError
-        If SGP4 returns an error code for any of the times
+        If SGP4 returns an error for any time
     """
     utc = times.utc
     error, position, velocity = tle.satrec.sgp4_array(

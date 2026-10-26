@@ -4,38 +4,14 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The power system file: the solar panels, the battery and the power conditioning.
+The power system file, `power_system.yaml`: the solar panels, the battery and the power
+conditioning.
 
-The file is `power_system.yaml`. Each panel either names a part of the scenario's
-3D model, which gives its area and its normal, or gives a normal and an area
-itself:
-
-    cell_efficiency: 30 %
-    loss_factor: 0.80
-    panels:
-      wing +y inner: {part: Wing +y inner cells, fill_ratio: 85 %}
-      side +x: {normal: +x, area: 0.2 m2, fill_ratio: 80 %}
-    self_shadowing: {enabled: true, points: 512}
-    battery:
-      capacity: 1024 W h
-      capacity_factor: 0.80
-      max_depth_of_discharge: 30 %
-    conditioning:
-      array_regulator: 0.96
-      battery_charge: 0.95
-      battery_discharge: 0.95
-      distribution: 0.97
-    system_margin: 5 %
-
-The losses sit in three places, so that none is counted twice. `loss_factor`
-takes every loss up to the array's output. The conditioning's efficiencies take
-the energy from there to the loads and through the battery, each on its own path.
-The fixed overheads, such as the power unit's own electronics, are loads in the
-consumption files.
-
-This module reads and checks the file on its own. The parts are checked against
-the scenario's model when the generation is worked out, in
-`quicksat.power.generation`.
+Each panel names a part of the 3D model, or gives a normal and an area. The losses sit
+in three places, so none counts twice: `loss_factor` to the array's output, the
+conditioning beyond it, and the fixed overheads as loads.
+`docs/power/power_generation_ref.ipynb` and `docs/explanations/power_model.md` explain
+the file and the model.
 
 """
 
@@ -65,9 +41,7 @@ from quicksat.utils.parser_helpers import (
 )
 
 DEFAULT_POINTS = 512
-"""Sample points on each panel for the self-shadowing, if the file gives none.
-In the prototype, 512 points kept the lit fraction within 0.012 of the exact one,
-and the energy within 0.01%."""
+"""The sample points on each panel for the self-shadowing, if the file gives none."""
 
 AXES = ("+x", "-x", "+y", "-y", "+z", "-z")
 """The signed body axes that a normal can be written as."""
@@ -75,23 +49,8 @@ AXES = ("+x", "-x", "+y", "-y", "+z", "-z")
 
 def _read_normal(value) -> tuple[float, float, float] | None:
     """
-    A panel's normal as a unit vector, from a signed body axis or three numbers.
-
-    Parameters
-    ----------
-    value : str, list or None
-        A signed body axis such as `+x`, or three numbers in body axes, such as
-        `[0, 1, -1]`, scaled here to unit length
-
-    Returns
-    -------
-    normal : tuple of float or None
-        The unit vector, or None if no normal is given
-
-    Raises
-    ------
-    ValueError
-        If the value is neither form, or is three zeros
+    A panel's normal as a unit vector, from a signed body axis or three numbers, or
+    None, refusing three zeros.
     """
     if value is None:
         return None
@@ -122,26 +81,22 @@ def _read_normal(value) -> tuple[float, float, float] | None:
 
 class FlatItem(Commented):
     """
-    A flat item on the spacecraft: a part of the 3D model, or a normal and an area.
+    A flat item on the spacecraft, such as a solar panel or a thermal surface: a part of
+    the 3D model, or a normal and an area.
 
-    A solar panel is one, and so is a surface of the payload's thermal model. An
-    item from the model takes its area and its normal from the part's triangles.
-    It turns with an articulation above it in the model, and it can be shaded by
-    the rest of the model. A typed-in item stays fixed in body axes. It is never
-    shaded and shades nothing.
+    An item from the model turns with any articulation above it, and can be shaded. A
+    typed-in item stays fixed, is never shaded and shades nothing.
 
     Parameters
     ----------
     part : str, optional
-        The name of the model's node that holds the item. Its triangles must all
-        face one way. Give either `part`, or both `normal` and `area`.
+        The model's node that holds the item, whose triangles all face one way
     normal : tuple of float, optional
-        The direction the item faces, in body axes: a signed body axis such as
-        `+x`, or three numbers, scaled to unit length
+        The direction it faces in body axes, a signed axis or three numbers
     area : Quantity, optional
-        The item's area, positive
+        Its area, positive
     comments : str, optional
-        Your own notes on this block. quicksat keeps them and does not read them.
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -160,7 +115,7 @@ class FlatItem(Commented):
 
     @model_validator(mode="after")
     def _one_kind(self):
-        """Checks that the item is either a part, or a normal and an area."""
+        """Checks the item is either a part, or a normal and an area."""
         typed = (self.normal is not None, self.area is not None)
         if self.part is not None:
             if any(typed):
@@ -181,40 +136,26 @@ class FlatItem(Commented):
 
     @property
     def from_model(self) -> bool:
-        """
-        Whether the item is a part of the 3D model.
-
-        Returns
-        -------
-        from_model : bool
-            True for an item that names a part, False for a typed-in one
-        """
+        """Whether the item names a part of the 3D model."""
         return self.part is not None
 
 
 class Panel(FlatItem):
     """
-    A solar panel: a part of the 3D model, or a normal and an area.
-
-    A panel from the model takes its area and its normal from the part's
-    triangles. It turns with an articulation above it in the model, and it can
-    be shaded by the rest of the model. A typed-in panel stays fixed in body
-    axes. It is never shaded and shades nothing.
+    A solar panel: a part of the 3D model, or a normal and an area, as a `FlatItem`.
 
     Parameters
     ----------
     part : str, optional
-        The name of the model's node that holds the cells. Its triangles must all
-        face one way. Give either `part`, or both `normal` and `area`.
+        The model's node that holds the cells
     normal : tuple of float, optional
-        The direction the cells face, in body axes: a signed body axis such as
-        `+x`, or three numbers, scaled to unit length
+        The direction the cells face in body axes
     area : Quantity, optional
         The panel's area, positive
     fill_ratio : Quantity
-        The share of the area that the cells cover, above 0 and at most 1
+        The share of the area the cells cover
     comments : str, optional
-        Your own notes on this block. quicksat keeps them and does not read them.
+        The user's notes, which quicksat does not read
     """
 
     kind: ClassVar[str] = "panel"
@@ -230,12 +171,11 @@ class SelfShadowing(Commented):
     Parameters
     ----------
     enabled : bool
-        Whether parts of the model may shade the panels. Required.
+        Whether the model's parts may shade the panels
     points : int, optional
-        Sample points on each panel, 512 by default. More points give a finer
-        lit fraction, and take longer.
+        The sample points on each panel, by default 512
     comments : str, optional
-        Your own notes on this block. quicksat keeps them and does not read them.
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -251,20 +191,15 @@ class Battery(Commented):
     Parameters
     ----------
     capacity : Quantity
-        The energy the battery holds when new and full, such as `1024 W h`.
-        Positive.
+        The energy when new and full, such as `1024 W h`
     capacity_factor : Quantity
-        The share of the capacity left in the year being sized, after fade, such
-        as `0.80`. Above 0 and at most 1.
+        The share left after fade, in the year being sized
     max_depth_of_discharge : Quantity
-        The deepest the battery may go, as a share of what it holds, such as
-        `30 %`. The power budget checks that the charge never falls below 1 less
-        this. Above 0 and at most 1.
+        The deepest it may go, as a share of what it holds
     initial_charge : Quantity, optional
-        The charge at the start of the run, as a share of what it holds. Full,
-        `100 %`, by default.
+        The charge at the run's start, by default full
     comments : str, optional
-        Your own notes on this block. quicksat keeps them and does not read them.
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -277,7 +212,7 @@ class Battery(Commented):
     @field_validator("capacity")
     @classmethod
     def _positive(cls, value: Quantity) -> Quantity:
-        """Checks that the capacity is above zero."""
+        """Checks the capacity is above zero."""
         if value.value == 0:
             raise ValueError("capacity must be above zero")
         return value
@@ -285,36 +220,30 @@ class Battery(Commented):
     @property
     def usable(self) -> Quantity:
         """
-        The energy the battery holds when full, in the year being sized.
-
-        Returns
-        -------
-        usable : Quantity
-            The capacity times the capacity factor, in W h
+        The energy the battery holds when full in the year being sized: the capacity
+        times its factor, in W h.
         """
         return (self.capacity * self.capacity_factor).to(u.W * u.h)
 
 
 class Conditioning(Commented):
     """
-    The efficiencies of the power conditioning, one for each path energy takes.
+    The power conditioning's efficiencies, one for each path the energy takes.
 
-    Each is above 0 and at most 1. For a bus fed straight from the battery, with
-    no charge and discharge regulators, give the cells' own efficiencies.
+    For a bus fed straight from the battery, give the cells' own efficiencies.
 
     Parameters
     ----------
     array_regulator : Quantity
-        From the array to the bus, through the array regulator, such as a
-        maximum power point tracker
+        From the array to the bus
     battery_charge : Quantity
-        From the bus into the battery: the charge regulator and the cells
+        From the bus into the battery
     battery_discharge : Quantity
-        From the battery to the bus: the discharge regulator and the cells
+        From the battery to the bus
     distribution : Quantity
-        From the bus to the loads: the switches, the fuses and the harness
+        From the bus to the loads
     comments : str, optional
-        Your own notes on this block. quicksat keeps them and does not read them.
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -329,41 +258,26 @@ class PowerSystem(YamlFile):
     """
     The power system file: the panels, the battery and the conditioning.
 
-    The power of a panel is the solar flux × its area × its fill ratio × the cell
-    efficiency × the loss factor × the cosine of the sun's angle to its normal.
-    It is scaled by the light from the sun that the Earth does not hide, and by
-    the panel's lit fraction when the self-shadowing is on. That is the power at
-    the array's output. The conditioning's efficiencies take it from there to the
-    loads and the battery.
-
-    The generation needs only the panels. The power budget also needs the
-    battery, the conditioning and the system margin.
+    The generation needs only the panels. The power budget also needs the rest.
 
     Parameters
     ----------
     cell_efficiency : Quantity
-        The cells' efficiency, at their rated temperature. Above 0 and at most 1,
-        such as `30 %` or `0.30`.
+        The cells' efficiency, at their rated temperature
     loss_factor : Quantity
-        Every loss up to the array's output, as the share of the power left: the
-        cells' temperature, ageing, mismatch between cells, UV, and the array's
-        own wiring, for the year being sized. Above 0 and at most 1, such as
-        `0.80`.
+        The share of the power left after every loss up to the array's output
     panels : dict of str to Panel
-        The panels, each under a name of your choice. At least one.
+        The panels, by any names, at least one
     self_shadowing : SelfShadowing, optional
-        Whether the 3D model shades the panels. Off without it.
+        Whether the 3D model shades the panels, by default off
     battery : Battery, optional
-        The battery, for the power budget
+        The battery
     conditioning : Conditioning, optional
-        The efficiencies of the power conditioning, for the power budget
+        The conditioning's efficiencies
     system_margin : Quantity, optional
-        The margin on all the loads together, on top of each equipment's own,
-        such as `5 %`. For the power budget.
+        The margin on all the loads together, such as `5 %`
     comments : str, optional
-        Your own notes on the whole file. quicksat keeps them and does not read
-        them. The section `panels` may hold its own `comments` too, so no panel
-        may take that name.
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -378,19 +292,13 @@ class PowerSystem(YamlFile):
 
     @property
     def shading(self) -> bool:
-        """
-        Whether the self-shadowing is on.
-
-        Returns
-        -------
-        shading : bool
-        """
+        """Whether the self-shadowing is on."""
         return self.self_shadowing is not None and self.self_shadowing.enabled
 
     @field_validator("panels")
     @classmethod
     def _name_panels(cls, panels: dict[str, Panel]) -> dict[str, Panel]:
-        """Checks that there is a panel, and that no name is empty."""
+        """Checks there is a panel, and no name is empty."""
         if not panels:
             raise ValueError("panels must define at least one panel")
         if any(not str(name).strip() for name in panels):

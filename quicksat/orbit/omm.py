@@ -4,29 +4,11 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Element sets in CCSDS OMM, the Orbit Mean-Elements Message.
+Element sets in CCSDS OMM, the Orbit Mean-Elements Message, in KVN, XML, JSON or CSV.
 
-An OMM holds the same elements as a TLE, as named fields, such as
-`MEAN_MOTION` and `BSTAR`. quicksat reads it in each of the forms in use, and
-tells them apart by their first character:
-
-- KVN, the CCSDS text form: `KEY = value` lines, with comments, and units in
-  brackets that are not read. It starts with `CCSDS_OMM_VERS`.
-- XML, the CCSDS XML form. It starts with `<`, and sgp4 reads it.
-- JSON, as CelesTrak and Space-Track give it, with the same field names. It
-  starts with `[` or `{`.
-- CSV, as CelesTrak gives it, with a header line of field names. sgp4 reads
-  it.
-
-The file holds one element set or several, as CelesTrak gives a group of
-satellites. `read_omm_file` takes one: the file's only one, or the satellite
-asked for, by its `OBJECT_NAME` or its `NORAD_CAT_ID`. KVN holds one element set.
-
-Where the file gives them, the centre must be the Earth, the frame TEME, the
-time system UTC, and the element theory SGP4: other elements would not mean the
-same thing to SGP4. The elements then go to sgp4's `omm.initialize`, which
-builds the same `Satrec` that a TLE gives. The bookkeeping fields, such as
-`ELEMENT_SET_NO`, take a TLE's usual values where the file leaves them out.
+The file holds one element set or several. The metadata, where given, must name the
+Earth, TEME, UTC and SGP4. sgp4's `omm.initialize` then builds the same `Satrec` that a
+TLE gives. `docs/scenario/scenario_ref.ipynb`, under "An OMM file", explains the forms.
 
 """
 
@@ -68,8 +50,8 @@ DEFAULTS = {
     "MEAN_MOTION_DOT": "0",
     "MEAN_MOTION_DDOT": "0",
 }
-"""The bookkeeping fields, with the values they take where the file leaves them
-out. SGP4 does not use them to propagate."""
+"""The bookkeeping fields' values where the file leaves them out. SGP4 does not use
+them."""
 
 _EXPECTED = {
     "CENTER_NAME": ("EARTH",),
@@ -84,25 +66,11 @@ _OBJECT_ID = re.compile(r"^\d{4}-\d{3}[A-Z]{0,3}$")
 
 _NDOT_UNITS = 1036800.0 / np.pi
 _NDDOT_UNITS = 2985984000.0 / 2.0 / np.pi
-"""sgp4's factors from rev/day^2 and rev/day^3 to its own units, for writing."""
+"""sgp4's factors from rev/day^2 and rev/day^3 to its own units."""
 
 
 def _kvn_fields(text: str, path: Path) -> list[dict[str, str]]:
-    """
-    The fields of an OMM in KVN, which holds one element set.
-
-    Parameters
-    ----------
-    text : str
-        The file's text
-    path : Path
-        The file, for the messages
-
-    Returns
-    -------
-    fields : list of dict
-        One set of fields, by name
-    """
+    """The one element set of an OMM in KVN, as text fields."""
     fields = {}
     for number, raw in enumerate(text.splitlines(), start=1):
         line = raw.strip()
@@ -114,25 +82,8 @@ def _kvn_fields(text: str, path: Path) -> list[dict[str, str]]:
 
 def _fields(text: str, path: Path) -> list[dict[str, str]]:
     """
-    The element sets in an OMM, in any of its forms, as text fields by name.
-
-    Parameters
-    ----------
-    text : str
-        The file's text
-    path : Path
-        The file, for the messages
-
-    Returns
-    -------
-    fields : list of dict
-        One set of fields for each element set in the file
-
-    Raises
-    ------
-    ValueError
-        If the file is none of the forms, or cannot be read as the one it starts
-        like
+    The element sets of an OMM in any form, as text fields, told apart by the first
+    character.
     """
     start = text.lstrip()
     try:
@@ -166,26 +117,8 @@ def _fields(text: str, path: Path) -> list[dict[str, str]]:
 
 def _checked(fields: dict[str, str], path: str | Path) -> dict[str, str]:
     """
-    An element set's fields, checked, with the bookkeeping filled in and the
-    epoch in the form sgp4 reads.
-
-    Parameters
-    ----------
-    fields : dict
-        The fields, as text by name
-    path : str | Path
-        The file, and the element set in it if it holds several, for the messages
-
-    Returns
-    -------
-    fields : dict
-        The fields that sgp4's `omm.initialize` takes
-
-    Raises
-    ------
-    ValueError
-        If the metadata names other elements than SGP4's, a field SGP4 needs is
-        missing, or a value is not a number or an epoch
+    An element set's fields, checked, with the bookkeeping filled in, as sgp4's
+    `omm.initialize` takes them.
     """
     fields = {key.strip().upper(): str(value).strip() for key, value in fields.items()}
     for key, accepted in _EXPECTED.items():
@@ -228,26 +161,24 @@ def _checked(fields: dict[str, str], path: str | Path) -> dict[str, str]:
 
 def read_omm_sets(path: str | Path) -> list[Tle]:
     """
-    Read every element set in an OMM file. See the module notes.
+    Read every element set in an OMM file.
 
     Parameters
     ----------
-    path : str | Path
-        Filepath of the OMM
+    path : str or Path
+        The OMM file
 
     Returns
     -------
     tles : list of Tle
-        The element sets, ready for SGP4, each named by its `OBJECT_NAME`, in the
-        file's order
+        The element sets, each named by its `OBJECT_NAME`, in the file's order
 
     Raises
     ------
     FileNotFoundError
         If the file does not exist
     ValueError
-        If the file holds no element set, or one that SGP4 cannot use, or if
-        SGP4 reports an error when it initialises from one
+        If the file holds none, or one that SGP4 cannot use
     """
     path = Path(path)
     if not path.is_file():
@@ -272,47 +203,34 @@ def read_omm_sets(path: str | Path) -> list[Tle]:
 
 def read_omm_file(path: str | Path, satellite: str | int | None = None) -> Tle:
     """
-    Read one element set from an OMM file: its only one, or the satellite asked
-    for. See `pick_element_set` for the choice.
+    Read one element set from an OMM file: its only one, or the satellite asked for, as
+    `pick_element_set` chooses.
 
     Parameters
     ----------
-    path : str | Path
-        Filepath of the OMM
+    path : str or Path
+        The OMM file
     satellite : str or int, optional
-        The satellite's `OBJECT_NAME`, or its `NORAD_CAT_ID`, for a file that
-        holds several. Without it, the file must hold one element set.
+        The satellite's `OBJECT_NAME` or `NORAD_CAT_ID`, for a file of several
 
     Returns
     -------
     tle : Tle
-        The element set, ready for SGP4, named by its `OBJECT_NAME`
+        The element set, named by its `OBJECT_NAME`
 
     Raises
     ------
     FileNotFoundError
         If the file does not exist
     ValueError
-        If an element set in the file is not one that SGP4 can use, or the file
-        does not hold the one asked for
+        If an element set is unusable, or the one asked for is missing
     """
     return pick_element_set(read_omm_sets(path), satellite, path)
 
 
 def _object_id(designator: str) -> str:
     """
-    A TLE's international designator, such as 20003C, as an OMM writes it,
-    2020-003C.
-
-    Parameters
-    ----------
-    designator : str
-        The designator as sgp4 holds it
-
-    Returns
-    -------
-    object_id : str
-        In the OMM's form, or UNKNOWN where there is none
+    A TLE's international designator in an OMM's form, such as 2020-003C, or UNKNOWN.
     """
     designator = designator.strip()
     if len(designator) < 5 or not designator[:5].isdigit():
@@ -329,25 +247,21 @@ def write_omm_file(  # noqa: V103
     creation_date: Time | None = None,
 ) -> Path:
     """
-    Write an element set as an OMM in KVN, version 2.0.
-
-    This writes out, for example, the TLE that quicksat builds for a
-    sun-synchronous orbit, in a form that other tools read.
+    Write an element set as an OMM in KVN, version 2.0, at full precision.
 
     Parameters
     ----------
-    path : str | Path
+    path : str or Path
         The file to write
     tle : Tle
         The element set
     creation_date : Time, optional
-        The `CREATION_DATE`, now by default. Give one for a file that must not
-        change from one run to the next.
+        The `CREATION_DATE`, by default now
 
     Returns
     -------
     path : Path
-        The file written, with the elements at full precision
+        The file written
     """
     path = Path(path)
     s = tle.satrec

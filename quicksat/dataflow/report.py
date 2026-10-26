@@ -4,16 +4,10 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Rendering of the data budget as a document.
+The document view of the data budget.
 
-This is presentation only. It reads a budget and lays it out, and nothing in it changes
-the arithmetic.
-
-It takes the `DataBudget` itself rather than the values. This is the one way it differs
-from `mass/report.py`. The mass report takes a frame and a config, so it never imports
-the budget module at all. Here, the layout needs a dozen scalars, and a function with
-twelve arguments would be worse than the coupling it avoids. The import is under
-`TYPE_CHECKING`, so the dependency still runs one way. Only public properties are read.
+It reads the budget's public properties. The import is for type checking only, so the
+dependency runs one way.
 
 """
 
@@ -46,21 +40,17 @@ _BOLD_ROW_TYPES = frozenset({"margin", "storage"})
 
 def tabulate(budget: "DataBudget") -> Styler:
     """
-    The data budget laid out as a document.
-
-    One row per quantity, in the order the chain computes them: the mission, then
-    generation, then downlink, then the margin they produce. The mass memory comes
-    last, with the storage required when the budget has a data requirement.
+    The data budget laid out as a document, one row per quantity, in the chain's order.
 
     Parameters
     ----------
     budget : DataBudget
-        The budget to render
+        The budget
 
     Returns
     -------
     report : Styler
-        The budget rendered for reading, with the frame available as `.data`
+        The budget, with its frame as `.data`
     """
     return styled_report(
         _assemble(budget), FORMATS, HEADERS, bold_rows(_BOLD_ROW_TYPES), ["row_type"]
@@ -69,25 +59,8 @@ def tabulate(budget: "DataBudget") -> Styler:
 
 def _row(item: str, value, unit: str, comment: str, row_type: str) -> dict:
     """
-    One row of the report.
-
-    Parameters
-    ----------
-    item : str
-        What the row reports
-    value : float
-        The figure, already converted to `unit`
-    unit : str
-        Unit the figure is expressed in
-    comment : str
-        The assumption behind it, or how it was derived
-    row_type : str
-        `input`, `derived`, `margin` or `storage`
-
-    Returns
-    -------
-    row : dict
-        One report row
+    One row of the report: the item, its value in its unit, the comment and the row
+    type.
     """
     return {
         "item": item,
@@ -99,19 +72,7 @@ def _row(item: str, value, unit: str, comment: str, row_type: str) -> dict:
 
 
 def _assemble(budget: "DataBudget") -> pd.DataFrame:
-    """
-    Builds the report rows from a budget.
-
-    Parameters
-    ----------
-    budget : DataBudget
-        The budget to read
-
-    Returns
-    -------
-    report : pd.DataFrame
-        One row per quantity, tagged by `row_type`
-    """
+    """The report's rows, each tagged by `row_type`."""
     mission, generation, downlink = (
         budget.mission,
         budget.model.generation,

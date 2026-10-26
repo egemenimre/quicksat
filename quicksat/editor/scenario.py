@@ -4,33 +4,13 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-The Scenario Editor: a web page that fills in and edits a scenario or power
-folder.
+The Scenario Editor: a web page that fills in and edits a scenario or power folder.
 
-The folder holds a scenario file and, if it is a power folder, a power system
-file and the payload's and the platform's consumption files, with the 3D model
-and any orbit file they name. A power folder may also hold the payload's thermal
-file.
-`write_editor` writes one page for it. The page opens from disk with a
-double-click, and needs no Python and no server. `quicksat.editor.server` can
-also serve the page from this computer. Its page then has a button that runs the
-files and writes the viewer.
-
-The page holds the folder's files inside itself. Python reads them here and
-passes them to the page as JSON: each YAML file as YAML reads it, each CSV as
-rows of text, the 3D model in base64, and an orbit file as text. The page turns them
-into its own fields. The user can also open another folder, or one file, in the
-page, which reads them in the same form. When the user saves, the page writes
-the files again, as downloads: one by one, or as a zip.
-
-Saving rewrites each file. The user's notes survive in the `comments` fields,
-which every block of a file has. A `#` comment does not survive: the page writes
-its own help as `#` lines, and replaces the rest. So `comment_blocks`, in
-`quicksat.editor.shared`, finds every `#` comment, with the key it belongs to.
-
-When the page is written, quicksat also reads the files with its own loaders.
-The page shows what they said, because its own checks cover names, units and
-ranges only.
+`write_editor` writes one page, which holds the folder's files as JSON, opens from disk
+and saves the files again as downloads. The server can also serve it, with a button that
+runs the files. quicksat's loaders check the files as the page is written, and the page
+shows what they said. `decisions.md` 14 explains the page, and
+`docs/guides/scenario/edit_and_view_a_scenario.md` how to use it.
 
 """
 
@@ -53,9 +33,7 @@ FORMAT = "quicksat-editor"
 """The `format` field of the data the page holds."""
 
 VERSION = 1
-"""The `version` field of the data the page holds. It stays the same during
-development, even when a field changes. It goes up only once older pages must
-still be read."""
+"""The `version` field of the page's data, which stays the same in development."""
 
 
 _ORBIT_FILES = ("tle_file", "omm_file", "trajectory_file")
@@ -74,25 +52,14 @@ SCRIPTS = (
     "view3d.js",
     "views.js",
 )
-"""The scenario editor's own scripts in `templates/scenario/`, in the order they
-run after the shared ones."""
+"""The Scenario Editor's own scripts in `templates/scenario/`, in the order they run
+after the shared ones."""
 
 
 def _referenced(folder: Path, name) -> Path | None:
     """
-    A file that the scenario names, taken from the folder if relative.
-
-    Parameters
-    ----------
-    folder : Path
-        The scenario file's folder
-    name
-        The name as the file gives it, or None
-
-    Returns
-    -------
-    path : Path or None
-        The file, or None if no file is named or it does not exist
+    A file the scenario names, from its folder if relative, or None if none is named or
+    it is missing.
     """
     if not isinstance(name, str) or not name.strip():
         return None
@@ -108,27 +75,8 @@ def _power_files(
     thermal_file: str = THERMAL_FILE,
 ) -> tuple[dict, list[dict]]:
     """
-    The power system file, the consumption files and the thermal file, as the
-    page takes them.
-
-    Parameters
-    ----------
-    folder : Path
-        The folder that holds the files
-    power_file : str
-        The power system file's name
-    consumption_files : dict of str to str
-        The consumption files' names, by the group's name
-    thermal_file : str, optional
-        The payload's thermal file's name
-
-    Returns
-    -------
-    files : dict
-        `power`, `payload_consumption`, `platform_consumption` and
-        `payload_thermal`, each None when missing
-    checks : list of dict
-        What quicksat's loaders said of each file there
+    The power, consumption and thermal files as the page takes them, each None when
+    missing, with the loaders' checks.
     """
     from quicksat.power.config import PowerSystem
     from quicksat.power.consumption import PowerConsumption
@@ -178,30 +126,23 @@ def editor_data(
 
     Parameters
     ----------
-    folder : str | Path
-        The folder that holds the files
+    folder : str or Path
+        The folder of input files
     scenario_file : str, optional
-        The scenario file's name. It must exist.
+        The scenario file's name, which must exist
     power_file : str, optional
-        The power system file's name. It may be missing, as in a scenario folder.
+        The power system file's name, which may be missing
     consumption_files : dict of str to str, optional
-        The consumption files' names, by the group's name, `payload` and
-        `platform`. Either may be missing, as in a scenario folder.
+        The consumption files' names by group, which may be missing
     thermal_file : str, optional
-        The payload's thermal file's name. It may be missing.
+        The thermal file's name, which may be missing
 
     Returns
     -------
     data : dict
-        `format`, `version` and `folder`, the folder's name. `label`, the
-        folder as given when relative, such as `sample/power/data`, and its name
-        otherwise, so that no local path goes into the page. `files`, with
-        `scenario`, `power`, `payload_consumption`, `platform_consumption` and
-        `payload_thermal`, each None when missing. `model`,
-        the 3D model in base64, and `orbit_file`, an orbit file as text, each
-        None without one. `target_files`, the files that the satellite targets
-        name, as text, once each, each with its `name` as the scenario gives it.
-        `checks`, what quicksat's loaders said of each file.
+        The format and version, the folder's name and label, with no local path, the
+        files, the model in base64, the orbit and target files as text, and the loaders'
+        checks
 
     Raises
     ------
@@ -270,7 +211,7 @@ def editor_data(
 
 def editor_page(data: dict) -> str:
     """
-    The scenario editor's page, with three.js, uPlot and the folder's files.
+    The Scenario Editor's page, with three.js, uPlot and the folder's files.
 
     Parameters
     ----------
@@ -280,7 +221,7 @@ def editor_page(data: dict) -> str:
     Returns
     -------
     page : str
-        The page, as HTML text. uPlot draws the Thermal tab's plot.
+        The page, as HTML
     """
     return build_page(
         "scenario",
@@ -304,24 +245,21 @@ def write_editor(
     thermal_file: str = THERMAL_FILE,
 ) -> Path:
     """
-    Write the editor page for a folder of input files.
-
-    The page holds the files as they are now. To edit them again after they
-    change on disk, write the page again.
+    Write the editor page for a folder of input files, as they are now.
 
     Parameters
     ----------
-    folder : str | Path
-        The folder that holds the input files
-    output : str | Path
-        The folder to write the page in. It is made if it does not exist.
+    folder : str or Path
+        The folder of input files
+    output : str or Path
+        The folder for the page, made if missing
     scenario_file, power_file, consumption_files, thermal_file : optional
-        The files' names, if not the usual ones. See `editor_data`.
+        The files' names, if not the usual ones
 
     Returns
     -------
     page : Path
-        The page written. Double-click it to open the editor.
+        The page, which opens in a browser
     """
     data = editor_data(
         folder, scenario_file, power_file, consumption_files, thermal_file

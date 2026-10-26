@@ -4,11 +4,8 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-Helpers for the sizing budgets' report tables.
-
-Each budget's `report.py` builds its table as a frame, and renders it for
-reading with `styled_report`. The editor's Budgets tab reads the same frame, with
-the same headers and formats, so the two show the same table.
+Helpers for the sizing budgets' report tables, which the notebooks and the Budgets tab
+share.
 
 """
 
@@ -20,17 +17,17 @@ from pandas.io.formats.style import Styler
 
 def bold_rows(row_types: Collection[str]) -> Callable[[pd.Series], str]:
     """
-    A row style that makes some rows bold, such as the subtotals and the total.
+    A row style that makes some rows bold, such as the subtotals.
 
     Parameters
     ----------
     row_types : collection of str
-        The values of the `row_type` column whose rows are bold
+        The `row_type` values of the bold rows
 
     Returns
     -------
     style : callable
-        The CSS rule for one row of the report
+        The CSS rule for one row
     """
     return lambda row: "font-weight: bold" if row["row_type"] in row_types else ""
 
@@ -45,29 +42,25 @@ def styled_report(
     """
     A report table, rendered for reading.
 
-    The cells take their formats, and an empty cell shows as a blank. The index
-    is hidden, and each column takes its header. Columns are hidden rather than
-    dropped, so the frame in `.data` keeps them all. The headers are found by the
-    column's name, rather than given as a list by position, which would no
-    longer match once a column is hidden.
+    Hidden columns stay in `.data`, and the headers are matched by the column's name.
 
     Parameters
     ----------
     report : pd.DataFrame
         The report's rows
     formats : dict of str to str
-        The format of each column of numbers, by the column's name
+        Each number column's format, by name
     headers : dict of str to str
-        The header of each column shown, by the column's name
+        Each shown column's header, by name
     row_style : callable
-        The CSS rule for each row, given the row
+        The CSS rule for each row
     hidden : collection of str, optional
         The columns to hide
 
     Returns
     -------
     styled : Styler
-        The report rendered for reading
+        The report
     """
     styled = (
         report.style.format(formats, na_rep="")  # pyright: ignore[reportArgumentType]

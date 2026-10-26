@@ -6,27 +6,9 @@
 """
 The power budget for the viewer: `power.js`, beside the page and `scenario.js`.
 
-The page is the scenario viewer's. With `power.js` beside it, the page shows a
-Power tab, the net power and the battery's charge. `power.js` carries the `id`
-of the `scenario.js` written with it, and the page shows the power only when the
-two match. So power writes both files, from one run.
-
-What `power.js` holds, as the page reads it:
-
-- `format`, `version` and `scenario_id`; `power_file` and `power_text`, the power
-  system file's name and text; `consumption_files`, with the `payload`'s and the
-  `platform`'s consumption file, each as its `file` name, or null for one not
-  read from a file, and its `text`;
-- `spacecraft`: the body box `body_m`, and each panel's `name`, `normal`, `axis`
-  (the index of the body axis nearest the normal), `centre_m` and `size_m`,
-  in body axes and metres, as the model draws it. Without a 3D model, the page
-  draws the body and the panels as boxes from these.
-- `grid`: on the run's grid, `generated_w` at the array's output, `consumed_w`
-  with all the margins, `soc` as a share, and for each panel `sun_cos`, its
-  cosine to the sun scaled by the light, and `panel_w`, its power;
-- `battery`: `max_depth_of_discharge`, the page's limit line, and the capacities;
-- `setup`: blocks of text for the Power tab's setup panel;
-- `summary` and `checks`, from `budget_summary` and `BudgetRun.checks`.
+With `power.js`, the page shows a Power tab, the net power and the battery's charge. It
+carries the `id` of the `scenario.js` written with it, and the page shows the power only
+when the two match. `power_data` lists its fields.
 
 """
 
@@ -55,12 +37,11 @@ FORMAT = "quicksat-power"
 """The `format` of `power.js`, which the page checks."""
 
 VERSION = 2
-"""The version of `power.js`. The page reads only this version. It stays the
-same during development, even when a field changes. It goes up only once older
-files must still be read."""
+"""The version of `power.js`. The page reads only this one, and it stays the same in
+development."""
 
 DATA_FILE = "power.js"
-"""The name of the power data file, which the page loads from its own folder."""
+"""The name of the power data file, beside the page."""
 
 PAGE_FILE = "power_viewer.html"
 """The name of the page in a power viewer folder."""
@@ -73,9 +54,8 @@ def _rounded(values, decimals: int) -> list[float]:
 
 def _body_box(model: ModelGeometry | None, turning: set[int]) -> list[float]:
     """
-    The body box, centred on the origin: the reach of the parts that do not turn.
-
-    Without a model, a 1 m cube, as the page draws one.
+    The body box, centred on the origin, as the reach of the parts that do not turn, or
+    a 1 m cube.
     """
     fixed = [
         part for part in (model.parts if model else []) if part.node not in turning
@@ -193,6 +173,10 @@ def power_data(budget: BudgetRun, scenario_id: str) -> dict:
     """
     The contents of `power.js`, for a budget and the `scenario.js` written with it.
 
+    Its fields are the format, the versions and the input files, the panels as boxes,
+    the grid's power and charge, the battery, the setup text, and the summary and the
+    checks.
+
     Parameters
     ----------
     budget : BudgetRun
@@ -267,23 +251,20 @@ def power_data(budget: BudgetRun, scenario_id: str) -> dict:
 
 def write_power_viewer(budget: BudgetRun, folder: str | Path) -> Path:  # noqa: V103
     """
-    Write the viewer for a budget: the page, `scenario.js` and `power.js`.
-
-    The page is the scenario viewer's, as `power_viewer.html`. The folder is made
-    if it does not exist, and older files are replaced. Write each scenario's
-    budget to a folder of its own.
+    Write the viewer for a budget, the page, `scenario.js` and `power.js`, in a folder
+    of its own.
 
     Parameters
     ----------
     budget : BudgetRun
         The budget
-    folder : str | Path
-        The folder to write to
+    folder : str or Path
+        The folder, made if missing
 
     Returns
     -------
     page : Path
-        The page written. Double-click it to open the viewer.
+        The page, which opens in a browser
     """
     run = budget.generation.run
     scenario = scenario_data(run)

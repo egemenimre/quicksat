@@ -6,26 +6,10 @@
 """
 Trajectory files in ECSV, astropy's CSV with a YAML header.
 
-The header gives each column's unit, and the metadata says what the numbers
-mean:
-
-    # %ECSV 1.0
-    # ---
-    # datatype:
-    # - {name: time, unit: s, datatype: float64}
-    # - {name: x, unit: km, datatype: float64}
-    # ... y and z, then vx, vy and vz in km / s
-    # meta:
-    #   epoch: 2026-10-01T00:00:00.000
-    #   time_scale: utc
-    #   frame: ITRS
-    #   object_name: My satellite
-    time x y z vx vy vz
-    0.0 ...
-
-`time` is the time since `epoch`. `epoch`, `time_scale` and `frame` are required,
-and `object_name` is optional. Any unit of time, length and speed will do. The
-frame is one of `quicksat.orbit.trajectory.FRAMES`.
+The columns are `time`, since the header's `epoch`, then x, y, z, vx, vy and vz, each
+with its unit. The header also needs `time_scale` and `frame`, and may give
+`object_name`. `docs/scenario/scenario_ref.ipynb`, under "A trajectory file", shows the
+layout.
 
 """
 
@@ -65,36 +49,14 @@ WRITTEN_DECIMALS = {
     "vy": 9,
     "vz": 9,
 }
-"""Decimals that `write_ecsv_trajectory` keeps, in the units of `COLUMNS`: a
-microsecond, a millimetre and a micrometre a second. The rounding moves a
-position by half a millimetre at most."""
+"""The decimals that `write_ecsv_trajectory` keeps: a microsecond, a millimetre and a
+micrometre a second."""
 
 
 def _read_header(meta: dict, path: Path) -> tuple[TimeArray, type, dict]:
     """
-    The epoch and the frame from the header of a trajectory file.
-
-    Parameters
-    ----------
-    meta : dict
-        The header's metadata
-    path : Path
-        The file, for the error messages
-
-    Returns
-    -------
-    epoch : Time
-        The time the time column counts from, in the file's time scale
-    frame_class : type
-        The astropy frame of the states
-    attributes : dict
-        The frame's fixed attributes, such as an equinox
-
-    Raises
-    ------
-    ValueError
-        If a field is missing, or the time scale, the epoch or the frame is not
-        understood
+    The epoch, the frame class and its fixed attributes from a trajectory file's header,
+    refusing a missing or unknown field.
     """
     # The header must give the epoch, the time scale and the frame
     missing = [field for field in ("epoch", "time_scale", "frame") if field not in meta]
@@ -123,24 +85,8 @@ def _read_header(meta: dict, path: Path) -> tuple[TimeArray, type, dict]:
 
 def _read_columns(table: QTable, path: Path) -> dict[str, np.ndarray]:
     """
-    The columns of a trajectory file, each in the unit of `COLUMNS`.
-
-    Parameters
-    ----------
-    table : QTable
-        The file, as astropy read it
-    path : Path
-        The file, for the error messages
-
-    Returns
-    -------
-    values : dict
-        Each column's values, by name
-
-    Raises
-    ------
-    ValueError
-        If a column is missing, has no unit, or has a unit of the wrong kind
+    A trajectory file's columns, each in the unit of `COLUMNS`, refusing a missing
+    column or a wrong unit.
     """
     # Check each required column exists, has a unit and is of the right kind,
     # then convert it to the unit the rest of the code expects
@@ -162,12 +108,12 @@ def _read_columns(table: QTable, path: Path) -> dict[str, np.ndarray]:
 
 def read_ecsv_trajectory(path: str | Path) -> Trajectory:
     """
-    Read a trajectory file in ECSV. See the module notes for the layout.
+    Read a trajectory file in ECSV.
 
     Parameters
     ----------
-    path : str | Path
-        Filepath of the trajectory file
+    path : str or Path
+        The trajectory file
 
     Returns
     -------
@@ -179,9 +125,8 @@ def read_ecsv_trajectory(path: str | Path) -> Trajectory:
     FileNotFoundError
         If the file does not exist
     ValueError
-        If the file is not ECSV, lacks a column, a unit or a header field, gives
-        a unit of the wrong kind or a frame that is not read, or if its times do
-        not rise
+        If a column, a unit or a header field is missing or wrong, or the times do not
+        rise
     """
     path = Path(path)
     if not path.is_file():
@@ -236,22 +181,20 @@ def write_ecsv_trajectory(  # noqa: V103
 
     Parameters
     ----------
-    path : str | Path
+    path : str or Path
         The file to write
     state : SkyCoord
-        Positions with velocities, with an `obstime` for each, such as from
-        `tle_states`
+        Positions with velocities, with their times
     frame : str, optional
-        The frame to write the states in, one of
-        `quicksat.orbit.trajectory.FRAMES`. GCRS by default.
+        The frame to write in, one of `quicksat.orbit.trajectory.FRAMES`, by default
+        GCRS
     name : str, optional
-        The name of the satellite, written as `object_name`
+        The satellite's name, as `object_name`
 
     Returns
     -------
     path : Path
-        The file written. Its epoch is the first time, in UTC, to the
-        millisecond. The values are rounded as `WRITTEN_DECIMALS` says.
+        The file written, with its epoch at the first time, in UTC, to the millisecond
     """
     path = Path(path)
     frame_class, attributes = frame_of(frame)

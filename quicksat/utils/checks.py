@@ -4,12 +4,9 @@
 #
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
-A budget's checks: each one compares a figure of the design with the limit it
-must meet.
+A budget's checks: each compares a figure of the design with the limit it must meet.
 
-A budget with something to meet gives its checks with `checks()`. The notebooks
-show them, and so does the sizing editor, beside the budget tables. Both read
-this code, so the two cannot give different verdicts.
+The notebooks and the Sizing Editor both read this code, so they give the same verdicts.
 
 """
 
@@ -31,8 +28,7 @@ class Check:
     Parameters
     ----------
     name : str
-        A short name: the requirement's own, such as `roll_40`, or the check's,
-        such as `propellant`
+        A short name, such as the requirement's, `roll_40`, or `propellant`
     description : str
         What is checked, as a sentence
     design : Quantity
@@ -40,8 +36,7 @@ class Check:
     limit : Quantity
         What the design must reach, or must not pass
     at_most : bool
-        Whether the design must stay at or below the limit, as a slew's time
-        must. Otherwise it must reach the limit, as the propellant loaded must.
+        Whether the design must stay at or below the limit, as a slew's time must
     """
 
     name: str
@@ -52,32 +47,15 @@ class Check:
 
     @property
     def spare(self):
-        """
-        What the design has to spare. It is negative when the design falls
-        short.
-
-        Returns
-        -------
-        spare : Quantity
-            In the design's unit
-        """
+        """What the design has to spare, in its unit, negative when it falls short."""
         spare = self.limit - self.design if self.at_most else self.design - self.limit
         return Q_(spare, self.design.unit)
 
     @property
     def margin(self):
         """
-        The spare, as a share of what the design needs or uses.
-
-        For a limit the design must reach, it is the design over the limit, less
-        one. For a limit it must not pass, it is the limit over the design, less
-        one, as `AgilityBudget.time_margin` gives. A need of zero, such as no
-        orbits without downlink, gives an infinite margin.
-
-        Returns
-        -------
-        margin : Quantity
-            Dimensionless, so 0.12 is a 12% margin
+        The spare as a share of what the design needs or uses: 0.12 is 12 %, and a need
+        of zero gives infinity.
         """
         have, need = (
             (self.limit, self.design) if self.at_most else (self.design, self.limit)
@@ -92,17 +70,14 @@ class Check:
 
 
 def _text(quantity, sign: bool = False) -> str:
-    """
-    A quantity as text, with two decimals. A data volume is written in GB or TB,
-    as the data budget's table writes it, where astropy would print `Gbyte`.
-    """
+    """A quantity as text, with two decimals, and a data volume in GB or TB."""
     text = f"{quantity:+.2f}" if sign else f"{quantity:.2f}"
     return text.replace("byte", "B")
 
 
 def tabulate(checks: Iterable[Check]) -> Styler:
     """
-    The checks as a table, one row each, for reading.
+    The checks as a table, one row each.
 
     Parameters
     ----------
@@ -112,9 +87,8 @@ def tabulate(checks: Iterable[Check]) -> Styler:
     Returns
     -------
     table : Styler
-        The name, what is checked, the design, the limit, the spare and the
-        margin, as text, and the verdict: `PASS` or `FAILS`. The frame is
-        available as `.data`
+        The name, what is checked, the design, the limit, the spare, the margin and the
+        verdict, `PASS` or `FAILS`
     """
     rows = [
         {

@@ -6,15 +6,7 @@
 """
 Attitude agility: how long a rest-to-rest slew takes, and whether it fits.
 
-The wheel geometry reduces to two numbers per axis: the momentum and the torque that the
-wheels can apply about it. The slew calculation uses only these two. There is no
-distribution matrix and no load per wheel. A sizing model needs to know whether a 40
-degree slew fits the time allowed, not how the wheels share the command.
-
-Roll and pitch use the same calculation. The wheel pyramid's symmetry axis is along yaw,
-which puts both of them in the base plane. So they differ only in the spacecraft's
-inertia about them. One model takes the axis as an argument, rather than two models that
-could come to disagree.
+`docs/sizing/agility_ref.ipynb` explains the model and its limits.
 
 """
 
@@ -84,7 +76,7 @@ class Body(Commented):
     z : Quantity
         Nadir dimension
     comments : str, optional
-        The user's notes on the block. quicksat does not read them
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -100,12 +92,10 @@ class PerAxis(Commented):
 
     Parameters
     ----------
-    roll : Quantity or float
-        The roll figure
-    pitch : Quantity or float
-        The pitch figure
+    roll, pitch : Quantity or float
+        The figure about each axis
     comments : str, optional
-        The user's notes on the block. quicksat does not read them
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -116,31 +106,23 @@ class PerAxis(Commented):
 
 class InertiaCase(Commented):
     """
-    One spacecraft, with one set of mass properties.
+    One spacecraft's mass properties: an envelope estimate or a stated inertia.
 
-    A case is **either** an envelope estimate **or** a stated inertia. An envelope
-    estimate is a box with an appendage factor per axis, and its inertia follows the
-    mass that the mass budget reports. A stated inertia is given as a mass properties
-    report gives it. A case is never both, so each number has only one possible source.
-    It is never neither.
-
-    The two behave differently when the spacecraft changes, and that is why they are
-    kept apart. An envelope inertia follows the mass automatically. A stated one is a
-    fixed number, and nothing checks that it still applies.
+    A case is one or the other, never both. `docs/sizing/agility_ref.ipynb`, under
+    "Inertia cases", says why.
 
     Parameters
     ----------
     body : Body, optional
-        The bus envelope. With `appendage_factor`, makes this an envelope case
+        The bus envelope, for an envelope case
     appendage_factor : PerAxis, optional
-        Inertia factor for arrays, radiator and booms, per axis
+        The inertia factor of the arrays, radiator and booms, for an envelope case
     propellant : Quantity
-        Percentage of the propellant load on board. It sets the point in the mission at
-        which the mass budget is read. Envelope cases only
+        The share of the propellant on board, at which the mass budget is read
     inertia : PerAxis, optional
-        Stated moment of inertia per axis. Makes this a stated case
+        The stated inertia, for a stated case
     comments : str, optional
-        The user's notes on the block. quicksat does not read them
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -158,11 +140,7 @@ class InertiaCase(Commented):
     @model_validator(mode="after")
     def _exactly_one_shape(self):
         """
-        Checks the case is an envelope or a stated inertia, not both or neither.
-
-        The error names the keys that were found, rather than failing as an unmatched
-        union. So a typo in `appendage_factor` is reported as a missing envelope, rather
-        than as a case that matches no shape at all.
+        Checks the case is an envelope or a stated inertia, naming the keys it found.
         """
         envelope = [
             name
@@ -189,27 +167,18 @@ class WheelAssembly(Commented):
     """
     A pyramid of reaction wheels, symmetry axis along yaw.
 
-    `momentum_use_factor` and `torque_derating` are policy rather than hardware. The
-    rest of the momentum is held back to store disturbances. The rest of the torque is
-    held back for control authority during the slew. Both are set here, rather than
-    folded into the wheel's nameplate figures, which are what the vendor quotes.
-
     Parameters
     ----------
     count : int
         Number of wheels
     elevation : Quantity
-        Angle of each wheel above the pyramid base plane
-    momentum : Quantity
-        Nameplate momentum storage, per wheel
-    torque : Quantity
-        Nameplate torque, per wheel
-    momentum_use_factor : Quantity
-        Fraction of nameplate momentum available for slewing
-    torque_derating : Quantity
-        Fraction of nameplate torque available for slewing
+        Each wheel's angle above the pyramid's base plane
+    momentum, torque : Quantity
+        Each wheel's nameplate momentum and torque
+    momentum_use_factor, torque_derating : Quantity
+        The share of each that slewing may use
     comments : str, optional
-        The user's notes on the block. quicksat does not read them
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -224,25 +193,20 @@ class WheelAssembly(Commented):
 
 class AgilityConfig(YamlFile):
     """
-    The agility inputs: what is slewed, and what slews it.
-
-    The time allowed for a slew is left out on purpose. It is a requirement placed on a
-    spacecraft, not a property of it, so it is in the requirements file.
+    The agility inputs. The time a slew may take is in the requirements file.
 
     Parameters
     ----------
     selected_case : str
-        The inertia case that the budget sizes and checks. The others are kept for
-        comparison, such as the spacecraft at other stages of the mission
+        The inertia case that the budget sizes and checks
     inertia_cases : dict of str to InertiaCase
-        Mass properties cases, keyed by any names you choose. Nothing in the code
-        depends on them
+        The mass properties cases, by any names
     wheels : WheelAssembly
         The wheel pyramid and its use policy
     settling_time : Quantity
-        What the platform needs after a slew before the payload can work
+        The time after a slew before the payload can work
     comments : str, optional
-        The user's notes on the block. quicksat does not read them
+        The user's notes, which quicksat does not read
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -267,23 +231,20 @@ class AgilityConfig(YamlFile):
         """
         Mass properties for one named case.
 
-        An unlisted name raises an error. A fallback case would instead give results for
-        a spacecraft that nobody asked about, with no warning.
-
         Parameters
         ----------
         name : str
-            Case name, as written in the config
+            The case's name
 
         Returns
         -------
         case : InertiaCase
-            That case's mass properties
+            The case
 
         Raises
         ------
         KeyError
-            If no case of that name is configured
+            If no case has that name
         """
         case = self.inertia_cases.get(name)
         if case is None:
@@ -296,36 +257,30 @@ class AgilityBudget:
     """
     Rest-to-rest slew performance about one axis, for one mass properties case.
 
-    Every capability query takes a `degraded` flag, rather than there being two objects.
-    The failure case halves the capability about the same axis, and is easiest to read
-    beside the nominal one. With one wheel failed, three remain. Only two of them can
-    run at full torque if the net momentum in the base plane is to stay zero. So both
-    the momentum and the torque about the axis halve. The geometry does not change. This
-    is the same pyramid with one wheel failed, not a mounting designed for three wheels.
+    Each capability takes `degraded`: one failed wheel halves the momentum and the
+    torque about the axis.
 
     Parameters
     ----------
     config : AgilityConfig
-        Inertia cases, wheels and the settling time
+        The agility inputs
     mission : Mission
-        The shared mission, for ground track speed
+        The shared mission, for the ground track speed
     axis : Axis
-        Which axis the slews are about
+        The axis of the slews
     case : str, optional
-        Which inertia case to use. Defaults to the config's selected case
+        The inertia case, by default the config's selected case
     mass_budget : MassBudget, optional
-        Where the mass comes from, for an envelope case. Read at the case's own
-        propellant fraction. Unused by a case that states its inertia
+        The source of an envelope case's mass
     mass : Quantity, optional
-        A mass to slew, overriding the budget. For a trial case or a test fixture
+        A mass that overrides the mass budget's
     requirements : Requirements, optional
-        The shared requirements, for the slews the mission needs. Without them,
-        there is no check
+        The shared requirements, for the checks
 
     Raises
     ------
     KeyError
-        If no case of that name is configured
+        If no case has that name
     """
 
     def __init__(
@@ -350,26 +305,8 @@ class AgilityBudget:
     @property
     def mass(self):
         """
-        The mass being slewed, for an envelope case.
-
-        A `mass` passed in takes priority. Otherwise, the attached mass budget is read
-        at the case's propellant fraction. The mass is taken in orbit and scaled for
-        propellant, because that is what actually turns. The launch adapter has been
-        left behind, and the tanks empty over the mission. So a satellite becomes more
-        agile with age.
-
-        A case that states its inertia never calls this. The mass enters the slew
-        calculation only through the inertia, so such a case needs no mass at all.
-
-        Returns
-        -------
-        mass : Quantity
-            In kg
-
-        Raises
-        ------
-        ValueError
-            If an envelope case has neither a mass nor a mass budget to read
+        The mass an envelope case slews: the `mass` passed in, or the mass budget's in
+        orbit at the case's propellant share, in kg.
         """
         if self._mass is not None:
             return self._mass
@@ -395,32 +332,27 @@ class AgilityBudget:
         requirements_path: str | Path | None = None,
     ) -> "AgilityBudget":
         """
-        Build an agility budget from a config and a mission file.
-
-        Where several budgets share one mission, load it once with
-        `Mission.from_yaml_file` and use the constructor instead.
+        Build an agility budget from its files.
 
         Parameters
         ----------
-        config_path : str | Path
-            Filepath of the agility config (YAML)
-        mission_path : str | Path
-            Filepath of the shared mission (YAML)
+        config_path, mission_path : str or Path
+            The agility config and the shared mission
         axis : Axis
-            Which axis the slews are about
+            The axis of the slews
         case : str, optional
-            Which inertia case to fly. Defaults to the config's selected case
+            The inertia case, by default the config's selected case
         mass_budget : MassBudget, optional
-            Where the mass comes from, for an envelope case
+            The source of an envelope case's mass
         mass : Quantity, optional
-            A mass to slew, overriding the budget
-        requirements_path : str | Path, optional
-            Filepath of the shared requirements (YAML)
+            A mass that overrides the mass budget's
+        requirements_path : str or Path, optional
+            The shared requirements
 
         Returns
         -------
         budget : AgilityBudget
-            The assembled budget
+            The budget
         """
         # here, as the requirements module reads `Axis` from this one
         from quicksat.utils.requirements import Requirements
@@ -440,16 +372,8 @@ class AgilityBudget:
     @property
     def inertia(self):
         """
-        Moment of inertia about the axis, from the case's shape.
-
-        A stated case gives it directly. An envelope case works it out as a uniform box
-        with an appendage factor, from the mass at the case's propellant fraction. So it
-        changes when the mass budget does.
-
-        Returns
-        -------
-        inertia : Quantity
-            In kg*m**2
+        The moment of inertia about the axis: stated, or a uniform box times the
+        appendage factor, in kg*m**2.
         """
         if not self.case.is_envelope:
             return cast(Q_, getattr(self.case.inertia, self.axis.value)).to("kg * m**2")
@@ -462,77 +386,33 @@ class AgilityBudget:
     @property
     def projection(self):
         """
-        Fraction of a wheel's capability that acts about an axis in the base plane.
-
-        `cos(elevation)` projects the wheel into the pyramid base plane, and `cos(45
-        deg)` projects it onto roll or pitch within that plane.
-
-        Returns
-        -------
-        projection : Quantity
-            Dimensionless
+        The share of a wheel's capability about roll or pitch: cos(elevation) cos(45°).
         """
         elevation = self.config.wheels.elevation
         return (np.cos(elevation) * np.cos(Q_(45, "deg"))).to(u.dimensionless_unscaled)
 
     @property
     def usable_momentum_per_wheel(self):
-        """
-        Momentum one wheel contributes, after the use policy.
-
-        Returns
-        -------
-        momentum : Quantity
-            In N*m*s
-        """
+        """The momentum one wheel gives after the use factor, in N*m*s."""
         wheels = self.config.wheels
         return (wheels.momentum * wheels.momentum_use_factor).to("N * m * s")
 
     @property
     def usable_torque_per_wheel(self):
-        """
-        Torque one wheel contributes, after derating.
-
-        Returns
-        -------
-        torque : Quantity
-            In N*m
-        """
+        """The torque one wheel gives after derating, in N*m."""
         wheels = self.config.wheels
         return (wheels.torque * wheels.torque_derating).to("N * m")
 
     @property
     def yaw_momentum(self):
-        """
-        Momentum about the pyramid's symmetry axis.
-
-        Yaw is the weak axis with this mounting. No slew case here uses it. It is still
-        reported, because its limits are what a yaw manoeuvre would have to stay within.
-
-        Returns
-        -------
-        momentum : Quantity
-            In N*m*s
-        """
+        """The momentum about yaw, the pyramid's weak axis, in N*m*s."""
         wheels = self.config.wheels
         return (
             wheels.count * self.usable_momentum_per_wheel * np.sin(wheels.elevation)
         ).to("N * m * s")
 
     def _wheels_used(self, degraded: bool) -> float:
-        """
-        Effective wheel count, halved when one has failed.
-
-        Parameters
-        ----------
-        degraded : bool
-            One wheel failed
-
-        Returns
-        -------
-        count : float
-            Wheels that can be commanded about the axis
-        """
+        """The wheel count, halved when one has failed."""
         return self.config.wheels.count / 2 if degraded else self.config.wheels.count
 
     def axis_momentum(self, degraded: bool = False):
@@ -542,7 +422,7 @@ class AgilityBudget:
         Parameters
         ----------
         degraded : bool
-            One wheel failed, halving the usable capability
+            One wheel failed
 
         Returns
         -------
@@ -559,7 +439,7 @@ class AgilityBudget:
         Parameters
         ----------
         degraded : bool
-            One wheel failed, halving the usable capability
+            One wheel failed
 
         Returns
         -------
@@ -610,10 +490,6 @@ class AgilityBudget:
     def crossover_angle(self, degraded: bool = False):
         """
         Slew angle at which torque limiting gives way to momentum limiting.
-
-        Below it, the wheels never saturate, and the profile is triangular. Above it,
-        they saturate, and the slew coasts. The side a slew falls on says whether more
-        torque or more momentum would shorten it.
 
         Parameters
         ----------
@@ -691,11 +567,7 @@ class AgilityBudget:
 
     def momentum_used(self, angle, degraded: bool = False):
         """
-        Fraction of the axis momentum that the slew uses.
-
-        It reaches 1 for any slew past the crossover, which is what momentum limited
-        means. Below the crossover, the rest is spare momentum, which a larger slew
-        would use.
+        Fraction of the axis momentum that the slew uses: 1 past the crossover.
 
         Parameters
         ----------
@@ -768,41 +640,33 @@ class AgilityBudget:
 
     def time_margin(self, angle, target_duration, degraded: bool = False):
         """
-        How much of a target duration is left over, as a fraction of what is needed.
-
-        The target duration is an argument rather than config. How long a slew may take
-        is a requirement placed on a spacecraft, not a property of it. Different
-        operations ask different times of the same spacecraft.
+        The share of a target duration left over, against the time needed.
 
         Parameters
         ----------
         angle : Quantity
             Slew angle
         target_duration : Quantity
-            Time the operation allows for the whole manoeuvre
+            The time allowed for the whole manoeuvre
         degraded : bool
             One wheel failed
 
         Returns
         -------
         margin : Quantity
-            Dimensionless. Negative when the slew does not fit
+            Dimensionless, negative when the slew does not fit
         """
         needed = self.total_time(angle, degraded)
         return ((target_duration - needed) / needed).to(u.dimensionless_unscaled)
 
     def achievable_angle(self, target_duration, degraded: bool = False):
         """
-        Largest slew that fits, given the time available.
-
-        The inverse of `slew_time`. It is solved on the momentum-limited branch first,
-        because a slew large enough to ask about is usually past the crossover. Below
-        the crossover, the torque-limited form gives the answer instead.
+        The largest slew that fits the time allowed, settling included.
 
         Parameters
         ----------
         target_duration : Quantity
-            Time the operation allows for the whole manoeuvre
+            The time allowed for the whole manoeuvre
         degraded : bool
             One wheel failed
 
@@ -820,10 +684,7 @@ class AgilityBudget:
 
     def ground_distance(self, time):
         """
-        How far the ground track moves during a slew.
-
-        This ties the slew to the mission that the other budgets share. It turns a slew
-        time into a distance on the ground, which the payload does not image.
+        How far the ground track moves in a time, unimaged during a slew.
 
         Parameters
         ----------
@@ -839,13 +700,13 @@ class AgilityBudget:
 
     def checks(self) -> list[Check]:
         """
-        The budget's checks: each slew the requirements ask about this axis,
-        against its time, for this inertia case and with every wheel working.
+        The checks: each slew that the requirements ask about this axis, against its
+        time.
 
         Returns
         -------
         checks : list of Check
-            One per slew about this axis. None without the agility requirements
+            Empty without agility requirements
         """
         if self.requirements is None or self.requirements.agility is None:
             return []
@@ -872,16 +733,15 @@ class AgilityBudget:
         Parameters
         ----------
         angles : iterable of Quantity, optional
-            Slew angles. Defaults to `DEFAULT_SLEW_ANGLES`
+            Slew angles, by default `DEFAULT_SLEW_ANGLES`
         degraded : bool
             One wheel failed
         target_duration : Quantity, optional
-            Time the operation allows. Given one, the table also says whether each slew
-            fits. Without one, those columns are left out
+            The time allowed, which adds whether each slew fits
 
         Returns
         -------
         report : Styler
-            One row per slew angle, rendered for reading
+            One row per slew angle
         """
         return tabulate(self.slew_table(angles, degraded), target_duration)
