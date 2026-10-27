@@ -4,6 +4,8 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-27
+
 ### Added
 
 - The README's License section says that quicksat comes with no warranty, and that its author takes no responsibility for any loss from its use. It names what is compared with Orekit, and points to sections 15 and 16 of the licence.
@@ -200,7 +202,8 @@ Initial release.
 - A ground target search, through OpenStreetMap's Nominatim.
 - `python -m quicksat.editor serve FOLDER OUTPUT` serves the Scenario Editor on this computer, with a button that runs the page's files and writes the viewer.
 
-[Unreleased]: https://github.com/egemenimre/quicksat/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/egemenimre/quicksat/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/egemenimre/quicksat/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/egemenimre/quicksat/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/egemenimre/quicksat/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/egemenimre/quicksat/compare/v0.3.0...v0.4.0
