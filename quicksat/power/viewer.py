@@ -8,7 +8,8 @@ The power budget for the viewer: `power.js`, beside the page and `scenario.js`.
 
 With `power.js`, the page shows a Power tab, the net power and the battery's charge. It
 carries the `id` of the `scenario.js` written with it, and the page shows the power only
-when the two match. `power_data` lists its fields.
+when the two match. `power_data` lists its fields. With the payload's heat account, from
+`quicksat.thermal.viewer`, the page shows a Thermal tab too.
 
 """
 
@@ -169,13 +170,15 @@ def _setup(budget: BudgetRun) -> list[dict]:
     ]
 
 
-def power_data(budget: BudgetRun, scenario_id: str) -> dict:
+def power_data(
+    budget: BudgetRun, scenario_id: str, thermal: dict | None = None
+) -> dict:
     """
     The contents of `power.js`, for a budget and the `scenario.js` written with it.
 
     Its fields are the format, the versions and the input files, the panels as boxes,
-    the grid's power and charge, the battery, the setup text, and the summary and the
-    checks.
+    the grid's power and charge, the battery, the setup text, the summary and the
+    checks, and the payload's heat account or None.
 
     Parameters
     ----------
@@ -183,6 +186,9 @@ def power_data(budget: BudgetRun, scenario_id: str) -> dict:
         The budget
     scenario_id : str
         The `id` of the run's `scenario.js`
+    thermal : dict, optional
+        The payload's heat account on the same run, from
+        `quicksat.thermal.viewer.thermal_data`
 
     Returns
     -------
@@ -246,10 +252,13 @@ def power_data(budget: BudgetRun, scenario_id: str) -> dict:
         "setup": _setup(budget),
         "summary": budget_summary(budget),
         "checks": [dataclasses.asdict(check) for check in budget.checks],
+        "thermal": thermal,
     }
 
 
-def write_power_viewer(budget: BudgetRun, folder: str | Path) -> Path:  # noqa: V103
+def write_power_viewer(  # noqa: V103
+    budget: BudgetRun, folder: str | Path, thermal: dict | None = None
+) -> Path:
     """
     Write the viewer for a budget, the page, `scenario.js` and `power.js`, in a folder
     of its own.
@@ -260,6 +269,9 @@ def write_power_viewer(budget: BudgetRun, folder: str | Path) -> Path:  # noqa: 
         The budget
     folder : str or Path
         The folder, made if missing
+    thermal : dict, optional
+        The payload's heat account on the same run, from
+        `quicksat.thermal.viewer.thermal_data`, for the Thermal tab
 
     Returns
     -------
@@ -269,7 +281,7 @@ def write_power_viewer(budget: BudgetRun, folder: str | Path) -> Path:  # noqa: 
     run = budget.generation.run
     scenario = scenario_data(run)
     write_scenario_js(run, folder, scenario)
-    data = power_data(budget, scenario["id"])
+    data = power_data(budget, scenario["id"], thermal)
     write_data_js(Path(folder) / DATA_FILE, "power", data, data["power_file"])
     page = Path(folder) / PAGE_FILE
     page.write_text(viewer_page(), encoding="utf-8")

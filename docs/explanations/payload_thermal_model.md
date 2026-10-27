@@ -179,7 +179,7 @@ The model has no fin efficiency, and emits from the whole area at the design tem
 
 The model gives the figures, but it does not size the payload by itself. Sizing takes decisions that the code cannot take. They come from the mission, from systems engineering and from safety. The power budget is the same: the code checks a design, and the user chooses it.
 
-**The two balancing powers answer different questions.** The table by mode gives both, and the Thermal tab has a button for each: Balance each mode and Balance the run.
+**The two balancing powers answer different questions.** The table by mode gives both, and the Scenario Editor's Thermal tab has a button for each: Balance each mode and Balance the run.
 
 - **Each mode balances: the heater to install.** Each mode's heater is its balancing power. No mode loses heat, but a hot mode still gains heat, since a heater cannot cool. So the run warms from orbit to orbit, and the heaters give more energy than the payload needs. The figure is still the one to install. A thermostat holds the payload at its set point. Once the heat of a hot mode has left, it holds the set point at about the cold mode's balancing power. So that power must be there, for a long stay in the coldest mode too.
 - **The run balances: the heater's mean draw.** The heater runs in the modes that lose heat only, and brings the run's net energy to zero. The hot modes heat the payload up a little, and the cold modes take the heat back. This is a thermostat's mean power over the run. After a hot mode, a thermostat stays off until the extra heat has left, and then holds the set point. So its net heat comes back to zero sooner, and then stays flat. Its energy is the same, since the run's balance fixes it. The power budget reads the heater row for the heater's energy, so this is the figure for it.
@@ -221,9 +221,9 @@ The file is optional. Without it, the folder sizes power only.
 
 ## Where to see it
 
-- **The thermal command,** `python -m quicksat.thermal`, does all that the power command does: it runs the scenario and the power budget, prints the checks and writes the viewer. Then it prints the account's tables by activity and by payload mode. Without the thermal file, it says so, and gives the power budget alone.
+- **The thermal command,** `python -m quicksat.thermal`, does all that the power command does: it runs the scenario and the power budget, prints the checks and writes the viewer. Then it prints the account's tables by activity and by payload mode, and puts the account in the viewer. Without the thermal file, it says so, and gives the power budget alone.
 - **The Scenario Editor's Thermal tab** edits the thermal file, and shows its surfaces in the 3D panel. With the editor's server, its Compute button gives the account. The table by mode edits the heater row. Balance each mode and Balance the run set the heaters to either balancing power. The server keeps the run and the surfaces' heat, so a change to the heaters, the flows or the dissipation is quick to work out again.
-- **The viewer** has no Thermal tab yet.
+- **The viewer's Thermal tab** shows the account as the editor's tab does, without its fields and buttons: the tables by payload mode, by activity and by whole orbit, the net heat since the start over the payload's modes, the surfaces and the notes. The viewer has the tab when the thermal command or the editor's Create the viewer writes it, with the thermal file in the folder. The power command's viewer has no Thermal tab. The Inputs tab shows the thermal file.
 
 ## How far to trust the figures
 

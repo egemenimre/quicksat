@@ -87,8 +87,15 @@ def test_run_power(tmp_path):
     assert [c["file"] for c in result["checks"]] == list(NAMES.values())
     assert all(c["ok"] for c in result["checks"])
     assert "Loads met" in result["report"]
-    # the thermal file adds the heat account to the run's results
+    # the thermal file adds the heat account to the run's results, and to the viewer
     assert "Payload heat account, by activity:" in result["report"]
+    text = (tmp_path / "power.js").read_text()
+    power = json.loads(text[text.index(" = {") + 3 :].rstrip().rstrip(";"))
+    assert power["thermal"]["file"] == "payload_thermal.yaml"
+    assert [row["payload mode"] for row in power["thermal"]["modes"]] == [
+        "idle",
+        "imaging",
+    ]
 
 
 def test_run_power_needs_both_consumption_files(tmp_path):

@@ -242,6 +242,8 @@ def test_the_viewer_folder_holds_both_data_files(budget, tmp_path):
     ]
     payload = power["setup"][3]["rows"]
     assert [mode for mode, _ in payload] == ["idle", "imaging", "downlink"]
+    # the power budget alone gives the viewer no Thermal tab
+    assert power["thermal"] is None
 
 
 def test_the_panels_are_placed_as_the_model_draws_them(budget):

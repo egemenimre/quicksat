@@ -9,8 +9,8 @@ Run the power budget and the payload's heat account in a folder, from the comman
     python -m quicksat.thermal sample/power/data sample/power/output
 
 It does all that `python -m quicksat.power` does, then prints the heat account by
-activity and by payload mode, or says the folder has no thermal file. The viewer has no
-heat account yet.
+activity and by payload mode, or says the folder has no thermal file. The viewer then
+has a Thermal tab with the account.
 
 """
 
@@ -22,6 +22,7 @@ from quicksat.power.viewer import write_power_viewer
 from quicksat.scenario import SCENARIO_FILE
 from quicksat.thermal import THERMAL_FILE
 from quicksat.thermal.folder import run_folder, summary
+from quicksat.thermal.viewer import thermal_data
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -52,7 +53,8 @@ def main(argv: list[str] | None = None) -> None:
     except (OSError, ValueError) as error:
         parser.exit(1, f"error: {error}\n")
     print(summary(budget, thermal))
-    print(write_power_viewer(budget, args.output))
+    account = None if thermal is None else thermal_data(thermal)
+    print(write_power_viewer(budget, args.output, account))
 
 
 if __name__ == "__main__":
