@@ -7,9 +7,9 @@
 <!--
   Quicksat Scenario Viewer. This is the source: viewer_page() in
   quicksat/scenario/viewer.py builds the page. It puts in the styles from
-  viewer.css, the scripts from viewer/, the libraries and the coastlines. The
-  built page holds no run data. It reads scenario.js, and power.js if there is
-  one, from its own folder.
+  viewer.css, the scripts and the help from viewer/, the libraries and the
+  coastlines. The built page holds no run data. It reads scenario.js, and
+  power.js if there is one, from its own folder.
   Libraries: three.js (MIT), uPlot (MIT). Coastlines: Natural Earth (public
   domain).
 -->
@@ -186,6 +186,7 @@
 <script src="scenario.js"></script>
 <script src="power.js"></script>
 <script id="coastlines" type="application/json">@coastlines@</script>
+<script id="help" type="application/json">@help@</script>
 <script>/*@three@*/</script>
 <script>/*@uplot@*/</script>
 <!-- The checks on the data and the values between grid steps, which the tests

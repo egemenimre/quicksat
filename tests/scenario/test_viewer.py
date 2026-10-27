@@ -13,10 +13,12 @@ page's JavaScript. The Activity Designer's data is checked on `once_run`.
 
 import hashlib
 import json
+import re
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
+import yaml
 
 from quicksat.orbit.omm import write_omm_file
 from quicksat.orbit.tle import read_tle_file
@@ -197,7 +199,7 @@ def test_the_data_file_reads_back_and_a_rerun_writes_the_same_bytes(
 
 def test_the_page_is_built_with_everything_inside():
     page = viewer_page()
-    for placeholder in viewer._PAGE_PARTS:
+    for placeholder in [*viewer._PAGE_PARTS, "@help@"]:
         assert placeholder not in page
     assert '<script src="scenario.js"></script>' in page
     assert "three.js authors" in page
@@ -208,6 +210,21 @@ def test_the_page_runs_every_script_of_the_viewer_folder():
     folder = viewer._TEMPLATES / "viewer"
     names = sorted(path.name for path in folder.iterdir() if path.name.endswith(".js"))
     assert sorted(viewer._SCRIPTS) == names
+
+
+def test_each_name_of_the_template_has_its_explanation():
+    help_ = yaml.safe_load(viewer._HELP.read_text(encoding="utf-8"))
+    assert all(sorted(entry) == ["text", "title"] for entry in help_.values())
+    template = (viewer._TEMPLATES / "viewer.html").read_text(encoding="utf-8")
+    assert set(re.findall(r'data-help="([^"]+)"', template)) <= help_.keys()
+
+
+def test_the_page_holds_the_help_as_json():
+    page = viewer_page()
+    text = re.search(r'<script id="help" type="application/json">(.*?)</script>', page)
+    assert text is not None
+    help_ = json.loads(text.group(1))
+    assert help_["orbit"]["title"] == "Orbit view"
 
 
 def test_the_viewer_folder_holds_the_page_and_the_data(run, tmp_path):
