@@ -204,6 +204,12 @@ def test_the_page_is_built_with_everything_inside():
     assert "Leon Sorokin" in page
 
 
+def test_the_page_runs_every_script_of_the_viewer_folder():
+    folder = viewer._TEMPLATES / "viewer"
+    names = sorted(path.name for path in folder.iterdir() if path.name.endswith(".js"))
+    assert sorted(viewer._SCRIPTS) == names
+
+
 def test_the_viewer_folder_holds_the_page_and_the_data(run, tmp_path):
     page = write_scenario_viewer(run, tmp_path / "viewer")
     assert page.name == PAGE_FILE
@@ -213,7 +219,7 @@ def test_the_viewer_folder_holds_the_page_and_the_data(run, tmp_path):
 
 def test_a_template_without_a_placeholder_is_refused(monkeypatch, tmp_path):
     parts = dict(viewer._PAGE_PARTS)
-    parts["@missing@"] = (tmp_path / "missing.js", None)
+    parts["@missing@"] = ((tmp_path / "missing.js",), None)
     monkeypatch.setattr(viewer, "_PAGE_PARTS", parts)
     with pytest.raises(ValueError, match="@missing@ must appear once"):
         viewer_page()
@@ -223,9 +229,20 @@ def test_a_library_that_would_end_its_script_tag_is_refused(monkeypatch, tmp_pat
     bad = tmp_path / "bad.js"
     bad.write_text("var x = '</script>';")
     parts = dict(viewer._PAGE_PARTS)
-    parts["/*@three@*/"] = (bad, None)
+    parts["/*@three@*/"] = ((bad,), None)
     monkeypatch.setattr(viewer, "_PAGE_PARTS", parts)
     with pytest.raises(ValueError, match="ends its tag"):
+        viewer_page()
+
+
+def test_a_script_that_would_end_its_tag_is_refused_by_name(monkeypatch, tmp_path):
+    bad = tmp_path / "bad.js"
+    bad.write_text("const x = '</SCRIPT>';")
+    parts = dict(viewer._PAGE_PARTS)
+    sources, notice = parts["/*@viewer@*/"]
+    parts["/*@viewer@*/"] = ((*sources, bad), notice)
+    monkeypatch.setattr(viewer, "_PAGE_PARTS", parts)
+    with pytest.raises(ValueError, match="bad.js holds"):
         viewer_page()
 
 

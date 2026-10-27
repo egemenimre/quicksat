@@ -64,15 +64,33 @@ _VENDOR = _TEMPLATES / "vendor"
 _DATA_TAGS = ('<script src="scenario.js"></script>', '<script src="power.js"></script>')
 """The template's tags that load the run's data, which `designer_page` replaces."""
 
+_SCRIPTS = (
+    "data.js",
+    "state.js",
+    "spacecraft.js",
+    "orbit.js",
+    "body.js",
+    "ground.js",
+    "charts.js",
+    "readouts.js",
+    "pages.js",
+    "thermal.js",
+    "help.js",
+    "main.js",
+)
+"""The page's own scripts in `templates/viewer/`, in the order the page runs them."""
+
 _PAGE_PARTS = {
-    "/*@uplot-css@*/": (_VENDOR / "uPlot.min.css", None),
-    "/*@three@*/": (_VENDOR / "three.min.js", _VENDOR / "three.LICENSE"),
-    "/*@uplot@*/": (_VENDOR / "uPlot.iife.min.js", _VENDOR / "uPlot.LICENSE"),
-    "@coastlines@": (_PACKAGE / "data" / "coastlines.json", None),
-    "/*@logic@*/": (_TEMPLATES / "viewer_logic.js", None),
+    "/*@uplot-css@*/": ((_VENDOR / "uPlot.min.css",), None),
+    "/*@css@*/": ((_TEMPLATES / "viewer.css",), None),
+    "/*@three@*/": ((_VENDOR / "three.min.js",), _VENDOR / "three.LICENSE"),
+    "/*@uplot@*/": ((_VENDOR / "uPlot.iife.min.js",), _VENDOR / "uPlot.LICENSE"),
+    "@coastlines@": ((_PACKAGE / "data" / "coastlines.json",), None),
+    "/*@logic@*/": ((_TEMPLATES / "viewer_logic.js",), None),
+    "/*@viewer@*/": (tuple(_TEMPLATES / "viewer" / name for name in _SCRIPTS), None),
 }
-"""Each placeholder in the template, the file that replaces it, and a library's licence
-notice."""
+"""Each placeholder in the template, the files that replace it, joined in order, and a
+library's licence notice."""
 
 
 def _flat(values: np.ndarray, decimals: int) -> list[float]:
@@ -599,8 +617,8 @@ def write_scenario_js(
 
 def viewer_page() -> str:
     """
-    The viewer page, built from its template with its libraries, the coastlines and its
-    logic inside.
+    The viewer page, built from its template with its styles, its scripts, its libraries
+    and the coastlines inside.
 
     Returns
     -------
@@ -613,15 +631,17 @@ def viewer_page() -> str:
         If a placeholder is missing or doubled, or a file would end its script tag early
     """
     page = (_TEMPLATES / "viewer.html").read_text(encoding="utf-8")
-    for placeholder, (source, notice) in _PAGE_PARTS.items():
+    for placeholder, (sources, notice) in _PAGE_PARTS.items():
         if page.count(placeholder) != 1:
             raise ValueError(f"{placeholder} must appear once in the viewer template")
-        text = source.read_text(encoding="utf-8")
+        texts = [(path.name, path.read_text(encoding="utf-8")) for path in sources]
         if notice is not None:
-            text = f"/*!\n{notice.read_text(encoding='utf-8')}*/\n{text}"
-        if "</script" in text.lower():
-            raise ValueError(f"{source.name} holds '</script', which ends its tag")
-        page = page.replace(placeholder, text)
+            licence = notice.read_text(encoding="utf-8")
+            texts.insert(0, (notice.name, f"/*!\n{licence}*/"))
+        for name, text in texts:
+            if "</script" in text.lower():
+                raise ValueError(f"{name} holds '</script', which ends its tag")
+        page = page.replace(placeholder, "\n".join(text for _, text in texts))
     return page
 
 
