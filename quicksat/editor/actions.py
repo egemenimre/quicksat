@@ -27,7 +27,7 @@ from pathlib import Path, PureWindowsPath
 from quicksat.editor.budgets import budget_results
 from quicksat.editor.shared import loader_check
 from quicksat.editor.sizing import NAMES as SIZING_NAMES
-from quicksat.editor.thermal import surfaces_key, thermal_results
+from quicksat.editor.thermal import surfaces_key
 from quicksat.power import CONSUMPTION_FILES, POWER_FILE
 from quicksat.power.config import PowerSystem
 from quicksat.power.consumption import PowerConsumption
@@ -45,6 +45,7 @@ from quicksat.thermal.account import run_thermal
 from quicksat.thermal.config import PayloadThermal
 from quicksat.thermal.folder import run_folder, summary
 from quicksat.thermal.surfaces import surface_powers
+from quicksat.thermal.viewer import thermal_data
 
 _ROLES = {
     "scenario": Scenario.from_yaml_file,
@@ -188,8 +189,9 @@ def run_files(files: list[dict], output: str | Path) -> dict:
             budget, thermal = run_folder(
                 base, names["scenario"], names["power"], consumption, thermal_file
             )
+            account = None if thermal is None else thermal_data(thermal)
             return {
-                "page": write_power_viewer(budget, output).name,
+                "page": write_power_viewer(budget, output, account).name,
                 "report": summary(budget, thermal, thermal_file),
             }
         run = run_scenario(Scenario.from_yaml_file(base / names["scenario"]))
@@ -259,7 +261,7 @@ def thermal_files(files: list[dict], cache: dict) -> dict:
     Returns
     -------
     result : dict
-        As from `run_files`, with `results` from `thermal_results`, and whether the
+        As from `run_files`, with `results` from `thermal_data`, and whether the
         cache was `reused`
     """
 
@@ -285,7 +287,7 @@ def thermal_files(files: list[dict], cache: dict) -> dict:
             cache.clear()
             cache.update(key=key, run=run, surfaces=surfaces)
         account = run_thermal(thermal, consumption, power_system, run, surfaces)
-        return {"results": thermal_results(account), "reused": reused}
+        return {"results": thermal_data(account), "reused": reused}
 
     return _run_inputs(files, _ROLES, work)
 

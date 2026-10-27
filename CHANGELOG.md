@@ -8,9 +8,11 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 
 - The README's License section says that quicksat comes with no warranty, and that its author takes no responsibility for any loss from its use. It names what is compared with Orekit, and points to sections 15 and 16 of the licence.
 - `docs/explanations/payload_thermal_model.md` explains the kinds of radiator, a patch and a panel with heat pipes, and how to allow for each in the inputs. It also says how far to trust the figures: the inputs that move them most, what they are good for, and what they are not for.
+- The viewer has a Thermal tab, with the payload's heat account as the Scenario Editor's Thermal tab shows it, without its fields and buttons: the tables by payload mode, by activity and by whole orbit, the net heat since the start over the payload's modes, the surfaces and the notes. The Inputs tab shows the thermal file. `python -m quicksat.thermal`, the editor's Create the viewer and the power sample's notebook write it, when the folder has the thermal file.
 
 ### Changed
 
+- `write_power_viewer` and `power_data` take the payload's heat account as an optional `thermal`, and `power.js` has a `thermal` field, null without it. The account comes from `thermal_data`, in the new module `quicksat.thermal.viewer`. It was `thermal_results`, in `quicksat.editor.thermal`, and now gives the thermal file's name and text too.
 - The package's docstrings are shorter: 7150 lines, down from 11254. A public function or class keeps its parameters and returns, in short entries. A private helper or a property has one line, with its units. A long explanation is gone where a reference notebook or an explanation gives it, and the docstring names that doc.
 
 ## [0.6.0] - 2026-10-26

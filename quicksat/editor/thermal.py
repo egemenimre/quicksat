@@ -5,19 +5,14 @@
 # Licensed under GNU GPL v3.0. See LICENSE.md for more info.
 """
 The Thermal tab's side of the editor's server: the key of the run and the surfaces' heat
-that the server keeps, and the heat account as the tab shows it, for
-`actions.thermal_files`.
+that the server keeps, for `actions.thermal_files`. The tab shows the account from
+`quicksat.thermal.viewer`, as the viewer does.
 """
 
 import hashlib
 import json
 
-import numpy as np
-
-from quicksat import u
 from quicksat.power.config import PowerSystem
-from quicksat.power.orbits import run_seconds
-from quicksat.thermal.account import ThermalRun
 from quicksat.thermal.config import PayloadThermal
 
 _ACCOUNT_KINDS = (
@@ -85,43 +80,3 @@ def surfaces_key(
         ).encode("utf-8")
     )
     return digest.hexdigest()
-
-
-def _records(table) -> list[dict]:
-    """A table's rows for the page, with None where a value is missing."""
-    return table.astype(object).where(table.notna(), None).to_dict("records")
-
-
-def thermal_results(account: ThermalRun) -> dict:
-    """
-    The payload's heat account, as the Thermal tab shows it.
-
-    Parameters
-    ----------
-    account : ThermalRun
-        The heat account
-
-    Returns
-    -------
-    results : dict
-        The four tables as rows, the notes, the run's start, the net heat's curve in W h
-        against min, and the payload's mode bands
-    """
-    run = account.run
-    return {
-        "activities": _records(account.activity_table),
-        "modes": _records(account.mode_table),
-        "orbits": _records(account.orbit_table),
-        "surfaces": _records(account.surface_table),
-        "notes": account.notes,
-        "start": run.times[0].utc.isot,
-        "t_min": [round(float(t) / 60, 4) for t in run_seconds(run)],
-        "energy_wh": [
-            round(float(e), 4)
-            for e in np.asarray(account.running_energy.to(u.W * u.h).value)
-        ],
-        "bands": [
-            {"mode": mode, "start_min": start / 60, "end_min": end / 60}
-            for start, end, mode in account.pieces
-        ],
-    }
