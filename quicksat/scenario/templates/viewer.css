@@ -1,0 +1,389 @@
+:root {
+  --bg: #08111f;
+  --panel: #0c1829;
+  --panel-2: #102037;
+  --line: #1a2e4a;
+  --line-2: #24405f;
+  --text: #cdd9ea;
+  --muted: #7d93b3;
+  --dim: #4f6789;
+  --accent: #22d3ee;
+  --accent-soft: rgba(34, 211, 238, 0.12);
+  --amber: #f5b13d;
+  --red: #f87171;
+  --green: #34d399;
+  --ok-bg: #0b2a22;
+  --ok-line: #1f7a5a;
+  --warn-bg: #2b2310;
+  --warn-line: #8a6a1f;
+  --fail-bg: #2d1418;
+  --fail-line: #8f3341;
+  --mono: ui-monospace, "JetBrains Mono", "SF Mono", "Cascadia Mono", Menlo, Consolas,
+    "DejaVu Sans Mono", monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.45 var(--mono);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+button, select, input { font: inherit; color: inherit; }
+
+/* Header and page tabs */
+.top {
+  display: flex; align-items: stretch; gap: 16px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(#0d1b2f, #0a1526);
+  min-width: 0;
+}
+.top > * { align-self: center; }
+.brand { color: var(--accent); font-weight: 700; letter-spacing: 0.1em; white-space: nowrap; }
+.brand::before { content: "\25C6  "; }
+.brand span { color: var(--muted); font-weight: 400; margin-left: 6px; }
+.subtitle { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.subtitle b { color: var(--text); font-weight: 400; }
+.spacer { flex: 1; }
+.chip {
+  border: 1px solid var(--line-2); border-radius: 3px; padding: 3px 9px;
+  color: var(--accent); background: var(--panel); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.tabs { display: flex; align-self: stretch; }
+.tabs button {
+  background: none; border: 0; border-bottom: 2px solid transparent;
+  padding: 11px 14px 9px; color: var(--muted); cursor: pointer;
+  text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; white-space: nowrap;
+}
+.tabs button:hover { color: var(--text); }
+.tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Pages */
+main { min-height: 0; display: grid; }
+.page { display: none; min-height: 0; min-width: 0; }
+.page.active { display: grid; }
+
+/* Scenario page: orbit, body and the current data on top, ground track and
+   charts below */
+#page-scenario {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(170px, 0.28fr);
+  grid-template-rows: minmax(0, 1.1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px 8px 0;
+}
+#vp-orbit { grid-area: 1 / 1; }
+#vp-body { grid-area: 1 / 2; }
+#vp-data { grid-area: 1 / 3; }
+#vp-ground { grid-area: 2 / 1; }
+#charts { grid-area: 2 / 2 / 3 / 4; }
+.controls { grid-area: 3 / 1 / 4 / 4; }
+
+.viewport { position: relative; border: 1px solid var(--line); border-radius: 3px; background: #050c18; overflow: hidden; min-height: 0; }
+.viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.vp-title {
+  position: absolute; top: 8px; left: 10px; pointer-events: none;
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; font-size: 10.5px;
+}
+.vp-title b { color: var(--text); font-weight: 600; }
+.legend, .vp-readout {
+  position: absolute;
+  background: rgba(8, 17, 31, 0.82); border: 1px solid var(--line); border-radius: 3px;
+  padding: 4px 8px; font-size: 10.5px;
+}
+.legend { top: 28px; left: 10px; }
+.legend div { white-space: nowrap; }
+.legend .choose { display: flex; gap: 4px; margin: 1px 0 4px; }
+.vp-readout { pointer-events: none; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vp-readout b { color: var(--text); font-weight: 400; }
+.vp-readout .head { text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; }
+.vp-readout.top-right { top: 6px; right: 8px; }
+.vp-readout.bottom-left { bottom: 8px; left: 10px; }
+.swatch { width: 14px; height: 3px; border-radius: 2px; display: inline-block; margin-right: 6px; vertical-align: 3px; }
+.toggles { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.toggle {
+  background: rgba(8, 17, 31, 0.88); border: 1px solid var(--line-2); color: var(--muted);
+  border-radius: 3px; padding: 2px 7px; font-size: 10.5px; cursor: pointer;
+}
+.toggle.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.label3d {
+  position: absolute; left: 0; top: 0; font-size: 10.5px; white-space: nowrap; will-change: transform;
+  text-shadow: 0 0 3px #000, 0 0 2px #000, 0 0 1px #000;
+}
+.vp-message { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 20px; text-align: center; }
+
+/* The current data: the state of the run at the time cursor */
+.data-panel {
+  position: relative; border: 1px solid var(--line); border-radius: 3px; background: #050c18;
+  min-height: 0; min-width: 0; overflow: auto; padding: 34px 12px 10px;
+}
+.now { margin: 0; }
+.now dt { color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; margin-top: 14px; }
+.now dt:first-child { margin-top: 0; }
+.now dd {
+  margin: 4px 0 0; font-size: 14px; display: flex; align-items: center; gap: 8px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.now .fill { width: 12px; height: 12px; border-radius: 2px; flex: none; }
+/* Explanations: a box that appears when the pointer rests on a title, a value
+   or a button with a data-help key. A small "i" marks each title that has one. */
+[data-help] { cursor: help; }
+button[data-help], select[data-help], input[data-help] { cursor: pointer; }
+.vp-title[data-help], .vp-readout[data-help] { pointer-events: auto; }
+.vp-title[data-help]::after, .chart-head .title[data-help]::after {
+  content: "i"; display: inline-block; width: 11px; height: 11px; margin-left: 6px;
+  border: 1px solid var(--dim); border-radius: 50%; color: var(--muted);
+  font: 600 8px/10px var(--mono); text-align: center; text-transform: none; letter-spacing: 0; vertical-align: 1px;
+}
+.help {
+  position: fixed; z-index: 20; max-width: 320px; padding: 8px 10px;
+  background: #0c1829; border: 1px solid var(--line-2); border-radius: 3px;
+  color: var(--text); font-size: 11px; line-height: 1.5; pointer-events: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); white-space: normal;
+}
+.help b {
+  display: block; margin-bottom: 3px; color: var(--accent); font-weight: 600; font-size: 10.5px;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.now-activity { color: var(--muted); font-size: 10.5px; margin: 16px 0 0; padding-top: 8px; border-top: 1px solid var(--line); }
+
+.charts {
+  border: 1px solid var(--line); border-radius: 3px; background: #070f1d;
+  padding: 4px 8px 2px; min-height: 0; min-width: 0;
+  display: grid; grid-template-rows: auto 84px auto minmax(0, 1fr) auto minmax(0, 1fr);
+}
+.charts.no-power { grid-template-rows: auto minmax(0, 1fr); }
+.charts.no-power > :nth-child(n + 3) { display: none; }
+/* The Power page: the timeline and the detailed power chart, with the time
+   controls moved in from the Scenario page */
+#page-power {
+  grid-template-columns: minmax(0, 1fr) minmax(345px, 0.24fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px; padding: 8px 8px 0;
+}
+#power-charts { grid-area: 1 / 1; }
+.power-side { grid-area: 1 / 2; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px; min-height: 0; min-width: 0; }
+#page-power .controls { grid-area: 2 / 1 / 3 / 3; }
+/* The Attitude page: the timeline, the roll, pitch and yaw, the body rate and
+   its acceleration, with the current attitude, the files and the warnings
+   beside them. It shares the time controls too. */
+#page-attitude {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.22fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px; padding: 8px 8px 0;
+}
+#attitude-charts { grid-area: 1 / 1; grid-template-rows: auto 96px auto minmax(0, 1fr) auto minmax(0, 0.55fr) auto minmax(0, 0.55fr); }
+.attitude-side { grid-area: 1 / 2; display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 8px; min-height: 0; min-width: 0; }
+#page-attitude .controls { grid-area: 2 / 1 / 3 / 3; }
+.attitude-files { display: grid; gap: 6px; }
+.attitude-files .toggle { text-align: left; }
+.attitude-files p { color: var(--muted); font-size: 11px; margin: 4px 0 0; }
+#attitude-warnings p { color: var(--amber); font-size: 11.5px; margin: 0 0 8px; }
+#attitude-warnings .none { color: var(--muted); }
+/* The Targets page: the timeline and each target's passes, with the targets at
+   the time cursor beside them, and the table of passes and the targets'
+   sources below. It shares the time controls too. */
+#page-targets {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.24fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 0.7fr) auto;
+  gap: 8px; padding: 8px 8px 0;
+}
+#targets-charts { grid-area: 1 / 1; grid-template-rows: auto 96px auto minmax(0, 1fr); }
+#vp-targets-now { grid-area: 1 / 2; }
+#vp-passes { grid-area: 2 / 1; }
+#vp-sources { grid-area: 2 / 2; }
+#page-targets .controls { grid-area: 3 / 1 / 4 / 3; }
+#vp-passes table.list th { top: -34px; background: #050c18; }
+#vp-passes .none, #target-sources .none { color: var(--muted); }
+.source + .source { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.source b { font-weight: 600; }
+.source div { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.source .far { color: var(--amber); }
+/* The current power: a label and a value on each line, the panels indented
+   under the total generated */
+.power-now { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 12px; margin: 0; align-items: center; }
+.power-now dt {
+  display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; white-space: nowrap; overflow: hidden;
+}
+.power-now dd { margin: 0; text-align: right; font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.power-now .sub { font-size: 11.5px; }
+.power-now dt.sub { padding-left: 18px; text-transform: none; letter-spacing: 0; }
+.power-now .fill { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+/* The power setup: each block a small table or a list */
+.setup-block + .setup-block { margin-top: 14px; }
+table.setup { width: 100%; border-collapse: collapse; font-size: 10.5px; font-variant-numeric: tabular-nums; }
+table.setup th { color: var(--dim); font-weight: 400; text-align: right; vertical-align: bottom; padding: 2px 0 3px 8px; border-bottom: 1px solid var(--line-2); }
+table.setup td { text-align: right; padding: 3px 0 3px 8px; border-top: 1px solid var(--line); white-space: nowrap; }
+table.setup th:first-child, table.setup td:first-child { text-align: left; padding-left: 0; }
+table.setup .swatch { width: 8px; height: 8px; vertical-align: 0; }
+#vp-power-setup .kv { font-size: 11px; }
+#power-charts { grid-template-rows: auto 96px auto minmax(0, 1fr) auto minmax(0, 0.45fr); }
+#power-charts .chart-head { flex-wrap: wrap; align-items: center; row-gap: 4px; }
+.toggle.series { display: inline-flex; align-items: center; }
+.toggle.series:not(.on) .swatch { opacity: 0.3; }
+.toggle.layout { margin-left: 10px; }
+.chart-head { display: flex; gap: 14px; align-items: baseline; font-size: 10.5px; padding: 3px 0 1px; white-space: nowrap; overflow: hidden; }
+.chart-head .title { color: var(--text); font-weight: 600; letter-spacing: 0.08em; }
+.chart-head .unit, .chart-head .key { color: var(--muted); }
+.chart-head .key b { color: var(--text); font-weight: 400; font-variant-numeric: tabular-nums; }
+.zooms { margin-left: auto; display: flex; gap: 4px; }
+.chart-body { min-height: 0; min-width: 0; }
+.uplot, .uplot * { font-family: var(--mono); }
+.u-select { background: rgba(34, 211, 238, 0.12); }
+
+.controls { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-top: 1px solid var(--line); min-width: 0; }
+.play {
+  width: 32px; height: 26px; border: 1px solid var(--accent); color: var(--accent);
+  background: var(--accent-soft); border-radius: 3px; cursor: pointer;
+}
+select.speed { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 3px; padding: 3px 5px; }
+#slider { flex: 1; min-width: 120px; accent-color: var(--accent); }
+.readout { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.readout .dim { color: var(--muted); }
+.dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 6px; }
+
+/* Blocks on the other pages */
+.block { border: 1px solid var(--line); background: var(--panel); border-radius: 3px; padding: 12px 14px; min-width: 0; }
+.section-title { color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; font-size: 10.5px; margin: 0 0 8px; }
+.section-title b { color: var(--text); font-weight: 400; text-transform: none; letter-spacing: 0; }
+.note { color: var(--muted); font-size: 11px; margin: 8px 0 0; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+pre.file {
+  margin: 0; padding: 10px 12px; background: #070f1d; border: 1px solid var(--line); border-radius: 3px;
+  overflow: auto; font: 11.5px/1.5 var(--mono); color: var(--text);
+}
+pre.file .comment { color: var(--dim); }
+pre.file.tall { max-height: 420px; }
+
+#page-activities.active, #page-thermal.active, #page-inputs.active, #page-results.active { display: block; overflow: auto; padding: 12px; }
+.blocks {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 12px;
+  max-width: 1300px; margin: 0 auto; align-items: start;
+}
+.blocks > .wide { grid-column: 1 / -1; }
+#inputs { grid-template-columns: repeat(auto-fit, minmax(600px, 1fr)); }
+.stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.summary-line { margin: 0 0 10px; }
+table.list { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.list th {
+  color: var(--dim); font-weight: 400; text-align: left; font-size: 10.5px; padding: 4px 8px;
+  text-transform: uppercase; white-space: nowrap; position: sticky; top: -12px; background: var(--panel);
+  border-bottom: 1px solid var(--line-2);
+}
+table.list td { padding: 4px 8px; border-top: 1px solid var(--line); white-space: nowrap; }
+table.list .num { text-align: right; }
+table.list tbody tr { cursor: pointer; }
+table.list tbody tr:hover td { background: rgba(255, 255, 255, 0.03); }
+table.list tr.current td { background: var(--accent-soft); }
+table.list tr.current td:first-child { box-shadow: inset 2px 0 var(--accent); }
+.status-ok { color: var(--green); }
+.status-fail { color: var(--red); }
+.status-warn { color: var(--amber); }
+.status-plain { color: var(--muted); }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.card { border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 3px; padding: 7px 10px; }
+.card .label { color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; }
+.card .value { color: var(--accent); font-size: 22px; font-weight: 700; line-height: 1.25; }
+.card .value small { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 4px; }
+.check { border: 1px solid; border-radius: 3px; padding: 7px 9px; margin-bottom: 6px; }
+.check:last-child { margin-bottom: 0; }
+.check .head { font-weight: 700; }
+.check .detail { opacity: 0.85; font-size: 11px; white-space: pre-line; }
+.check.ok { background: var(--ok-bg); border-color: var(--ok-line); }
+.check.ok .head { color: var(--green); }
+.check.ok .head::before { content: "\2713  "; }
+.check.warn { background: var(--warn-bg); border-color: var(--warn-line); }
+.check.warn .head { color: var(--amber); }
+.check.warn .head::before { content: "!  "; }
+.check.fail { background: var(--fail-bg); border-color: var(--fail-line); }
+.check.fail .head { color: var(--red); }
+.check.fail .head::before { content: "\2715  "; }
+
+/* The Thermal page: the account's tables, which scroll sideways on a narrow
+   screen, and the net heat's chart over the payload's modes */
+.scroll-x { overflow-x: auto; scrollbar-color: var(--line-2) transparent; }
+table.list.account tbody tr { cursor: default; }
+table.list.account td.neg { color: var(--red); }
+table.list.account td.pos { color: var(--amber); }
+.thermal-head { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; font-size: 10.5px; color: var(--muted); margin-bottom: 4px; }
+.thermal-head b { color: var(--text); font-weight: 400; font-variant-numeric: tabular-nums; }
+.thermal-plot { height: 260px; min-width: 0; }
+.empty { display: grid; place-items: center; height: 100vh; color: var(--muted); padding: 24px; text-align: center; }
+.empty div { max-width: 640px; }
+/* The wide layout, offered with power: the views in one row, and the charts
+   across the full width under them */
+@media (min-width: 1001px) {
+  #page-scenario.wide {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(170px, 0.32fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1.05fr) auto;
+  }
+  #page-scenario.wide #vp-orbit { grid-area: 1 / 1; }
+  #page-scenario.wide #vp-ground { grid-area: 1 / 2; }
+  #page-scenario.wide #vp-body { grid-area: 1 / 3; }
+  #page-scenario.wide #vp-data { grid-area: 1 / 4; }
+  #page-scenario.wide #charts { grid-area: 2 / 1 / 3 / 5; }
+  #page-scenario.wide .controls { grid-area: 3 / 1 / 4 / 5; }
+}
+
+@media (max-width: 1000px) {
+  body { overflow: auto; height: auto; }
+  .top { flex-wrap: wrap; }
+  #page-scenario { grid-template-columns: minmax(0, 1fr); grid-template-rows: 420px 360px auto 320px 420px auto; }
+  #vp-orbit { grid-area: 1 / 1; }
+  #vp-body { grid-area: 2 / 1; }
+  #vp-data { grid-area: 3 / 1; }
+  #vp-ground { grid-area: 4 / 1; }
+  #charts { grid-area: 5 / 1; }
+  .controls { grid-area: 6 / 1; flex-wrap: wrap; }
+  #page-power { grid-template-columns: minmax(0, 1fr); grid-template-rows: 640px auto auto; }
+  .power-side { grid-area: 2 / 1; }
+  #page-power .controls { grid-area: 3 / 1; }
+  #page-attitude { grid-template-columns: minmax(0, 1fr); grid-template-rows: 640px auto auto; }
+  .attitude-side { grid-area: 2 / 1; }
+  #page-attitude .controls { grid-area: 3 / 1; }
+  #page-targets { grid-template-columns: minmax(0, 1fr); grid-template-rows: 560px auto 360px 360px auto; }
+  #vp-targets-now { grid-area: 2 / 1; }
+  #vp-passes { grid-area: 3 / 1; }
+  #vp-sources { grid-area: 4 / 1; }
+  #page-targets .controls { grid-area: 5 / 1; }
+  .blocks, #inputs { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* The Activity Designer: the orbit and the map, with the current data beside
+   them, then the timeline across the full width, with each target's passes
+   under it, then the time controls. No header and no body view. The map is
+   at most twice as wide as it is high, so the orbit takes width that the map
+   would leave empty, and the map keeps its height. */
+body.designer { grid-template-rows: minmax(0, 1fr); overflow: hidden; height: 100%; }
+body.designer > .top, body.designer #vp-body { display: none; }
+body.designer #page-scenario {
+  grid-template-columns: minmax(0, 0.35fr) minmax(0, 1fr) minmax(200px, 0.25fr);
+  grid-template-rows: minmax(0, 1.2fr) minmax(0, 1fr) auto;
+}
+body.designer #vp-orbit { grid-area: 1 / 1; }
+body.designer #vp-ground { grid-area: 1 / 2; }
+body.designer #vp-data { grid-area: 1 / 3; }
+body.designer #charts { grid-area: 2 / 1 / 3 / 4; }
+body.designer .controls { grid-area: 3 / 1 / 4 / 4; flex-wrap: nowrap; }
+body.designer #vp-ground .legend { top: auto; bottom: 8px; }
+/* The orbit is small here, so its toggles keep their first state, and only
+   Reset view, the last button, shows */
+body.designer #orbit-toggles > :not(:last-child) { display: none; }
+/* The map's 3D Orbit View toggle hides the orbit, and gives its width to the
+   map, for a narrow screen */
+body.designer.no-orbit #vp-orbit { display: none; }
+body.designer.no-orbit #page-scenario { grid-template-columns: minmax(0, 1fr) minmax(200px, 0.25fr); }
+body.designer.no-orbit #vp-ground { grid-area: 1 / 1; }
+body.designer.no-orbit #vp-data { grid-area: 1 / 2; }
+body.designer.no-orbit #charts { grid-area: 2 / 1 / 3 / 3; }
+body.designer.no-orbit .controls { grid-area: 3 / 1 / 4 / 3; }
+.charts.designer { grid-template-rows: auto minmax(0, 1fr); }
+.charts.designer.lanes { grid-template-rows: auto minmax(0, 3fr) auto minmax(0, 2fr); }
+.charts.designer > #head-net, .charts.designer > #chart-net, .charts.designer > #head-soc, .charts.designer > #chart-soc { display: none; }

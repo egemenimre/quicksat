@@ -13,6 +13,8 @@ All notable changes to quicksat are recorded here. The format follows [Keep a Ch
 ### Changed
 
 - `write_power_viewer` and `power_data` take the payload's heat account as an optional `thermal`, and `power.js` has a `thermal` field, null without it. The account comes from `thermal_data`, in the new module `quicksat.thermal.viewer`. It was `thermal_results`, in `quicksat.editor.thermal`, and now gives the thermal file's name and text too.
+- The viewer's template is split into files, with no change to the page. `viewer.html` holds the page's markup, `viewer.css` its styles, and `templates/viewer/` its scripts, one file for each part of the page, such as the orbit view or the charts. `viewer_page` joins them into one page, as before.
+- The viewer's help, the text of the box that appears on hover, is in `templates/viewer/help.yaml`, as the editors' help is in YAML files. `viewer_page` puts it inside the page as JSON.
 - The package's docstrings are shorter: 7150 lines, down from 11254. A public function or class keeps its parameters and returns, in short entries. A private helper or a property has one line, with its units. A long explanation is gone where a reference notebook or an explanation gives it, and the docstring names that doc.
 
 ## [0.6.0] - 2026-10-26
